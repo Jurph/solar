@@ -1,7 +1,5 @@
-from telnetlib import GA
 from django.db import models
 from django.core import serializers
-from sqlalchemy import ForeignKey
 
 # Define the Data Model 
 
