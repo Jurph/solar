@@ -1,8 +1,12 @@
 from django.db import models
 from django.core import serializers
+from django.utils.translation import gettext_lazy as _
+
+
+# Apparently turn on the Django
+
 
 # Define the Data Model 
-
 class Location(models.Model):
     name = models.CharField(
         max_length=64, 
