@@ -3,8 +3,8 @@ from django.core import serializers
 from django.utils.translation import gettext_lazy as _
 
 
-# Apparently turn on the Django
-
+# Apparently turn on the Django before running this
+# Can't believe you didn't turn on the Django, Dave.
 
 # Define the Data Model 
 class Location(models.Model):
