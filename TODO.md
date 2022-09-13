@@ -10,30 +10,30 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 ## features: 
 
 - Stars, planets, moons, and space stations 
-    -- Just our solar system first 
-    -- Procedurally generated via physics rules later 
-    -- Exports based on planetary minerals 
-    -- Imports based on regional economy/scarcity 
+    - Just our solar system first 
+    - Procedurally generated via physics rules later 
+    - Exports based on planetary minerals 
+    - Imports based on regional economy/scarcity 
 - Ships 
-    -- "Grab bag" random naming at first 
-    -- Very little concept of roles/classes/sizes 
-    -- Procedurally named with random cargos & missions   
-    -- Eventually assigned economically-relevant cargos & missions 
-    -- Eventually procedurally generated as make/model, sold by particular shipyards, more common "near home" 
+    - "Grab bag" random naming at first 
+    - Very little concept of roles/classes/sizes 
+    - Procedurally named with random cargos & missions   
+    - Eventually assigned economically-relevant cargos & missions 
+    - Eventually procedurally generated as make/model, sold by particular shipyards, more common "near home" 
 - Events 
-    -- Grab bag procedural at first 
-    -- Anomalies a great place to explore complexity 
-    -- When ships have parts, some anomalies will come from "cheap" parts or "too new" technologies 
-    -- Eventually generated in response to a ship moving along its journey 
+    - Grab bag procedural at first 
+    - Anomalies a great place to explore complexity 
+    - When ships have parts, some anomalies will come from "cheap" parts or "too new" technologies 
+    - Eventually generated in response to a ship moving along its journey 
 - Comms 
-    -- Text first, voice soon!
-    -- Meant to sound like air traffic control 
-    -- Scripted or procedural at first 
-    -- Uses GPT-style generative dialogue eventually 
-    -- Text-to-voice? Pilot personalities? 
-    -- Realistic static, Apollo-style BEEPs, modem noises 
+    - Text first, voice soon!
+    - Meant to sound like air traffic control 
+    - Scripted or procedural at first 
+    - Uses GPT-style generative dialogue eventually 
+    - Text-to-voice? Pilot personalities? 
+    - Realistic static, Apollo-style BEEPs, modem noises 
 - Playing the game 
-    -- What game? This is literally an enormous complex procedural generation engine to create realistic shipping traffic so I can have a relaxing futuristic background 
+    - What game? This is literally an enormous complex procedural generation engine to create realistic shipping traffic so I can have a relaxing futuristic background. This will be v1.0 **playable** when I can listen to ships talking to one another like a long relaxing radio drama, with no idea what will happen next.  
 
 ## TODO: 
 
@@ -67,3 +67,4 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ### Six - Let's Get Real 
 - J.R. probably won't finish this game on his own 
+- Persistent ships? Letting players follow ships to different places to hear more of the story? Who knows? 
