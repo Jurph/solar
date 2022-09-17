@@ -10,7 +10,8 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 ## features: 
 
 - Stars, planets, moons, and space stations 
-    - Just our solar system first 
+    - Just our solar system first ✓
+    - XML import/export tooling 
     - Procedurally generated via physics rules later 
     - Exports based on planetary minerals 
     - Imports based on regional economy/scarcity 
