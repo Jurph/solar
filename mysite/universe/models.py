@@ -6,12 +6,19 @@ from django.utils.translation import gettext_lazy as _
 # Can't believe you didn't turn on the Django, Dave.
 
 # Define the Data Model 
+
+class UnknowableVoid(models.Model):
+    name = models.CharField(
+        max_length=16,
+        default="The Unknowable Void"
+    )
+
 class Location(models.Model):
     name = models.CharField(
         max_length=64, 
         default="DEFAULT"
         )
-    orbits = None 
+    orbits = None
 
     class Scale(models.TextChoices):
         GALAXY = 'GX', _('galaxy')
@@ -96,16 +103,16 @@ class Star(Location):
     ]
     startype = models.CharField(max_length=2,choices=stars)
     starmagnitude = models.DecimalField(max_digits=8,decimal_places=2, default=4.31)
-    orbits = models.ForeignKey(StarSystem, on_delete=models.CASCADE, related_name="+")
+    orbits = models.ForeignKey(StarSystem, on_delete=models.CASCADE, related_name="Belongs")
 
 class Planet(Location):
     # othernames = TODO: figure out how to create a list of CharFields
     # TODO: add complex planet variety
-    orbits = models.ForeignKey(Star, on_delete=models.CASCADE, related_name="+")
+    orbits = models.ForeignKey(Star, on_delete=models.CASCADE, related_name="Orbiting")
 
 class Moon(Location):
     # TODO: add complex satellite variety ("Rocky", "Barren", "Icy")
-    orbits = models.ForeignKey(Planet, on_delete=models.CASCADE, related_name="+")
+    orbits = models.ForeignKey(Planet, on_delete=models.CASCADE, related_name="Orbiting")
 
 class Station(Location):
     orbits = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="orbiter")
