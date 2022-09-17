@@ -11,8 +11,9 @@ class Location(models.Model):
         max_length=64, 
         default="DEFAULT"
         )
+    orbits = None 
 
-    class Size(models.TextChoices):
+    class Scale(models.TextChoices):
         GALAXY = 'GX', _('galaxy')
         STARSYSTEM = 'SY', _('star system')
         STAR = 'SR', _('star')
@@ -20,10 +21,10 @@ class Location(models.Model):
         MOON = 'MN', _('moon')
         STATION = 'SS', _('space station')
     
-    size = models.CharField(
+    scale = models.CharField(
         max_length=2, 
-        choices=Size.choices,
-        default=Size.STATION
+        choices=Scale.choices,
+        default=Scale.STATION
     )
 
     def may_have_station(self):
@@ -49,10 +50,6 @@ class Location(models.Model):
 
 
 class Galaxy(Location):
-    name = models.CharField(
-        max_length=64,
-        default="Milky Way",
-        )
     ## https://en.wikipedia.org/wiki/Galaxy#Types_and_morphology
     galaxies = [
         ('CD', 'Supergiant Elliptical Type cD'),    
@@ -78,14 +75,13 @@ class Galaxy(Location):
     ]    
     type = models.CharField(max_length=2,choices=galaxies)
     size = models.CharField(max_length=1,choices=sizes)
+    orbits = None
 
 class StarSystem(Location):
     # These are boring until we have binary stars 
-    name = models.CharField(max_length=64, default="solar system")
-    parent = models.ForeignKey(Galaxy, on_delete=models.CASCADE)
+    orbits = models.ForeignKey(Galaxy, on_delete=models.CASCADE, related_name="+")
 
 class Star(Location):
-    name = models.CharField(max_length=64, default="Sol")
     # othernames = TODO: figure out how to create a list of CharFields
     # TODO: expand this later - https://en.wikipedia.org/wiki/Stellar_classification
     stars = [
@@ -99,27 +95,20 @@ class Star(Location):
         ('N', 'M-Type Red Supergiant'),
     ]
     startype = models.CharField(max_length=2,choices=stars)
-    starmagnitude = models.DecimalField(max_digits=8,decimal_places=2)
-    parent = models.ForeignKey(StarSystem, on_delete=models.CASCADE)
+    starmagnitude = models.DecimalField(max_digits=8,decimal_places=2, default=4.31)
+    orbits = models.ForeignKey(StarSystem, on_delete=models.CASCADE, related_name="+")
 
 class Planet(Location):
-    name = models.CharField(max_length=64, default="Earth")
     # othernames = TODO: figure out how to create a list of CharFields
     # TODO: add complex planet variety
-    parent = models.ForeignKey(Star, on_delete=models.CASCADE)
+    orbits = models.ForeignKey(Star, on_delete=models.CASCADE, related_name="+")
 
 class Moon(Location):
-    name = models.CharField(max_length=64, default="Luna")
     # TODO: add complex satellite variety ("Rocky", "Barren", "Icy")
-    parent = models.ForeignKey(Planet, ondelete=models.CASCADE)
+    orbits = models.ForeignKey(Planet, on_delete=models.CASCADE, related_name="+")
 
 class Station(Location):
-    name = models.CharField(
-        max_length=64, 
-        default="International Space Station Museum"
-        )
-    parent = models.ForeignKey(Location, on_delete=models.CASADE)
+    orbits = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="orbiter")
     large_berths = models.PositiveSmallIntegerField(default=1)
     medium_berths = models.PositiveSmallIntegerField(default=2)
     small_berths = models.PositiveSmallIntegerField(default=8)
-
