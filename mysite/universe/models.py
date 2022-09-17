@@ -7,12 +7,6 @@ from django.utils.translation import gettext_lazy as _
 
 # Define the Data Model 
 
-class UnknowableVoid(models.Model):
-    name = models.CharField(
-        max_length=16,
-        default="The Unknowable Void"
-    )
-
 class Location(models.Model):
     name = models.CharField(
         max_length=64, 
@@ -119,3 +113,4 @@ class Station(Location):
     large_berths = models.PositiveSmallIntegerField(default=1)
     medium_berths = models.PositiveSmallIntegerField(default=2)
     small_berths = models.PositiveSmallIntegerField(default=8)
+
