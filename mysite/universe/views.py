@@ -15,6 +15,7 @@ def orbitsAround(hub, orbiter):
 
 # Create your views here.
 def index(request):
+    # TODO: Make this a fancy nested tree view later 
     response = "Fiat Lux! There is now a universe.<BR>"
     for g in Galaxy.objects.all():
         response += "GALAXY: {} //  ID: {}<BR>".format(g, g.id)
@@ -41,24 +42,3 @@ def index(request):
                                 response += ".....*{}<BR>".format(stat)
 
     return HttpResponse(response)
-
-# def later(request):
-#    for g in Galaxy.objects.all():
-#        response += "[O] {}<br>".format(g)
-#            for s in Star.objects.all():
-#                if s.orbits_id == ss:
-#                    response += "   * {}<BR>".format(s)
-#                for p in Planet.objects.all():
-#                    if p.orbits == s:
-#                        response += "    - {}<BR>".format(p)
-#                    for obj in Location.objects.all():
-#                        if obj.orbits == p:
-#                            response += "    -- {}<BR>".format(obj)
-#                        else:
-#                            pass
-#                    for m in Moon.objects.all():
-#                        if m.orbits == p:
-#                             response += "    -- {}<BR>".format(m)
-#                        for obj in Location.objects.all():
-#                            if obj.orbits == m:
-#                                response += "    --- {}<BR>".format(obj)
