@@ -6,7 +6,7 @@ from pathlib import Path
 def main():
     """Run administrative tasks."""
     # Add the parent directory to Python path
-    current_path = Path(__file__).parent
+    current_path = Path(__file__).resolve().parent
     sys.path.append(str(current_path))
     
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
@@ -18,5 +18,5 @@ def main():
         ) from exc
     execute_from_command_line(sys.argv)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

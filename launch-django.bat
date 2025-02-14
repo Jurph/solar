@@ -20,6 +20,9 @@ if errorlevel 1 (
     pip install django
 )
 
+REM Set the Python path to include the project root
+set PYTHONPATH=%CD%
+
 REM Navigate to project directory
 cd mysite
 
