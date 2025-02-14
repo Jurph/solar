@@ -1,0 +1,42 @@
+.universe-tree {
+    font-family: monospace;
+    margin: 20px;
+}
+
+.tree-item {
+    margin: 5px 0;
+}
+
+.tree-content {
+    display: none;
+    margin-left: 20px;
+}
+
+.tree-content.expanded {
+    display: block;
+}
+
+.toggle-btn {
+    width: 20px;
+    height: 20px;
+    margin-right: 5px;
+    border: 1px solid #ccc;
+    background: #fff;
+    cursor: pointer;
+}
+
+.toggle-btn.expanded {
+    background: #eee;
+}
+
+.item-name {
+    display: inline-block;
+    padding: 2px 5px;
+}
+
+.galaxy { color: #4a90e2; }
+.system { color: #50e3c2; }
+.star { color: #f5a623; }
+.planet { color: #7ed321; }
+.moon { color: #9013fe; }
+.station { color: #bd10e0; }
