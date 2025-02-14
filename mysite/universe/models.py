@@ -1,5 +1,4 @@
 from django.db import models
-from django.core import serializers
 from django.utils.translation import gettext_lazy as _
 
 # Apparently turn on the Django before running this
@@ -29,21 +28,21 @@ class Location(models.Model):
     )
 
     def may_have_station(self):
-        return self.Size in{
-            self.Size.STAR,
-            self.Size.PLANET,
-            self.Size.MOON            
+        return self.scale in{
+            self.scale.STAR,
+            self.scale.PLANET,
+            self.scale.MOON            
         }
 
     def can_dock(self):
-        return self.Size in{
-            self.Size.STATION,
+        return self.scale in{
+            self.scale.STATION,
         }
 
     def can_land(self):
-        return self.Size in{
-            self.Size.PLANET,
-            self.Size.MOON,
+        return self.scale in{
+            self.scale.PLANET,
+            self.scale.MOON,
         }
 
     def __str__(self):
@@ -101,12 +100,27 @@ class Star(Location):
 
 class Planet(Location):
     # othernames = TODO: figure out how to create a list of CharFields
-    # TODO: add complex planet variety
     orbits = models.ForeignKey(Star, on_delete=models.CASCADE, related_name="Orbiting")
+    varieties = [
+        ('MP', 'Mesoplanet'),
+        ('SI', 'Silicate'),     # e.g. Mercury
+        ('TE', 'Terrestrial'),  # e.g. Earth, Venus, Mars 
+        ('SE', 'Super-earth'),
+        ('CT', 'Cthonian'),
+        ('IG', 'Ice Giant'),    # e.g. Neptune, Uranus 
+        ('GG', 'Gas Giant'),    # e.g. Jupiter, Saturn 
+        ('AB', 'Asteroid Belt'),
+    ]
+    planettype = models.CharField(max_length=2,choices=varieties, default='TE')
 
 class Moon(Location):
-    # TODO: add complex satellite variety ("Rocky", "Barren", "Icy")
     orbits = models.ForeignKey(Planet, on_delete=models.CASCADE, related_name="Orbiting")
+    varieties = [
+        ('R', 'Rocky'),     # e.g. Luna, Deimos, Phobos - no atmosphere to speak of, dry 
+        ('I', 'Icy'),       # e.g. Europa, Ganymede, Callisto 
+        ('O', 'Organic'),     # e.g. Titan, with a gaseous atmosphere and liquid water 
+        ('T', 'Terrestrial') # e.g. "Earth-like" and therefore habitable; a special sub-class of "O" 
+    ]
 
 class Station(Location):
     orbits = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="orbiter")
