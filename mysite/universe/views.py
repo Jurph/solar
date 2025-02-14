@@ -15,10 +15,11 @@ def orbitsAround(hub, orbiter):
 
 # Create your views here.
 def index(request):
-    # TODO: Make this a fancy nested tree view later 
+    # TODO: Make this a fancy nested HTML tree view later 
+    # ...ugh, maybe using JavaScript??
     response = "Fiat Lux! There is now a universe.<BR>"
     for g in Galaxy.objects.all():
-        response += "GALAXY: {} //  ID: {}<BR>".format(g, g.id)
+        response += "GALAXY: {}<BR>".format(g)
         for ss in StarSystem.objects.all():
             if orbitsAround(g, ss):
                 response += "..{}<BR>".format(ss)
@@ -40,5 +41,5 @@ def index(request):
                         for solarstation in Station.objects.all():
                             if orbitsAround(s, solarstation):
                                 response += ".....*{}<BR>".format(stat)
-
     return HttpResponse(response)
+
