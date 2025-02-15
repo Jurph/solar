@@ -80,7 +80,7 @@ class Galaxy(Location):
 
 class StarSystem(Location):
     # These are boring until we have binary stars 
-    orbits = models.ForeignKey(Galaxy, on_delete=models.CASCADE, related_name="+")
+    orbits = models.ForeignKey(Galaxy, on_delete=models.CASCADE, related_name="Belongs") # i.e. "A StarSystem BELONGS to a Galaxy"
 
 class Star(Location):
     # othernames = TODO: figure out how to create a list of CharFields
@@ -97,7 +97,7 @@ class Star(Location):
     ]
     startype = models.CharField(max_length=2,choices=stars)
     starmagnitude = models.DecimalField(max_digits=8,decimal_places=2, default=4.31)
-    orbits = models.ForeignKey(StarSystem, on_delete=models.CASCADE, related_name="Belongs")
+    orbits = models.ForeignKey(StarSystem, on_delete=models.CASCADE, related_name="Belongs") # i.e. "A Star BELONGS to a StarSystem"
 
 class Planet(Location):
     # othernames = TODO: figure out how to create a list of CharFields
