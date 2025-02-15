@@ -2,12 +2,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Universe Explorer</title>
-    <link rel="stylesheet" href="{% static 'universe/css/tree.css' %}">
+    <title>Universe Browser</title>
+    <link rel="stylesheet" type="text/css" href="{% static 'universe/css/style.css' %}">
 </head>
 <body>
     {% block content %}
     {% endblock %}
-    <script src="{% static 'universe/js/tree.js' %}"></script>
+
+    <script>
+    function toggleNode(button) {
+        const content = button.parentElement.querySelector('.tree-content');
+        if (content.style.display === 'none' || content.style.display === '') {
+            content.style.display = 'block';
+            button.textContent = '-';
+        } else {
+            content.style.display = 'none';
+            button.textContent = '+';
+        }
+    }
+    </script>
 </body>
 </html>

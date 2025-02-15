@@ -8,3 +8,4 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('universe/', views.universe_view, name='universe'),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
