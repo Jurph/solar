@@ -2,8 +2,8 @@ import xml.etree.ElementTree as ET
 from django.db import transaction
 from typing import Optional, Dict, Any
 from decimal import Decimal
-from .models import (
-    Location, Galaxy, StarSystem, 
+from mysite.universe.models import (
+    Location, Galaxy, StarSystem,
     Star, Planet, Moon, Station
 )
 

@@ -9,6 +9,7 @@ class DictionaryService:
         self.base_path = Path(__file__).parent.parent / 'wordlists'
         self.wordlists: Dict[str, List[str]] = {
             'ANIMAL': self._load_wordlist('animals.txt'),
+            'AVATAR': self._load_wordlist('avatars.txt'),
             'CITY': self._load_wordlist('cities.txt'),
             'COLOR': self._load_wordlist('colors.txt'),
             'ELEMENT': self._load_wordlist('elements.txt'),

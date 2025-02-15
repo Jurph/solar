@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from .models import Galaxy
+from mysite.universe.models import Galaxy
 
 def universe_view(request):
     galaxies = Galaxy.objects.all()
