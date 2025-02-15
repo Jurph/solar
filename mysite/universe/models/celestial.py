@@ -3,9 +3,32 @@ from django.utils.translation import gettext_lazy as _
 from .base import Location
 
 class Galaxy(Location):
-    def save(self, *args, **kwargs):
-        self.scale = self.Scale.GALAXY
-        super().save(*args, **kwargs)
+    ## https://en.wikipedia.org/wiki/Galaxy#Types_and_morphology    
+    galaxies = [
+        ('CD', 'Supergiant Elliptical Type cD'),    
+        ('DW', 'Dwarf'),
+        ('E0', 'Elliptical - Sphere'),
+        ('E7', 'Elliptical - Elongated'),
+        ('IR', 'Irregular Type i'),
+        ('IT', 'Irregular Type ii'),
+        ('LN', 'Lenticular'),    
+        ('SB', 'Barred Spiral'),
+        ('SH', 'Elliptical Shell'),
+        ('SP', 'Spiral Arm'),
+        ('SS', 'Superluminous Spiral'),
+        ('UD', 'Ultra Diffuse'),
+    ]    
+    sizes = [
+        ('D', 'dwarf'),
+        ('S', 'small'),
+        ('M', 'medium'),
+        ('L', 'large'),
+        ('X', 'extra large'),
+        ('G', 'supergiant'),
+    ]    
+    galaxyType = models.CharField(max_length=2, choices=galaxies)
+    galaxySize = models.CharField(max_length=1, choices=sizes)
+    orbits = None
 
 class StarSystem(Location):
     orbits = models.ForeignKey(
@@ -13,27 +36,31 @@ class StarSystem(Location):
         on_delete=models.CASCADE,
         related_name='star_systems'
     )
-    
-    def save(self, *args, **kwargs):
-        self.scale = self.Scale.STARSYSTEM
-        super().save(*args, **kwargs)
 
 class Star(Location):
+    # othernames = TODO: figure out how to create a list of CharFields
+    # TODO: expand this later - https://en.wikipedia.org/wiki/Stellar_classification
+    stars = [
+        ('O', 'O-Type Blue Supergiant'),
+        ('B', 'B-Type Blue Giant'),
+        ('A', 'A-Type White Star'),
+        ('F', 'F-Type White Star'),                
+        ('G', 'G-Type Yellow Star'),
+        ('K', 'K-Type Yellow Star'),
+        ('M', 'M-Type Red Dwarf'),
+        ('N', 'M-Type Red Supergiant'),
+    ]
     orbits = models.ForeignKey(
         StarSystem,
         on_delete=models.CASCADE,
         related_name='stars'
     )
-    startype = models.CharField(max_length=10, default="G2V")
-    starmagnitude = models.DecimalField(
+    starType = models.CharField(max_length=10, default="G2V")
+    starMagnitude = models.DecimalField(
         max_digits=8,
         decimal_places=2,
         default=4.31
     )
-    
-    def save(self, *args, **kwargs):
-        self.scale = self.Scale.STAR
-        super().save(*args, **kwargs)
 
 class Planet(Location):
     class PlanetType(models.TextChoices):
@@ -51,23 +78,21 @@ class Planet(Location):
         on_delete=models.CASCADE,
         related_name='planets'
     )
-    planettype = models.CharField(
+    planetType = models.CharField(
         max_length=2,
         choices=PlanetType.choices,
         default=PlanetType.TERRESTRIAL
     )
-    
-    def save(self, *args, **kwargs):
-        self.scale = self.Scale.PLANET
-        super().save(*args, **kwargs)
 
 class Moon(Location):
+    varieties = [
+        ('R', 'Rocky'),     # e.g. Luna, Deimos, Phobos - no atmosphere to speak of, dry 
+        ('I', 'Icy'),       # e.g. Europa, Ganymede, Callisto 
+        ('O', 'Organic'),     # e.g. Titan, with a gaseous atmosphere and liquid water 
+        ('T', 'Terrestrial') # e.g. "Earth-like" and therefore habitable; a special sub-class of "O" 
+    ]
     orbits = models.ForeignKey(
-        Planet,
+        Location,
         on_delete=models.CASCADE,
         related_name='moons'
     )
-    
-    def save(self, *args, **kwargs):
-        self.scale = self.Scale.MOON
-        super().save(*args, **kwargs)

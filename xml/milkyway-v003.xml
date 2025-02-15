@@ -1,0 +1,301 @@
+<?xml version="1.0" ?>
+<universe>
+  <galaxy>
+    <name>Milky Way</name>
+    <galaxyType>SP</galaxyType>
+    <galaxySize>L</galaxySize>
+    <system>
+      <name>Sol System</name>
+      <star>
+        <name>Sol</name>
+        <starType>G2V</starType>
+        <starMagnitude>4.83</starMagnitude>
+        <planet>
+          <name>Mercury</name>
+          <planetType>SI</planetType>
+        </planet>
+        <planet>
+          <name>Venus</name>
+          <planetType>TE</planetType>
+          <station>
+            <name>Venus Control</name>
+            <large_berths>4</large_berths>
+            <medium_berths>8</medium_berths>
+            <small_berths>64</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Earth</name>
+          <planetType>TE</planetType>
+          <station>
+            <name>Earth Orbital Control</name>
+            <large_berths>100</large_berths>
+            <medium_berths>256</medium_berths>
+            <small_berths>1024</small_berths>
+          </station>
+          <station>
+            <name>ISS Heritage Site</name>
+            <large_berths>0</large_berths>
+            <medium_berths>1</medium_berths>
+            <small_berths>1</small_berths>
+          </station>
+          <station>
+            <name>Lagrange Refueling Point</name>
+            <large_berths>16</large_berths>
+            <medium_berths>32</medium_berths>
+            <small_berths>64</small_berths>
+          </station>
+          <satellite>
+            <name>Moon</name>
+            <station>
+              <name>Lunar Control</name>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>24</small_berths>
+            </station>
+          </satellite>
+        </planet>
+        <planet>
+          <name>Mars</name>
+          <planetType>TE</planetType>
+          <station>
+            <name>Mars Control</name>
+            <large_berths>24</large_berths>
+            <medium_berths>48</medium_berths>
+            <small_berths>96</small_berths>
+          </station>
+          <satellite>
+            <name>Deimos</name>
+            <station>
+              <name>Deimos Observatory</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>6</small_berths>
+            </station>
+          </satellite>
+          <satellite>
+            <name>Phobos</name>
+            <station>
+              <name>Phobos Base</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>6</small_berths>
+            </station>
+          </satellite>
+        </planet>
+        <planet>
+          <name>Jupiter</name>
+          <planetType>GG</planetType>
+          <station>
+            <name>Jupiter Control</name>
+            <large_berths>32</large_berths>
+            <medium_berths>64</medium_berths>
+            <small_berths>128</small_berths>
+          </station>
+          <satellite>
+            <name>Io</name>
+            <station>
+              <name>Io Volcanic Observatory</name>
+              <large_berths>0</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>8</small_berths>
+            </station>
+          </satellite>
+          <satellite>
+            <name>Europa</name>
+            <station>
+              <name>Europa Subsurface Research Base</name>
+              <large_berths>1</large_berths>
+              <medium_berths>4</medium_berths>
+              <small_berths>16</small_berths>
+            </station>
+          </satellite>
+          <satellite>
+            <name>Ganymede</name>
+            <station>
+              <name>Ganymede Colony</name>
+              <large_berths>2</large_berths>
+              <medium_berths>8</medium_berths>
+              <small_berths>32</small_berths>
+            </station>
+          </satellite>
+          <satellite>
+            <name>Callisto</name>
+            <station>
+              <name>Callisto Mining Outpost</name>
+              <large_berths>1</large_berths>
+              <medium_berths>4</medium_berths>
+              <small_berths>16</small_berths>
+            </station>
+          </satellite>
+        </planet>
+        <planet>
+          <name>Saturn</name>
+          <planetType>GG</planetType>
+          <station>
+            <name>Saturn Orbital</name>
+            <large_berths>16</large_berths>
+            <medium_berths>32</medium_berths>
+            <small_berths>64</small_berths>
+          </station>
+          <satellite>
+            <name>Titan</name>
+            <station>
+              <name>Titan Atmospheric Research</name>
+              <large_berths>1</large_berths>
+              <medium_berths>4</medium_berths>
+              <small_berths>16</small_berths>
+            </station>
+          </satellite>
+          <satellite>
+            <name>Enceladus</name>
+            <station>
+              <name>Enceladus Geyser Station</name>
+              <large_berths>0</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>8</small_berths>
+            </station>
+          </satellite>
+        </planet>
+        <planet>
+          <name>Uranus</name>
+          <planetType>IG</planetType>
+          <satellite>
+            <name>Titania</name>
+          </satellite>
+          <satellite>
+            <name>Oberon</name>
+          </satellite>
+          <satellite>
+            <name>Miranda</name>
+          </satellite>
+        </planet>
+        <planet>
+          <name>Neptune</name>
+          <planetType>IG</planetType>
+          <satellite>
+            <name>Triton</name>
+            <station>
+              <name>Triton Research Base</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>4</small_berths>
+            </station>
+          </satellite>
+        </planet>
+        <satellite>
+          <name>Pluto</name>
+          <station>
+            <name>New Horizons Memorial Station</name>
+            <large_berths>0</large_berths>
+            <medium_berths>1</medium_berths>
+            <small_berths>4</small_berths>
+          </station>
+        </satellite>
+        <satellite>
+          <name>Ceres</name>
+          <station>
+            <name>Ceres Mining Hub</name>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>16</small_berths>
+          </station>
+        </satellite>
+      </star>
+    </system>
+    <system>
+      <name>Proxima Centauri System</name>
+      <star>
+        <name>Proxima Centauri</name>
+        <starType>M5Ve</starType>
+        <starMagnitude>11.13</starMagnitude>
+        <planet>
+          <name>Proxima Centauri b</name>
+          <planetType>SE</planetType>
+          <station>
+            <name>Proxima Research Station</name>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>16</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Proxima Centauri c</name>
+          <planetType>SE</planetType>
+        </planet>
+      </star>
+    </system>
+    <system>
+      <name>TRAPPIST-1 System</name>
+      <star>
+        <name>TRAPPIST-1</name>
+        <starType>M8V</starType>
+        <starMagnitude>18.80</starMagnitude>
+        <planet>
+          <name>TRAPPIST-1 b</name>
+          <planetType>TE</planetType>
+        </planet>
+        <planet>
+          <name>TRAPPIST-1 c</name>
+          <planetType>TE</planetType>
+        </planet>
+        <planet>
+          <name>TRAPPIST-1 d</name>
+          <planetType>TE</planetType>
+        </planet>
+        <planet>
+          <name>TRAPPIST-1 e</name>
+          <planetType>TE</planetType>
+          <station>
+            <name>TRAPPIST-1 e Observatory</name>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>TRAPPIST-1 f</name>
+          <planetType>TE</planetType>
+        </planet>
+        <planet>
+          <name>TRAPPIST-1 g</name>
+          <planetType>TE</planetType>
+        </planet>
+        <planet>
+          <name>TRAPPIST-1 h</name>
+          <planetType>TE</planetType>
+        </planet>
+      </star>
+    </system>
+    <system>
+      <name>Tau Ceti System</name>
+      <star>
+        <name>Tau Ceti</name>
+        <starType>G8V</starType>
+        <starMagnitude>3.50</starMagnitude>
+        <planet>
+          <name>Tau Ceti e</name>
+          <planetType>SE</planetType>
+          <station>
+            <name>Tau Ceti Research Base</name>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Tau Ceti f</name>
+          <planetType>SE</planetType>
+        </planet>
+        <planet>
+          <name>Tau Ceti g</name>
+          <planetType>SE</planetType>
+        </planet>
+        <planet>
+          <name>Tau Ceti h</name>
+          <planetType>SE</planetType>
+        </planet>
+      </star>
+    </system>
+  </galaxy>
+</universe>

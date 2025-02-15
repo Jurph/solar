@@ -12,25 +12,25 @@ class Station(Location):
         related_name='orbiting_stations'
     )
 
-    class BerthAssignment(models.Model):
-        station = models.ForeignKey(
-            'Station', 
-            on_delete=models.CASCADE,
-            related_name='current_berths'
-        )
-        ship = models.OneToOneField(
-            'Ship',
-            on_delete=models.CASCADE,
-            related_name='current_berth'
-        )
-        berth_size = models.CharField(
-            max_length=1,
-            choices=[('L', 'Large'), ('M', 'Medium'), ('S', 'Small')]
-        )
-        assigned_at = models.DateTimeField(auto_now_add=True)
+class BerthAssignment(models.Model):
+    station = models.ForeignKey(
+        'Station', 
+        on_delete=models.CASCADE,
+        related_name='current_berths'
+    )
+    ship = models.OneToOneField(
+        'Ship',
+        on_delete=models.CASCADE,
+        related_name='current_berth'
+    )
+    berth_size = models.CharField(
+        max_length=1,
+        choices=[('L', 'Large'), ('M', 'Medium'), ('S', 'Small')]
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
 
-        class Meta:
-            unique_together = ['station', 'ship']
+    class Meta:
+        unique_together = ['station', 'ship']
 
     def get_available_berths(self, size: str) -> int:
         """Return number of available berths of given size"""
