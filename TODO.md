@@ -30,8 +30,8 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
         - Exports based on planetary minerals 
         - Imports based on regional economy/scarcity 
 - Ships 
-    - "Grab bag" random naming at first 
-    - Very little concept of roles/classes/sizes 
+    - "Grab bag" random naming at first ✓
+    - Very little concept of roles/classes/sizes ✓
     - Procedurally named with random cargos & missions   
     - Eventually assigned economically-relevant cargos & missions 
     - Eventually procedurally generated as make/model, sold by particular shipyards, more common "near home" 
@@ -55,16 +55,18 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 ### One - Fiat Lux ✓
 - Successfully populate a solar system data structure ✓
 - Randomly generate a solar system other than earth's ✓
+- Visualize a simple universe ✓
 
 ### Two - First Flight 
-- Procedurally generate ship names for scripted events 
+- Procedurally generate ship names for scripted events ✓
 - Move a ship from one planet to another with a random cargo 
 - Script the "arrival" and "departure" event categories 
 - Orchestrator/timer/scheduler fires off randomized events 
+- Visualize ship traffic 
 
 ### Three - the Leap to ML 
 - Script a small number of "anomalies" with simple resolutions 
-- Build out source files for ship names, planets, stars &c. 
+- Build out source files for ship names, planets, stars &c. ✓
 - Bulk generate dialogue samples and fine-tune a GPT 
 - Get GPT to respond to dialogue prompts 
 
@@ -77,7 +79,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ### Five - Fiat Luxury 
 - Identify physics process for realistic solar system creation 
-- Try something else procedural: ships maybe? 
+- Try something else procedural: ship classes and designs maybe? 
 - Add a shipping economy so traffic feels more realistic 
 
 ### Six - Let's Get Real 
