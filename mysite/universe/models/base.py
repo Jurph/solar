@@ -1,10 +1,10 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-
 # Contains the base "Location" model that we can use to instantiate other stuff
+
 class Location(models.Model):
     name = models.CharField(max_length=64, default="DEFAULT")
-    orbits = None
+    orbits = None    
 
     class Scale(models.TextChoices):
         GALAXY = 'GX', _('galaxy')
