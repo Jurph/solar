@@ -98,6 +98,7 @@ Silver
 Sodium
 Strontium
 Sulfur
+Sulphur
 Tantalum
 Technetium
 Tellurium

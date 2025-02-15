@@ -31,6 +31,7 @@ Granite
 Hickory
 Horn
 Ivory
+Ivy
 Jade
 Jasper
 Lace
@@ -55,6 +56,7 @@ Sapphire
 Satin
 Silk
 Slate
+Tanglewood
 Teak
 Topaz
 Velvet

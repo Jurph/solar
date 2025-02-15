@@ -1,7 +1,11 @@
 import xml.etree.ElementTree as ET
-from xml.dom import minidom
-from .models import *
+from django.db import transaction
 from typing import Optional, Dict, Any
+from decimal import Decimal
+from .models import (
+    Location, Galaxy, StarSystem, 
+    Star, Planet, Moon, Station
+)
 
 class UniverseExporter:
     def __init__(self):
