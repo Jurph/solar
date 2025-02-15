@@ -11,10 +11,24 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 - Stars, planets, moons, and space stations 
     - Just our solar system first ✓
-    - XML import/export tooling 
+    - XML import/export tooling ✓
+    - Planetary science and classification
+        - Define taxonomy of planet types (terrestrial, gas giant, etc.)
+        - Geological composition and features
+        - Atmospheric conditions
+        - Resource distributions
     - Procedurally generated via physics rules later 
-    - Exports based on planetary minerals 
-    - Imports based on regional economy/scarcity 
+        - Add orbital parameters to celestial bodies
+            - Mean orbital distance (AU) for basic sorting
+            - Full Keplerian elements (eccentricity, inclination)
+            - Orbital period calculations
+        - Automatic sorting of bodies by orbital distance
+        - Lagrange point calculations
+        - Transfer orbit planning
+        - Generate realistic planetary compositions
+    - Data management
+        - Exports based on planetary minerals 
+        - Imports based on regional economy/scarcity 
 - Ships 
     - "Grab bag" random naming at first 
     - Very little concept of roles/classes/sizes 
@@ -38,9 +52,9 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ## TODO: 
 
-### One - Fiat Lux
-- Successfully populate a solar system data structure 
-- Randomly generate a solar system other than earth's (?) 
+### One - Fiat Lux ✓
+- Successfully populate a solar system data structure ✓
+- Randomly generate a solar system other than earth's ✓
 
 ### Two - First Flight 
 - Procedurally generate ship names for scripted events 
