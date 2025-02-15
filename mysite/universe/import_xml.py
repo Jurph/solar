@@ -9,7 +9,19 @@ class UniverseImporter:
         self.tree = ET.parse(xml_path)
         self.root = self.tree.getroot()
         self.object_cache: Dict[str, Any] = {}
-        
+    
+    def count_objects(self):
+        """Count objects in the XML without importing them"""
+        counts = {
+            'galaxies': len(self.root.findall('galaxy')),
+            'systems': len(self.root.findall('.//system')),
+            'stars': len(self.root.findall('.//star')),
+            'planets': len(self.root.findall('.//planet')),
+            'moons': len(self.root.findall('.//satellite')),
+            'stations': len(self.root.findall('.//station')),
+        }
+        return counts
+    
     @transaction.atomic
     def import_universe(self) -> None:
         """Import entire universe, wrapped in a transaction"""
