@@ -22,6 +22,7 @@ class UniverseImporter:
             name=element.findtext('galaxyName'),
             type=element.findtext('galaxyType'),
             size=element.findtext('galaxySize'),
+            scale='GX'
         )
         galaxy.save()
         self.object_cache[galaxy.name] = galaxy
@@ -35,7 +36,8 @@ class UniverseImporter:
         """Import a star system and its children"""
         system = StarSystem(
             name=element.findtext('systemName', 'Sol System'),  # Default name if not specified
-            orbits=parent
+            orbits=parent,
+            scale='SY'
         )
         system.save()
         self.object_cache[system.name] = system
@@ -48,6 +50,7 @@ class UniverseImporter:
     def import_star(self, element: ET.Element, parent: StarSystem) -> Optional[Star]:
         """Import a star and its children"""
         star = Star(
+            scale=Location.Scale.STAR,
             name=element.findtext('starName'),
             startype=element.findtext('starType'),
             starmagnitude=Decimal(element.findtext('starMagnitude', '0')),
@@ -69,6 +72,7 @@ class UniverseImporter:
     def import_planet(self, element: ET.Element, parent: Star) -> Optional[Planet]:
         """Import a planet and its children"""
         planet = Planet(
+            scale=Location.Scale.PLANET,
             name=element.findtext('planetName'),
             orbits=parent,
             planettype=element.findtext('planetType', 'TE')  # Default to Terrestrial
@@ -94,6 +98,7 @@ class UniverseImporter:
     def import_moon(self, element: ET.Element, parent: Planet) -> Optional[Moon]:
         """Import a moon and its children"""
         moon = Moon(
+            scale=Location.Scale.MOON,
             name=element.findtext('satelliteName'),
             orbits=parent
         )
@@ -109,6 +114,7 @@ class UniverseImporter:
     def import_station(self, element: ET.Element, parent: Any) -> Optional[Station]:
         """Import a station, including berth information"""
         station = Station(
+            scale=Location.Scale.STATION,
             name=element.findtext('stationName'),
             orbits=parent,
             large_berths=int(element.findtext('large_berths', '0')),
