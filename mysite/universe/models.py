@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 # Define the Data Model 
 
 class Location(models.Model):
+    app_label = 'universe'
     name = models.CharField(
         max_length=64, 
         default="DEFAULT"

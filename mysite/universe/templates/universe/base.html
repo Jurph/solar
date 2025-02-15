@@ -1,12 +1,13 @@
+{% load static %}
 <!DOCTYPE html>
 <html>
 <head>
     <title>Universe Explorer</title>
-    <link rel="stylesheet" href="/static/universe/css/tree.css">
+    <link rel="stylesheet" href="{% static 'universe/css/tree.css' %}">
 </head>
 <body>
     {% block content %}
     {% endblock %}
-    <script src="/static/universe/js/tree.js"></script>
+    <script src="{% static 'universe/js/tree.js' %}"></script>
 </body>
 </html>

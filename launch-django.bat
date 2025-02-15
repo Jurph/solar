@@ -20,22 +20,19 @@ if errorlevel 1 (
     pip install django
 )
 
-REM Set the Python path to include the project root
-set PYTHONPATH=%CD%
-
-REM Navigate to project directory
-cd mysite
+REM Set PYTHONPATH to include the project root
+set "PYTHONPATH=%CD%"
 
 REM Run migrations
 echo Running database migrations...
-python manage.py makemigrations universe
-python manage.py migrate
+python mysite/manage.py makemigrations universe
+python mysite/manage.py migrate
 
 REM Check if superuser exists, prompt to create if it doesn't
-python -c "from django.contrib.auth.models import User; exit(0 if User.objects.filter(is_superuser=True).exists() else 1)"
+python mysite/manage.py check_superuser
 if errorlevel 1 (
     echo No superuser found. Creating superuser...
-    python manage.py createsuperuser
+    python mysite/manage.py createsuperuser
 )
 
 REM Start development server with restart option
@@ -45,7 +42,7 @@ echo Universe view will be available at: http://127.0.0.1:8000/universe/
 echo.
 echo Press Ctrl+C to stop the server
 echo After stopping, press 'R' to migrate and restart, or any other key to exit
-python manage.py runserver
+python mysite/manage.py runserver
 
 REM Check for restart
 choice /c RC /n /m "Press R to migrate and restart, or C to close"

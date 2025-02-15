@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
-from universe.import_xml import UniverseImporter
-from universe.models import *
+from ...import_xml import UniverseImporter
+from ...models import *
 import os
 
 class Command(BaseCommand):

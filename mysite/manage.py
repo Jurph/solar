@@ -6,8 +6,8 @@ from pathlib import Path
 def main():
     """Run administrative tasks."""
     # Add the parent directory to Python path
-    current_path = Path(__file__).resolve().parent
-    sys.path.append(str(current_path))
+    current_path = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(current_path))
     
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
     try:
