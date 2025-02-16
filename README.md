@@ -88,7 +88,23 @@ python manage.py runserver
 - `wordlists/` - Text files for procedural name generation
 - `milkyway.xml` - Sample solar system data
 
+## Running the unit tests 
+
+Once the server is launched and running, from the `solar/` directory you can run 
+
+```bash
+python manage.py test 
+```
+
+or just 
+
+```bash 
+pytest
+``` 
+
+
 ## Development Notes
 - The project uses Django's built-in SQLite database
 - Models follow a hierarchical structure: Galaxy -> StarSystem -> Star -> Planet -> Moon
 - Space stations can orbit any celestial body
+
