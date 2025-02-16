@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from .base import Location
+from .ship import Ship
 
 class Station(Location):
     large_berths = models.PositiveSmallIntegerField(default=1)

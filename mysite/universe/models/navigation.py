@@ -1,0 +1,60 @@
+from enum import Enum
+from dataclasses import dataclass
+from typing import Optional
+from mysite.universe.models import Location, Station
+
+class ManeuverType(Enum):
+    """Types of spacecraft maneuvers in our universe"""
+    LAUNCH = "launch"              # Surface to orbit
+    LANDING = "landing"            # Orbit to surface
+    CIRCULARIZE = "circularize"    # Stabilize orbit
+    TRANSFER = "transfer"          # Hohmann transfer to new orbit
+    PLANE_CHANGE = "plane_change"  # Change orbital inclination
+    DOCK = "dock"                  # Dock with station
+    UNDOCK = "undock"              # Leave station
+    HYPERSPACE = "hyperspace"      # Hyperspace jump to new system 
+    # TODO: consider adding "reentry" for elements with atmospheres 
+
+@dataclass
+class NavigationStep:
+    """A single step in a navigation plan"""
+    contact_station: Station       # Station to request permission from
+    maneuver: ManeuverType        # Type of maneuver
+    target: Location              # Target of the maneuver
+
+    def get_required_clearance(self) -> str:
+        """Get the type of clearance needed for this maneuver"""
+        if self.maneuver == ManeuverType.LAUNCH:
+            return "launch clearance"
+        elif self.maneuver == ManeuverType.TRANSFER:
+            return "transfer clearance"
+        elif self.maneuver == ManeuverType.LANDING:
+            return "landing clearance"
+        elif self.maneuver == ManeuverType.CIRCULARIZE:
+            return "orbital clearance"
+        elif self.maneuver == ManeuverType.PLANE_CHANGE:
+            return "orbital clearance"
+        elif self.maneuver == ManeuverType.DOCK:
+            return "docking clearance"
+        elif self.maneuver == ManeuverType.UNDOCK:
+            return "departure clearance"
+        elif self.maneuver == ManeuverType.HYPERSPACE:
+            return "clearance for hyperspace jump"
+        else:
+            raise ValueError(f"Unknown maneuver type: {self.maneuver}")
+
+class Location(Location):  # Extending existing Location model
+    def requires_launch_clearance(self) -> bool:
+        """Whether this location requires launch clearance to depart"""
+        return self.scale == 'SF'
+
+    def requires_docking_clearance(self) -> bool:
+        """Whether this location requires docking clearance to arrive"""
+        return self.scale == 'SS'
+
+    def get_control_station(self) -> Optional[Station]:
+        """Get the control station responsible for this location"""
+        return Station.objects.filter(
+            orbits=self,
+            name__icontains='Control'
+        ).first()
