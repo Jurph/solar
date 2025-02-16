@@ -9,19 +9,30 @@ from mysite.universe.models import (
 class UniverseExporter:
     """Exports the permanent universe structure to XML."""
     
-    def __init__(self):
+    def __init__(self, compact: bool = False):
+        self.compact = compact
         self.root = ET.Element("universe")
     
-    def export_universe(self) -> str:
-        """Export entire universe to XML string"""
-        for galaxy in Galaxy.objects.all():
-            self.export_galaxy(galaxy)
+    def export_universe(self, galaxy_filter: Optional[str] = None, system_filter: Optional[str] = None) -> str:
+        """
+        Export the entire universe to an XML string.
+
+        Optionally filter by galaxy or star system name.
+        """
+        galaxies = Galaxy.objects.all()
+        if galaxy_filter:
+            galaxies = galaxies.filter(name=galaxy_filter)
+
+        for galaxy in galaxies:
+            self.export_galaxy(galaxy, system_filter=system_filter)
             
         rough_string = ET.tostring(self.root, 'utf-8')
+        if self.compact:
+            return rough_string.decode("utf-8")
         reparsed = minidom.parseString(rough_string)
         return reparsed.toprettyxml(indent="  ")
     
-    def export_galaxy(self, galaxy: Galaxy) -> ET.Element:
+    def export_galaxy(self, galaxy: Galaxy, system_filter: Optional[str] = None) -> ET.Element:
         """Export a galaxy and all its children"""
         galaxy_elem = ET.SubElement(self.root, "galaxy")
         
@@ -30,8 +41,12 @@ class UniverseExporter:
         ET.SubElement(galaxy_elem, "type").text = galaxy.galaxy_type
         ET.SubElement(galaxy_elem, "size").text = galaxy.galaxy_size
         
+        systems = galaxy.star_systems.all()
+        if system_filter:
+            systems = systems.filter(name=system_filter)
+
         # Export all systems in the galaxy
-        for system in galaxy.star_systems.all():
+        for system in systems:
             self.export_system(system, galaxy_elem)
             
         return galaxy_elem
@@ -55,8 +70,8 @@ class UniverseExporter:
         
         ET.SubElement(star_elem, "name").text = star.name
         ET.SubElement(star_elem, "scale").text = star.scale
-        ET.SubElement(star_elem, "type").text = star.star_type
-        ET.SubElement(star_elem, "magnitude").text = str(star.star_magnitude)
+        ET.SubElement(star_elem, "type").text = getattr(star, "star_type", "")
+        ET.SubElement(star_elem, "magnitude").text = str(getattr(star, "star_magnitude", "0"))
         
         # Export planets
         for planet in star.planets.all():
@@ -77,7 +92,7 @@ class UniverseExporter:
         
         ET.SubElement(planet_elem, "name").text = planet.name
         ET.SubElement(planet_elem, "scale").text = planet.scale
-        ET.SubElement(planet_elem, "type").text = planet.planet_type
+        ET.SubElement(planet_elem, "type").text = getattr(planet, "planet_type", "")
         
         # Export moons
         for moon in planet.moons.all():
@@ -107,6 +122,6 @@ class UniverseExporter:
             station_elem = ET.SubElement(parent_elem, "station")
             ET.SubElement(station_elem, "name").text = station.name
             ET.SubElement(station_elem, "scale").text = station.scale
-            ET.SubElement(station_elem, "large_berths").text = str(station.large_berths)
-            ET.SubElement(station_elem, "medium_berths").text = str(station.medium_berths)
-            ET.SubElement(station_elem, "small_berths").text = str(station.small_berths)
+            ET.SubElement(station_elem, "large_berths").text = str(getattr(station, "large_berths", 0))
+            ET.SubElement(station_elem, "medium_berths").text = str(getattr(station, "medium_berths", 0))
+            ET.SubElement(station_elem, "small_berths").text = str(getattr(station, "small_berths", 0))

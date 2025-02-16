@@ -1,94 +1,70 @@
-from typing import List
-from mysite.universe.models.navigation import ManeuverType, NavigationStep
-from mysite.universe.models.base import Location
+from typing import List, Optional
+from ..models.navigation import UniverseGraph, NavigationStep, ManeuverType, effective_contact_station, plan_navigation_steps
+from ..models.base import Location
+import random
 
 class RouteService:
-    """Service for generating navigation plans between locations"""
+    """Service for planning routes using the universe graph"""
     
-    @staticmethod
-    def plan_route(origin: Location, destination: Location) -> List[NavigationStep]:
-        """Generate a complete navigation plan between two points"""
-        steps = []
-        spatial_route = RouteService._get_spatial_route(origin, destination)
-        
-        # Generate steps based on location rules
-        if origin.requires_launch_clearance():
-            control = origin.get_control_station()
-            steps.append(NavigationStep(
-                contact_station=control,
-                maneuver=ManeuverType.LAUNCH,
-                target=origin.orbits
-            ))
-        
-        # Generate transfer steps
-        for i in range(len(spatial_route) - 1):
-            current = spatial_route[i]
-            next_loc = spatial_route[i + 1]
-            control = current.get_control_station()
-            
-            steps.append(NavigationStep(
-                contact_station=control,
-                maneuver=ManeuverType.CIRCULARIZE,
-                target=current
-            ))
-            steps.append(NavigationStep(
-                contact_station=control,
-                maneuver=ManeuverType.TRANSFER,
-                target=next_loc
-            ))
-        
-        # Add arrival steps based on destination rules
-        if destination.requires_docking_clearance():
-            control = destination.get_control_station()
-            steps.append(NavigationStep(
-                contact_station=control,
-                maneuver=ManeuverType.DOCK,
-                target=destination
-            ))
-            
+    def plan_route(self, origin: Location, destination: Location) -> List[NavigationStep]:
+        """Generate navigation steps between two points using the domain logic."""
+        universe = UniverseGraph.get_instance()
+        path = universe.get_path(origin, destination)
+
+        # Domain helper that computes steps based on effective contact stations.
+        steps = plan_navigation_steps(path)
+
+        # Fallback: if any step does not have a contact station, fall back to the previous known station.
+        current_station: Optional[Station] = effective_contact_station(origin)
+        for step in steps:
+            if step.contact_station is None:
+                if current_station is None:
+                    raise ValueError(
+                        f"Error: No effective station found for {step.target.name}."
+                    )
+                step.contact_station = current_station
+            else:
+                current_station = step.contact_station
+
         return steps
 
-    @staticmethod
-    def _get_spatial_route(origin: Location, destination: Location) -> List[Location]:
-        """Find the physical route through space between two points"""
-        # Build route by traversing up to common ancestor and back down
-        origin_path = []
-        dest_path = []
-        
-        # Traverse up from origin until we hit a common parent
-        current = origin
-        while current:
-            origin_path.append(current)
-            current = current.orbits
-            
-        # Traverse up from destination
-        current = destination  
-        while current:
-            dest_path.append(current)
-            current = current.orbits
-            
-        # Find first common ancestor
-        common_ancestor = None
-        for loc in origin_path:
-            if loc in dest_path:
-                common_ancestor = loc
-                break
-                
-        if not common_ancestor:
-            raise ValueError("No valid route exists between these locations")
-            
-        # Build final route
-        route = []
-        
-        # Add origin path up to common ancestor
-        for loc in origin_path:
-            if loc == common_ancestor:
-                break
-            route.append(loc)
-            
-        # Add destination path in reverse from common ancestor
-        dest_index = dest_path.index(common_ancestor)
-        for loc in reversed(dest_path[:dest_index]):
-            route.append(loc)
-            
-        return route
+    def pick_random_destination(self, excluding: Location) -> Location:
+        """
+        Picks a random destination from all available locations,
+        excluding the given origin.
+        """
+        from mysite.universe.models.base import Location  # or use specific subclass queries
+        all_ids = list(Location.objects.exclude(id=excluding.id).values_list("id", flat=True))
+        if not all_ids:
+            raise ValueError("No available destination in the universe.")
+        random_id = random.choice(all_ids)
+        return Location.objects.get(id=random_id)
+
+    def random_journey(self, ship) -> List[NavigationStep]:
+        """
+        Plans a random journey for the given ship.
+        For each leg of the journey, ensure that the effective contact station
+        is carried forward until a new station is available.
+        """
+        origin = ship.current_location
+        destination = self.pick_random_destination(excluding=origin)
+        print(f"Random journey: {origin.name} -> {destination.name}")
+
+        universe = UniverseGraph.get_instance()
+        path = universe.get_path(origin, destination)
+        steps = plan_navigation_steps(path)
+
+        # Propagate the effective station down the journey.
+        current_station = effective_contact_station(origin)
+        for step in steps:
+            if step.contact_station is None:
+                if current_station is None:
+                    raise ValueError(
+                        f"No effective station found for leg towards {step.target.name}"
+                    )
+                # Fall back to the previous station if this leg lacks one.
+                step.contact_station = current_station
+            else:
+                current_station = step.contact_station
+
+        return steps
