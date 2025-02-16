@@ -1,81 +1,265 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" ?>
 <universe>
-  <!-- Single-star system -->
-  <starsystem id="SS1" name="Sol System">
-    <star id="S1" name="Sol">
-      <!-- Planet: Earth -->
-      <planet id="P1" name="Earth" type="planet">
-        <moon id="M1" name="Moon" type="moon">
-          <station id="ST1" name="Moon Control"/>
-        </moon>
-        <moon id="M2" name="Luna" type="moon">
-          <station id="ST2" name="Luna Orbital Control"/>
-          <station id="ST3" name="Luna Secondary Control"/>
-        </moon>
-        <station id="ST4" name="Earth Orbital Control"/>
-      </planet>
-      <!-- Planet: Mars -->
-      <planet id="P2" name="Mars" type="planet">
-        <moon id="M3" name="Phobos" type="moon">
-          <station id="ST5" name="Phobos Control"/>
-        </moon>
-        <moon id="M4" name="Deimos" type="moon">
-          <station id="ST6" name="Deimos Control"/>
-        </moon>
-        <station id="ST7" name="Mars Control"/>
-      </planet>
-      <!-- Dwarf Planet: Ceres -->
-      <planet id="P3" name="Ceres" type="dwarf">
-        <moon id="M10" name="Ceres Moon" type="moon">
-          <station id="ST20" name="Ceres Moon Control"/>
-        </moon>
-        <station id="ST8" name="Ceres Control"/>
-      </planet>
-    </star>
-  </starsystem>
-
-  <!-- Binary star system -->
-  <starsystem id="SS2" name="Binary System">
-    <binary>true</binary>
-    <!-- Star: Alpha Centauri A -->
-    <star id="S2" name="Alpha Centauri A">
-      <!-- Planet: Alpha Prime -->
-      <planet id="P4" name="Alpha Prime" type="planet">
-        <moon id="M5" name="Alpha Moon 1" type="moon">
-          <station id="ST9" name="Alpha Moon 1 Control"/>
-        </moon>
-        <moon id="M6" name="Alpha Moon 2" type="moon">
-          <station id="ST10" name="Alpha Moon 2 Control"/>
-          <station id="ST11" name="Alpha Moon 2 Secondary Control"/>
-        </moon>
-        <station id="ST12" name="Alpha Prime Orbital Control"/>
-      </planet>
-      <!-- Dwarf Planet: Alpha Minor -->
-      <planet id="P5" name="Alpha Minor" type="dwarf">
-        <moon id="M7" name="Alpha Minor Moon" type="moon">
-          <station id="ST13" name="Alpha Minor Moon Control"/>
-        </moon>
-        <station id="ST14" name="Alpha Minor Control"/>
-      </planet>
-    </star>
-    <!-- Star: Alpha Centauri B -->
-    <star id="S3" name="Alpha Centauri B">
-      <!-- Planet: Beta Major -->
-      <planet id="P6" name="Beta Major" type="planet">
-        <moon id="M8" name="Beta Moon 1" type="moon">
-          <station id="ST15" name="Beta Moon 1 Control"/>
-        </moon>
-        <moon id="M9" name="Beta Moon 2" type="moon"/>
-        <station id="ST16" name="Beta Major Orbital Control"/>
-        <station id="ST17" name="Beta Major Secondary Control"/>
-      </planet>
-      <!-- Dwarf Planet: Beta Minor -->
-      <planet id="P7" name="Beta Minor" type="dwarf">
-        <moon id="M10" name="Beta Minor Moon" type="moon">
-          <station id="ST18" name="Beta Minor Moon Control"/>
-        </moon>
-        <station id="ST19" name="Beta Minor Control"/>
-      </planet>
-    </star>
-  </starsystem>
-</universe> 
+  <galaxy>
+    <name>Galactus</name>
+    <scale>GX</scale>
+    <type>SP</type>
+    <size>L</size>
+    <system>
+      <name>Sol System</name>
+      <scale>SY</scale>
+      <star>
+        <name>Sol</name>
+        <scale>SR</scale>
+        <type>G2V</type>
+        <magnitude>4.83</magnitude>
+        <planet>
+          <name>Earth</name>
+          <scale>PL</scale>
+          <type>TE</type>
+          <moon>
+            <name>Moon</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Moon Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Luna</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Luna Orbital Control</name>
+              <scale>SS</scale>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>3</small_berths>
+            </station>
+            <station>
+              <name>Luna Secondary Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Earth Orbital Control</name>
+            <scale>SS</scale>
+            <large_berths>5</large_berths>
+            <medium_berths>10</medium_berths>
+            <small_berths>20</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Mars</name>
+          <scale>PL</scale>
+          <type>TE</type>
+          <moon>
+            <name>Phobos</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Phobos Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Deimos</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Deimos Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Mars Control</name>
+            <scale>SS</scale>
+            <large_berths>3</large_berths>
+            <medium_berths>6</medium_berths>
+            <small_berths>12</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Ceres</name>
+          <scale>PL</scale>
+          <type>SI</type>
+          <moon>
+            <name>Ceres Moon</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Ceres Moon Control</name>
+              <scale>SS</scale>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>4</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Ceres Control</name>
+            <scale>SS</scale>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+      </star>
+    </system>
+    <system>
+      <name>Binary System</name>
+      <scale>SY</scale>
+      <star>
+        <name>Alpha Centauri A</name>
+        <scale>SR</scale>
+        <type>G2V</type>
+        <magnitude>1.33</magnitude>
+        <planet>
+          <name>Alpha Prime</name>
+          <scale>PL</scale>
+          <type>TE</type>
+          <moon>
+            <name>Alpha Moon 1</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Alpha Moon 1 Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Alpha Moon 2</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Alpha Moon 2 Control</name>
+              <scale>SS</scale>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>3</small_berths>
+            </station>
+            <station>
+              <name>Alpha Moon 2 Secondary Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Alpha Prime Orbital Control</name>
+            <scale>SS</scale>
+            <large_berths>4</large_berths>
+            <medium_berths>8</medium_berths>
+            <small_berths>16</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Alpha Minor</name>
+          <scale>PL</scale>
+          <type>SI</type>
+          <moon>
+            <name>Alpha Minor Moon</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Alpha Minor Moon Control</name>
+              <scale>SS</scale>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>4</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Alpha Minor Control</name>
+            <scale>SS</scale>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+      </star>
+      <star>
+        <name>Alpha Centauri B</name>
+        <scale>SR</scale>
+        <type>K1V</type>
+        <magnitude>1.33</magnitude>
+        <planet>
+          <name>Beta Major</name>
+          <scale>PL</scale>
+          <type>TE</type>
+          <moon>
+            <name>Beta Moon 1</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Beta Moon 1 Control</name>
+              <scale>SS</scale>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Beta Moon 2</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+          </moon>
+          <station>
+            <name>Beta Major Orbital Control</name>
+            <scale>SS</scale>
+            <large_berths>3</large_berths>
+            <medium_berths>6</medium_berths>
+            <small_berths>12</small_berths>
+          </station>
+          <station>
+            <name>Beta Major Secondary Control</name>
+            <scale>SS</scale>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>3</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Beta Minor</name>
+          <scale>PL</scale>
+          <type>SI</type>
+          <moon>
+            <name>Beta Minor Moon</name>
+            <scale>MN</scale>
+            <variety>R</variety>
+            <station>
+              <name>Beta Minor Moon Control</name>
+              <scale>SS</scale>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>4</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Beta Minor Control</name>
+            <scale>SS</scale>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+      </star>
+    </system>
+  </galaxy>
+</universe>
