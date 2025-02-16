@@ -2,10 +2,17 @@ import string
 from django.test import TestCase
 from unittest.mock import patch
 from mysite.universe.models.ship import Ship
+from mysite.universe.models.base import Location
 from mysite.universe.services.cargo_server import CargoService
 
 class ShipGenerateNameTests(TestCase):
     def setUp(self):
+        # Create a dummy station location so that Ship.create() can find it.
+        # Assuming Location has a 'name' and a 'scale' field.
+        self.station = Location.objects.create(
+            name="Test Station",
+            scale=Location.Scale.STATION  # Use the proper constant from Location.Scale
+        )
         # Get the list of templates from the Ship model
         self.templates = Ship.NAME_TEMPLATES
 
@@ -36,11 +43,18 @@ class ShipGenerateNameTests(TestCase):
             )
 
 class ShipCreationTests(TestCase):
+    def setUp(self):
+        # Create a station location fixture necessary for Ship.create().
+        self.station = Location.objects.create(
+            name="Test Station",
+            scale=Location.Scale.STATION
+        )
 
     def test_create_ship_for_each_size(self):
         # Iterate over each size defined in the Ship model.
         sizes = [choice[0] for choice in Ship.Size.choices]
         for size in sizes:
+            # The location is picked up by get_random_station (which will return self.station)
             ship = Ship.create(size=size)
             self.assertEqual(
                 ship.size,
