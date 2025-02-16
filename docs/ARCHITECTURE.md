@@ -46,7 +46,7 @@
                 │   ├── index.html          # Main index page for browsing the universe
                 │   └── route.html          # Route planning interface
                 │
-                ├── management/commands/ 
+                ├── management/commands/    
                 │   ├── import_universe.py  # XML import command for loading universe data into the database
                 │   ├── export_universe.py  # XML export command for saving the current universe state
                 │   ├── generate_ships.py   # Command for generating test ships throughout the universe
@@ -84,9 +84,11 @@ Services expose business logic and integrations that enable a responsive simulat
 
 The simulation engine drives real-time interactions across our universe.
 
+- **The Game Loop:** A basic `while` loop like the one on https://en.wikipedia.org/wiki/Video_game_programming#Game_structure  
 - **engine.py:** Core event-driven simulation logic.
 - **agents:** Autonomous agents (such as ShipAgent) that handle ship behavior.
-- **Management Commands:** Tools like `generate_ships.py` and `random_journey.py` facilitate testing and simulation runs.
+- **Management commands:** Tools like `random_journey.py` and `generate_ships.py` facilitate testing and simulation runs, but should generally just expose a CLI for a `service` and not themselves be part of the game  
+
 
 ### Data Management
 
