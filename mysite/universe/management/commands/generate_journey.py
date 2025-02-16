@@ -1,8 +1,8 @@
 from django.core.management.base import BaseCommand
 from django.core.exceptions import ObjectDoesNotExist
 from ...models import Ship, Location
-from ...services.route_service import RouteService
-from ...services.script_service import ScriptService
+from ...services.route_server import RouteService
+from ...services.script_server import ScriptService
 
 class Command(BaseCommand):
     help = 'Generate a radio script for moving a ship between locations'

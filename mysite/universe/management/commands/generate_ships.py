@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from mysite.universe.services.ship_generator import ShipGenerator
+from mysite.universe.models.ship import Ship
 
 class Command(BaseCommand):
     help = 'Generate test ships throughout the universe'
@@ -10,12 +10,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         ship_count = options['count']
-        generator = ShipGenerator()
         
         for i in range(ship_count):
-            ship = generator.generate_ship()
+            ship = Ship.create()  # Uses our new factory method
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'Created ship: {ship} at {ship.current_location.name}'
+                    f'Created ship: {ship} at {ship.current_location.name} carrying {ship.cargo}'
                 )
             )
