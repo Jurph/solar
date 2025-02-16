@@ -5,16 +5,17 @@ from mysite.universe.models import Location, Station
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
-    LAUNCH = "launch"              # Surface to orbit
-    LANDING = "landing"            # Orbit to surface
-    CIRCULARIZE = "circularize"    # Stabilize orbit
-    TRANSFER = "transfer"          # Hohmann transfer to new orbit
-    PLANE_CHANGE = "plane_change"  # Change orbital inclination
+    """These are alphabetized for easy checking against the Script Server"""
+    CIRCULARIZE = "circularize"    # Stabilize orbit, either post-launch or on joining a system
     DOCK = "dock"                  # Dock with station
-    UNDOCK = "undock"              # Leave station
     HYPERSPACE = "hyperspace"      # Hyperspace jump to new system 
+    LANDING = "landing"            # Orbit to surface
+    LAUNCH = "launch"              # Surface to orbit
+    PLANE_CHANGE = "plane_change"  # Change orbital inclination
+    TRANSFER = "transfer"          # Hohmann transfer to new orbit
+    UNDOCK = "undock"              # Leave station
     # TODO: consider adding "reentry" for elements with atmospheres 
-
+    
 @dataclass
 class NavigationStep:
     """A single step in a navigation plan"""

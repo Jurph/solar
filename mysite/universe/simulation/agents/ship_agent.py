@@ -4,7 +4,7 @@ import random
 from ...models.ship import Ship
 from ...models.station import Station
 from ..events.maintenance import MaintenanceManager
-from ...services.cargo import CargoService
+from ...services.cargo_server import CargoService
 
 class ShipAgent:
     def __init__(self, env, ship: Ship):

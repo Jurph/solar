@@ -2,7 +2,7 @@
 A procedural space system builder
 
 ## Vision
-Create a realistic-feeling space traffic control simulation with procedurally generated ships, dialogue, and events. See TODO.md for full project vision and roadmap.
+Create a realistic-feeling space traffic control simulation with procedurally generated ships, dialogue, and events. See /docs/TODO.md for full project vision and roadmap.
 
 ## Quick Start
 

@@ -27,7 +27,7 @@ class CargoService:
             'Raw Materials',
             'Processed Goods',
             'Construction Materials',
-            'Bulk {ELEMENT}',  # Will be formatted with random material
+            'Bulk {ELEMENT}',  # Will be formatted with random element
         ],
         Ship.Size.LARGE: [
             'Ore',

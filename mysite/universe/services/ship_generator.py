@@ -3,7 +3,7 @@ import random
 from mysite.universe.models.ship import Ship
 from mysite.universe.models import Location
 from mysite.universe.services.dictionary import DictionaryService
-from mysite.universe.services.cargo import CargoService
+from mysite.universe.services.cargo_server import CargoService
 from mysite.universe.services.location_generator import LocationGenerator
 
 class ShipGenerator:
