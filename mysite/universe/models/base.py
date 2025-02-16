@@ -1,4 +1,5 @@
 from django.db import models
+from typing import Optional
 from django.utils.translation import gettext_lazy as _
 # Contains the base "Location" model that we can use to instantiate other stuff
 
@@ -37,6 +38,22 @@ class Location(models.Model):
             self.scale.PLANET,
             self.scale.MOON,
         }
+
+    def requires_launch_clearance(self) -> bool:
+        """Whether this location requires launch clearance to depart"""
+        return self.scale == 'SF'
+
+    def requires_docking_clearance(self) -> bool:
+        """Whether this location requires docking clearance to arrive"""
+        return self.scale == 'SS'
+
+    def get_control_station(self) -> Optional['Station']:
+        """Get the control station responsible for this location"""
+        from .station import Station  # Avoid circular import
+        return Station.objects.filter(
+            orbits=self,
+            name__icontains='Control'
+        ).first()
 
     def __str__(self):
         return self.name

@@ -1,15 +1,15 @@
 from typing import List
 from mysite.universe.models.navigation import ManeuverType, NavigationStep
-from mysite.universe.models import Location
+from mysite.universe.models.base import Location
 
-class RouteServer:
+class RouteService:
     """Service for generating navigation plans between locations"""
     
     @staticmethod
     def plan_route(origin: Location, destination: Location) -> List[NavigationStep]:
         """Generate a complete navigation plan between two points"""
         steps = []
-        spatial_route = RouteServer._get_spatial_route(origin, destination)
+        spatial_route = RouteService._get_spatial_route(origin, destination)
         
         # Generate steps based on location rules
         if origin.requires_launch_clearance():

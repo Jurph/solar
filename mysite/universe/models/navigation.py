@@ -43,19 +43,3 @@ class NavigationStep:
             return "clearance for hyperspace jump"
         else:
             raise ValueError(f"Unknown maneuver type: {self.maneuver}")
-
-class Location(Location):  # Extending existing Location model
-    def requires_launch_clearance(self) -> bool:
-        """Whether this location requires launch clearance to depart"""
-        return self.scale == 'SF'
-
-    def requires_docking_clearance(self) -> bool:
-        """Whether this location requires docking clearance to arrive"""
-        return self.scale == 'SS'
-
-    def get_control_station(self) -> Optional[Station]:
-        """Get the control station responsible for this location"""
-        return Station.objects.filter(
-            orbits=self,
-            name__icontains='Control'
-        ).first()
