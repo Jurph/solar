@@ -5,7 +5,6 @@ from django.utils.translation import gettext_lazy as _
 
 class Location(models.Model):
     name = models.CharField(max_length=64, default="DEFAULT")
-    orbits = None    
 
     class Scale(models.TextChoices):
         GALAXY = 'GX', _('galaxy')
