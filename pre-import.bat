@@ -1,4 +1,7 @@
 @echo off
+echo Backing up existing universe... 
+python .\mysite\manage.py export_universe .\xml\backup-universe.xml 
+
 echo Cleaning up old database and migrations...
 del db.sqlite3
 del mysite\universe\migrations\0*.py
