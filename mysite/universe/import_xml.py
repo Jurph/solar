@@ -20,7 +20,7 @@ class UniverseImporter:
             'systems': len(self.root.findall('.//system')),
             'stars': len(self.root.findall('.//star')),
             'planets': len(self.root.findall('.//planet')),
-            'moons': len(self.root.findall('.//satellite')),
+            'moons': len(self.root.findall('.//moon')),
             'stations': len(self.root.findall('.//station')),
         }
         return counts
@@ -29,9 +29,9 @@ class UniverseImporter:
         """Import all stations that are direct children of any celestial object"""
         for station_elem in element.findall('./station'):
             station = Station(
-                name=station_elem.findtext('name'),  # Updated from stationName
+                name=station_elem.findtext('name'),
                 orbits=parent,
-                scale='ST',
+                scale='SS',
                 large_berths=int(station_elem.findtext('large_berths') or 0),
                 medium_berths=int(station_elem.findtext('medium_berths') or 0),
                 small_berths=int(station_elem.findtext('small_berths') or 0)
@@ -49,14 +49,12 @@ class UniverseImporter:
         """Import a galaxy and all its children"""
         galaxy = Galaxy(
             name=element.findtext('name'),
-            galaxyType=element.findtext('galaxyType'),  # Updated from type
-            galaxySize=element.findtext('galaxySize'),  # Updated from size
+            galaxy_type=element.findtext('type'),
+            galaxy_size=element.findtext('size'),
             scale='GX'
         )
         galaxy.save()
         self.object_cache[galaxy.name] = galaxy
-        
-        self.import_stations(element, galaxy)
         
         for system_elem in element.findall('./system'):
             self.import_system(system_elem, galaxy)
@@ -66,14 +64,12 @@ class UniverseImporter:
     def import_system(self, element: ET.Element, galaxy: Galaxy) -> StarSystem:
         """Import a star system and all its children"""
         system = StarSystem(
-            name=element.findtext('name'),  # Updated from systemName
+            name=element.findtext('name'),
             orbits=galaxy,
             scale='SY'
         )
         system.save()
         self.object_cache[system.name] = system
-        
-        self.import_stations(element, system)
         
         for star_elem in element.findall('./star'):
             self.import_star(star_elem, system)
@@ -83,53 +79,60 @@ class UniverseImporter:
     def import_star(self, element: ET.Element, system: StarSystem) -> Star:
         """Import a star and all its children"""
         star = Star(
-            name=element.findtext('name'),  # Updated from starName
-            starType=element.findtext('starType'),  # Updated from type
-            starMagnitude=Decimal(element.findtext('starMagnitude') or '0'),  # Updated from magnitude
+            name=element.findtext('name'),
+            star_type=element.findtext('type'),
+            star_magnitude=Decimal(element.findtext('magnitude') or '0'),
             orbits=system,
-            scale='ST'
+            scale='SR'
         )
         star.save()
         self.object_cache[star.name] = star
         
-        self.import_stations(element, star)
+        # Import moons that orbit the star directly
+        for moon_elem in element.findall('./moon'):
+            self.import_moon(moon_elem, star)
         
+        # Import planets (which will handle their own moons)
         for planet_elem in element.findall('./planet'):
             self.import_planet(planet_elem, star)
         
-        for satellite_elem in element.findall('./satellite'):
-            self.import_moon(satellite_elem, star)
+        # Import stations orbiting the star
+        self.import_stations(element, star)
         
         return star
     
     def import_planet(self, element: ET.Element, star: Star) -> Planet:
         """Import a planet and all its children"""
         planet = Planet(
-            name=element.findtext('name'),  # Updated from planetName
-            planetType=element.findtext('planetType'),  # Updated from type
+            name=element.findtext('name'),
+            planet_type=element.findtext('type'),
             orbits=star,
             scale='PL'
         )
         planet.save()
         self.object_cache[planet.name] = planet
         
-        self.import_stations(element, planet)
-        
-        for moon_elem in element.findall('./satellite'):
+        # Import moons orbiting this planet
+        for moon_elem in element.findall('./moon'):
             self.import_moon(moon_elem, planet)
+            
+        # Import stations orbiting this planet
+        self.import_stations(element, planet)
             
         return planet
     
     def import_moon(self, element: ET.Element, parent: Location) -> Moon:
-        """Import a moon and its direct child stations"""
+        """Import a moon and its stations"""
         moon = Moon(
-            name=element.findtext('name'),  # Updated from satelliteName
+            name=element.findtext('name'),
             orbits=parent,
-            scale='MN'
+            scale='MN',
+            variety=element.findtext('variety')
         )
         moon.save()
         self.object_cache[moon.name] = moon
         
+        # Import stations orbiting this moon
         self.import_stations(element, moon)
             
         return moon

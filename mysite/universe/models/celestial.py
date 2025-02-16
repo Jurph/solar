@@ -26,8 +26,8 @@ class Galaxy(Location):
         ('X', 'extra large'),
         ('G', 'supergiant'),
     ]    
-    galaxyType = models.CharField(max_length=2, choices=galaxies)
-    galaxySize = models.CharField(max_length=1, choices=sizes)
+    galaxy_type = models.CharField(max_length=2, choices=galaxies, default='SP')
+    galaxy_size = models.CharField(max_length=1, choices=sizes, default='L')
     orbits = None
 
 class StarSystem(Location):
@@ -55,15 +55,15 @@ class Star(Location):
         on_delete=models.CASCADE,
         related_name='stars'
     )
-    starType = models.CharField(max_length=10, default="G2V")
-    starMagnitude = models.DecimalField(
+    star_type = models.CharField(max_length=10, default="G2V")
+    star_magnitude = models.DecimalField(
         max_digits=8,
         decimal_places=2,
         default=4.31
     )
 
 class Planet(Location):
-    class PlanetType(models.TextChoices):
+    class planetType(models.TextChoices):
         MESOPLANET = 'MP', _('Mesoplanet')
         SILICATE = 'SI', _('Silicate')
         TERRESTRIAL = 'TE', _('Terrestrial')
@@ -78,14 +78,14 @@ class Planet(Location):
         on_delete=models.CASCADE,
         related_name='planets'
     )
-    planetType = models.CharField(
+    planet_type = models.CharField(
         max_length=2,
-        choices=PlanetType.choices,
-        default=PlanetType.TERRESTRIAL
+        choices=planetType.choices,
+        default=planetType.TERRESTRIAL
     )
 
 class Moon(Location):
-    varieties = [
+    VARIETIES = [
         ('R', 'Rocky'),     # e.g. Luna, Deimos, Phobos - no atmosphere to speak of, dry 
         ('I', 'Icy'),       # e.g. Europa, Ganymede, Callisto 
         ('O', 'Organic'),     # e.g. Titan, with a gaseous atmosphere and liquid water 
@@ -95,4 +95,11 @@ class Moon(Location):
         Location,
         on_delete=models.CASCADE,
         related_name='moons'
+    )
+    
+    variety = models.CharField(
+        max_length=1,
+        choices=VARIETIES,
+        default='R',
+        help_text="The primary composition of the moon"        
     )

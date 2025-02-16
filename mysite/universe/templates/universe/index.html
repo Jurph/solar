@@ -41,6 +41,19 @@
                             </div>
                         </div>
                         {% endfor %}
+                        {% for moon in star.moons.all %}
+                        <div class="tree-item">
+                            <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                            <span class="item-name moon">🌑 {{ moon.name }} (Dwarf Planet)</span>
+                            <div class="tree-content">
+                                {% for station in moon.orbiting_stations.all %}
+                                <div class="tree-item">
+                                    <span class="item-name station">🛸 {{ station.name }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
                         {% for station in star.orbiting_stations.all %}
                         <div class="tree-item">
                             <span class="item-name station">🛸 {{ station.name }}</span>
