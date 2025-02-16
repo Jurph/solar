@@ -65,12 +65,7 @@ class Command(BaseCommand):
                 for i, step in enumerate(steps, 1):
                     self.stdout.write(f"{i}. {step.maneuver.value} towards {step.target.name}")
             
-            script = script_server.generate_journey_script(ship, steps)
-            
-            # Output the script
-            for line in script:
-                speaker = "SHIP" if line.speaker == ship.name else "CONTROL"
-                self.stdout.write(f"{speaker}: \"{line.message}\"")
+            script = script_server.script_handler(ship, steps)
             
             # Move the ship if requested
             if options['move']:
