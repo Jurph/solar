@@ -1,6 +1,7 @@
 from typing import List, Optional
-from ..models.navigation import UniverseGraph, NavigationStep, ManeuverType, effective_contact_station, plan_navigation_steps
+from ..models.navigation import UniverseGraph, NavigationStep, effective_controller, plan_navigation_steps
 from ..models.base import Location
+from ..models.station import Station
 import random
 
 class RouteService:
@@ -15,7 +16,7 @@ class RouteService:
         steps = plan_navigation_steps(path)
 
         # Fallback: if any step does not have a contact station, fall back to the previous known station.
-        current_station: Optional[Station] = effective_contact_station(origin)
+        current_station: Optional[Station] = effective_controller(origin)
         for step in steps:
             if step.contact_station is None:
                 if current_station is None:
@@ -55,7 +56,7 @@ class RouteService:
         steps = plan_navigation_steps(path)
 
         # Propagate the effective station down the journey.
-        current_station = effective_contact_station(origin)
+        current_station = effective_controller(origin)
         for step in steps:
             if step.contact_station is None:
                 if current_station is None:

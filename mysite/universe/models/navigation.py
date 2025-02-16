@@ -26,6 +26,117 @@ class NavigationStep:
     contact_station: Station
     maneuver: ManeuverType
     target: Location
+    
+@dataclass
+class NavigationEvent:
+    maneuver: ManeuverType
+    target: Location
+    description: str = ""
+
+
+# -------------------------------------------------------------------
+# Event Builder
+#
+# The following function builds a sequence of events using our world‑building rules:
+#
+#  · Departing from a Station requires a LAUNCH event. 
+#  · After LAUNCH, we generally execute a CIRCULARIZE maneuver (to get into the proper orbit).
+#  · For transfers between two Planets, we do a PLANE_CHANGE followed by a TRANSFER.
+#  · Upon entering a Planet’s or Moon’s sphere of influence we circularize.
+#  · The final event is either DOCK (if the target is a Station) or LAND (if it’s a Moon/Planet).
+#
+# (Additional rules—like hyperspace transitions when changing StarSystems—can be inserted here.)
+# -------------------------------------------------------------------
+def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
+    """
+    Build a sequence of NavigationEvent objects from a path of Locations.
+    
+    Uses world-building rules (see World Building Rules.md):
+      - If the starting location is a Station, begin with a LAUNCH event and then a CIRCULARIZE.
+      - Traveling between two Planets requires a PLANE_CHANGE followed by a TRANSFER.
+      - Approaching a Planet or Moon calls for a circularization.
+      - The final maneuver is DOCK if the destination is a Station or LAND if it is not.
+      
+    This builder can be extended to include other events (e.g. HYPERSPACE) as needed.
+    """
+    events: List[NavigationEvent] = []
+    if not path:
+        return events
+
+    # Helper: get the concrete type name from a location.
+    def type_of(loc: Location) -> str:
+        return loc.get_concrete_instance().get_type_name()
+    
+    # Determine the departure type of the first node.
+    departure = path[0]
+    depart_type = type_of(departure)
+    if depart_type == "Station":
+        events.append(NavigationEvent(
+            maneuver=ManeuverType.LAUNCH,
+            target=departure,
+            description=f"Departing from station {departure.name}: Launch initiated."
+        ))
+        # Following a launch, we generally circularize.
+        events.append(NavigationEvent(
+            maneuver=ManeuverType.CIRCULARIZE,
+            target=departure,
+            description="Initial orbital circularization after launch."
+        ))
+    
+    # Process each segment of the path.
+    for i in range(len(path) - 1):
+        current = path[i]
+        nxt = path[i + 1]
+        current_type = type_of(current)
+        next_type = type_of(nxt)
+        
+        # Rule: If traveling between two Planets, perform a PLANE_CHANGE and then a TRANSFER.
+        if current_type == "Planet" and next_type == "Planet":
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.PLANE_CHANGE,
+                target=nxt,
+                description=f"Plane change maneuver from {current.name} to align for transfer orbit."
+            ))
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.TRANSFER,
+                target=nxt,
+                description=f"Transfer burn from {current.name} towards {nxt.name}."
+            ))
+        else:
+            # Otherwise, a standard transfer burn between current and next.
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.TRANSFER,
+                target=nxt,
+                description=f"Transfer burn from {current.name} towards {nxt.name}."
+            ))
+        
+        # If the upcoming node is a Planet or Moon (i.e. a major body), perform circularization
+        # to enter its sphere of influence.
+        if next_type in ("Planet", "Moon"):
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.CIRCULARIZE,
+                target=nxt,
+                description=f"Circularization maneuver upon entering {nxt.name}'s sphere of influence."
+            ))
+        
+        # For the final leg, do a landing or docking maneuver.
+        if i == len(path) - 2:
+            if next_type == "Station":
+                events.append(NavigationEvent(
+                    maneuver=ManeuverType.DOCK,
+                    target=nxt,
+                    description=f"Dock at station {nxt.name}."
+                ))
+            elif next_type in ("Planet", "Moon"):
+                events.append(NavigationEvent(
+                    maneuver=ManeuverType.LANDING,
+                    target=nxt,
+                    description=f"Landing maneuver on {nxt.name}."
+                ))
+            # Additional final actions could be inserted here if needed.
+
+    return events
+
 
 class UniverseGraph:
     """Graph representation of the universe for navigation"""
@@ -81,9 +192,9 @@ class UniverseGraph:
         # First add all nodes
         for loc in objects:
             G.add_node(loc.id, name=loc.name)
-            print(f"{loc.id}: {loc.name} is of type {type(loc)}")
+            # print(f"{loc.id}: {loc.name} is of type {type(loc)}")
         
-        print("\nAdded all nodes. Now creating edges:")
+        # print("\nAdded all nodes. Now creating edges:")
         
         for loc in objects:
             # Upward edge: if this object defines an 'orbits' attribute
@@ -93,7 +204,7 @@ class UniverseGraph:
                     parent = self._normalize(parent)
                     if hasattr(parent, "id"):
                         G.add_edge(loc.id, parent.id)
-                        print(f"Added upward edge: {loc.name} <-> {parent.name}")
+        #              print(f"Added upward edge: {loc.name} <-> {parent.name}")
             
             # Downward edges using reverse relationships:
             if hasattr(loc, "star_systems"):
@@ -101,35 +212,35 @@ class UniverseGraph:
                     system = self._normalize(system)
                     if hasattr(system, "id"):
                         G.add_edge(loc.id, system.id)
-                        print(f"Added star system edge: {loc.name} <-> {system.name}")
+        #               print(f"Added star system edge: {loc.name} <-> {system.name}")
             
             if hasattr(loc, "stars"):
                 for star in self._get_relation_items(loc, "stars"):
                     star = self._normalize(star)
                     if hasattr(star, "id"):
                         G.add_edge(loc.id, star.id)
-                        print(f"Added star edge: {loc.name} <-> {star.name}")
+        #               print(f"Added star edge: {loc.name} <-> {star.name}")
             
             if hasattr(loc, "planets"):
                 for planet in self._get_relation_items(loc, "planets"):
                     planet = self._normalize(planet)
                     if hasattr(planet, "id"):
                         G.add_edge(loc.id, planet.id)
-                        print(f"Added planet edge: {loc.name} <-> {planet.name}")
+                        #print(f"Added planet edge: {loc.name} <-> {planet.name}")
             
             if hasattr(loc, "moons"):
                 for moon in self._get_relation_items(loc, "moons"):
                     moon = self._normalize(moon)
                     if hasattr(moon, "id"):
                         G.add_edge(loc.id, moon.id)
-                        print(f"Added moon edge: {loc.name} <-> {moon.name}")
+        #               print(f"Added moon edge: {loc.name} <-> {moon.name}")
             
             if hasattr(loc, "orbiting_stations"):
                 for station in self._get_relation_items(loc, "orbiting_stations"):
                     station = self._normalize(station)
                     if hasattr(station, "id"):
                         G.add_edge(loc.id, station.id)
-                        print(f"Added station edge: {loc.name} <-> {station.name}")
+        #               print(f"Added station edge: {loc.name} <-> {station.name}")
         
         print(f"\nGraph built with {len(G.nodes)} nodes and {len(G.edges())} edges")
         self._graph = G
@@ -145,13 +256,12 @@ class UniverseGraph:
         try:
             path = nx.shortest_path(self._graph, origin.id, destination.id)
             print(f"Found path: {path}")
-            from mysite.universe.models import Location  # re-import for clarity
+            # Instead of using Location.objects.get, use get_real_instance
             return [Location.objects.get(id=node_id) for node_id in path]
         except nx.NetworkXNoPath:
-            print("\nGraph state:")
-            print(f"Nodes: {list(self._graph.nodes)}")
-            print(f"Edges: {list(self._graph.edges)}")
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
+
+# end of UniverseGraph 
 
 def _normalize(item: Any) -> Any:
     """
@@ -162,95 +272,85 @@ def _normalize(item: Any) -> Any:
         return item[0]
     return item
 
-def effective_contact_station(location: Location) -> Optional[Station]:
+def effective_controller(location: Location) -> Optional[Station]:
     """
-    Recursively find the station in control for a location.
+    Recursively determine the controlling station for a given location.
 
-    - If the location itself is a station, it is the effective station.
-    - Otherwise, look for any stations orbiting the location:
-       * First, attempt to use the reverse relationship attribute "orbiting_stations".
-       * If that is empty (or not available), fall back to a direct query from Station.
-       * If one station is found, return it.
-       * If several exist, prefer one whose name contains "Control",
-         otherwise return the first available.
-    - If no local station is found, traverse upward via the 'orbits' relationship
-      (using normalization to handle tuple values).
-      
-    This ensures that, for example, a moon like Phobos (or Io when it has no local station)
-    can inherit its effective control from its parent (e.g. Mars Control or Jupiter Control),
-    but if a location has a local station (even if not flagged "Control"), that station is used.
+    World-building rules:
+      - If the concrete instance is a Station:
+           * If its name contains "Control", then that station controls departures.
+           * Otherwise, defer to its parent's controller.
+      - Otherwise, if the object (say, a Planet or Moon) has orbiting stations:
+           * Return the one whose name includes "Control" (if one exists),
+           * Or use the first available station as fallback.
+      - If there are no orbiting stations, repeat the process using the parent
+        (i.e. the object that this one orbits).
+
+    Assumes that each location's concrete type is available via get_concrete_instance().
     """
-    # If the location itself is a Station, return it.
-    if isinstance(location, Station):
-        return location
+    concrete = location.get_concrete_instance()
+    print(f"[effective_controller] Checking {concrete.name} (type: {concrete.get_type_name()})")
 
-    station_list = []
-    # Try to retrieve reverse related stations (if defined).
-    if hasattr(location, "orbiting_stations"):
-        try:
-            station_list = list(location.orbiting_stations.all())
-        except Exception:
-            station_list = []
-    # Fall back: in case the reverse attribute isn't properly populated.
-    if not station_list:
-        station_list = list(Station.objects.filter(orbits=location))
+    if concrete.get_type_name() == "Station":
+        if "Control" in concrete.name:
+            print(f"[effective_controller] {concrete.name} is a control station.")
+            return concrete
+        else:
+            if concrete.orbits:
+                print(f"[effective_controller] {concrete.name} is a station but not a control station; deferring to parent {concrete.orbits.name}.")
+                return effective_controller(concrete.orbits)
+            else:
+                print(f"[effective_controller] {concrete.name} is a station with no parent; using self.")
+                return concrete
 
-    if station_list:
-        if len(station_list) == 1:
-            return station_list[0]
-        # If multiple stations exist, prefer one with "Control" in its name.
-        for s in station_list:
-            if "Control" in s.name:
-                return s
-        return station_list[0]
+    if hasattr(concrete, "orbiting_stations"):
+        stations = list(
+            concrete.orbiting_stations.all()
+            if hasattr(concrete.orbiting_stations, "all")
+            else concrete.orbiting_stations
+        )
+        if stations:
+            control_stations = [s for s in stations if "Control" in s.name]
+            if control_stations:
+                print(f"[effective_controller] Found control station orbiting {concrete.name}: {control_stations[0].name}")
+                return control_stations[0]
+            else:
+                print(f"[effective_controller] No control station orbiting {concrete.name}; using first available: {stations[0].name}")
+                return stations[0]
 
-    # If no local station is found, traverse upward using the "orbits" relationship.
-    parent = getattr(location, "orbits", None)
-    if parent:
-        parent = _normalize(parent)
-        return effective_contact_station(parent)
+    if concrete.orbits:
+        print(f"[effective_controller] No orbiting stations on {concrete.name}; checking parent {concrete.orbits.name}.")
+        return effective_controller(concrete.orbits)
+    
+    print(f"[effective_controller] No controlling station found for {concrete.name}.")
     return None
 
 def plan_navigation_steps(path: List[Location]) -> List[NavigationStep]:
     """
-    Given a list of Location objects representing the path from origin to destination,
-    produce a list of NavigationStep objects that adhere to the rule:
-    the effective (or current) contact station remains in control until a location
-    with its own station is reached.
+    Given a path (list of Locations) from origin to destination,
+    generate a list of NavigationStep objects with the appropriate controlling station.
+
+    For each leg, we use effective_controller() to determine which station should control that leg.
+    The controlling station is carried forward until a new controlling station becomes available.
     """
     steps: List[NavigationStep] = []
     if not path:
         return steps
 
-    # Initialize with the starting point
-    # If we're starting at a station, that IS our contact station
-    if isinstance(path[0], Station):
-        current_station = path[0]
-    else:
-        current_station = effective_contact_station(path[0])
-        if current_station is None:
-            raise ValueError(f"No effective station found for starting location {path[0].name}")
+    current_controller = effective_controller(path[0])
+    if current_controller is None:
+        raise ValueError(f"No controlling station found for starting location {path[0].name}")
 
     for from_node, to_node in zip(path, path[1:]):
-        # Get the effective station for the destination
-        dest_station = effective_contact_station(to_node)
-        
-        # Create the navigation step
-        # If we're at a station, use it as the contact point
-        if isinstance(from_node, Station):
-            contact_station = from_node
-        else:
-            contact_station = current_station
-
+        dest_controller = effective_controller(to_node)
         step = NavigationStep(
-            contact_station=contact_station,
+            contact_station=current_controller,
             maneuver=ManeuverType.TRANSFER,
             target=to_node,
         )
         steps.append(step)
-
-        # Update the current station if we've reached a new control point
-        if dest_station is not None:
-            current_station = dest_station
+        # Carry forward the controller if the destination provides one.
+        if dest_controller is not None:
+            current_controller = dest_controller
 
     return steps

@@ -28,17 +28,8 @@ class Command(BaseCommand):
             self.stdout.write(f"To: {destination.name}\n")
             
             steps = route_service.plan_route(ship.current_location, destination)
-            script = script_service.generate_journey_script(ship, steps)
-            
-            # Output the script
-            for line in script:
-                speaker = line.speaker
-                if speaker == ship.name:
-                    speaker = "SHIP"  # More readable than long ship names
-                else:
-                    speaker = "CONTROL"
-                self.stdout.write(f"{speaker}: \"{line.message}\"")
-            
+            script = script_service.script_handler(ship, steps)
+                        
             # Move the ship if requested
             if options['move']:
                 ship.current_location = destination
