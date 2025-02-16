@@ -1,29 +1,71 @@
-import unittest
-from mysite.universe.services.ship_generator import ShipGenerator
-from mysite.universe.services.dictionary import DictionaryService
-from mysite.universe.models import Ship, Location
+import string
+from django.test import TestCase
+from unittest.mock import patch
+from mysite.universe.models.ship import Ship
+from mysite.universe.services.cargo_server import CargoService
 
-class TestShipGeneration(unittest.TestCase):
+class ShipGenerateNameTests(TestCase):
     def setUp(self):
-        self.generator = ShipGenerator()
-        self.dictionary = DictionaryService()
-        
-    def test_name_uniqueness(self):
-        """Verify we don't generate duplicate names in a reasonable sample"""
-        station = Location(name="Test Station", scale='SS')
-        names = set()
-        for _ in range(100):
-            ship = self.generator.generate_ship(station)
-            names.add(ship.name)
-        # Should have close to 100 unique names
-        self.assertGreater(len(names), 90, "Generated too many duplicate names")
-    
-    def test_name_sanitization(self):
-        """Verify generated names don't contain problematic characters"""
-        station = Location(name="Test Station", scale='SS')
-        for _ in range(50):
-            ship = self.generator.generate_ship(station)
-            self.assertNotIn('{', ship.name, "Template markers found in final name")
-            self.assertNotIn('}', ship.name, "Template markers found in final name")
-            self.assertNotIn('  ', ship.name, "Double spaces in name")
-            self.assertLess(len(ship.name), 100, "Name exceeds model field length")
+        # Get the list of templates from the Ship model
+        self.templates = Ship.NAME_TEMPLATES
+
+    def make_expected(self, template):
+        # Use Formatter to extract field names as done in the method
+        formatter = string.Formatter()
+        field_names = [field_name for _, field_name, _, _ in formatter.parse(template) if field_name]
+        # For each field, the fake dictionary returns "TEST_<field>"
+        return template.format(**{field: f"TEST_{field}" for field in field_names})
+
+    @patch("mysite.universe.models.ship.random.choice")
+    @patch("mysite.universe.services.dictionary.DictionaryService")
+    def test_generate_name_templates(self, MockDictionaryService, mock_choice):
+        # Setup the fake dictionary service: for every field, return "TEST_<field>"
+        fake_instance = MockDictionaryService.return_value
+        fake_instance.get_random.side_effect = lambda field: f"TEST_{field}"
+
+        # For each template in the Ship model, validate name generation.
+        for template in self.templates:
+            # Force use of the specific template.
+            mock_choice.return_value = template
+            generated_name = Ship.generate_name()
+            expected = self.make_expected(template)
+            self.assertEqual(
+                generated_name,
+                expected,
+                msg=f"Failed for template: {template}. Expected: {expected}, Got: {generated_name}"
+            )
+
+class ShipCreationTests(TestCase):
+
+    def test_create_ship_for_each_size(self):
+        # Iterate over each size defined in the Ship model.
+        sizes = [choice[0] for choice in Ship.Size.choices]
+        for size in sizes:
+            ship = Ship.create(size=size)
+            self.assertEqual(
+                ship.size,
+                size,
+                msg=f"Ship created with size {ship.size} does not match expected size {size}."
+            )
+            self.assertIsNotNone(ship.cargo, msg="Ship cargo should not be None.")
+            self.assertNotEqual(ship.cargo, "", msg="Ship cargo should not be an empty string.")
+
+    def test_unload_and_reload_cargo(self):
+        # Create a new ship and check its initial cargo.
+        ship = Ship.create()
+        original_cargo = ship.cargo
+        self.assertIsNotNone(original_cargo, msg="Initial cargo should not be None.")
+
+        # Unload the cargo – set it to None.
+        ship.cargo = None
+        ship.save()
+        self.assertIsNone(ship.cargo, msg="After unloading, cargo should be set to None.")
+
+        # Reload cargo using CargoService.
+        cargo_service = CargoService()
+        new_cargo = cargo_service.generate_cargo(ship)
+        ship.cargo = new_cargo
+        ship.save()
+
+        self.assertIsNotNone(ship.cargo, msg="After reloading, cargo should not be None.")
+        self.assertNotEqual(ship.cargo, "", msg="Reloaded cargo should not be an empty string.") 

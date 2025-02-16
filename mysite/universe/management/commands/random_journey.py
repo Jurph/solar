@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-from django.core.exceptions import ObjectDoesNotExist
 from mysite.universe.models import Ship, Location
 from mysite.universe.models.navigation import UniverseGraph  # Add this import
 from mysite.universe.services.route_server import RouteService  
