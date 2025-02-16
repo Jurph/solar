@@ -1,7 +1,7 @@
 # Solar 
 ## a procedural space system builder 
 
-## vision:
+## Vision:
 
 The air in the cockpit smells like azide and sweat and hot electronics. The nav computer's analog display rattles as the new course rolls across the console and gradually emerges from the chaos of clacking. The comm chirps a friendly tone and a welcoming voice says "Commercial tanker PULP NOVELLA, this is Titan Control, please acknowledge." 
 
@@ -18,6 +18,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Stars, planets, moons, and space stations 
     - Just our solar system first ✓
     - XML import/export tooling ✓
+    - Add objects like "Colony" or "Spaceport" for surface landings 
     - Planetary science and classification
         - Define taxonomy of planet types (terrestrial, gas giant, etc.) ✓
         - Geological composition and features
@@ -41,10 +42,14 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Procedurally named with random cargos & missions ✓  
     - Eventually assigned economically-relevant cargos & missions 
     - Eventually procedurally generated as make/model, sold by particular shipyards, more common "near home" 
+    - More detailed ship mechanics including detailed subsystems and subsystem failures 
 
 - Events 
-    - Grab bag procedural at first 
+    - Just transit events to start: talking to Control and asking permission to go places 
     - Anomalies a great place to explore complexity 
+        - Asking other ships to stay clear 
+        - Asking other ships about their cargo or destination 
+        - In short, "chatter" 
     - When ships have parts, some anomalies will come from "cheap" parts or "too new" technologies 
     - Eventually generated in response to a ship moving along its journey 
     - Until we have text-to-speech or pilot voices, a scrolling "terminal" you can read 
