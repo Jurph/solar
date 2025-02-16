@@ -32,7 +32,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Ships 
     - "Grab bag" random naming at first ✓
     - Very little concept of roles/classes/sizes ✓
-    - Procedurally named with random cargos & missions   
+    - Procedurally named with random cargos & missions ✓  
     - Eventually assigned economically-relevant cargos & missions 
     - Eventually procedurally generated as make/model, sold by particular shipyards, more common "near home" 
 - Events 
@@ -41,9 +41,9 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - When ships have parts, some anomalies will come from "cheap" parts or "too new" technologies 
     - Eventually generated in response to a ship moving along its journey 
 - Comms 
-    - Text first, voice soon!
-    - Meant to sound like air traffic control 
-    - Scripted or procedural at first 
+    - Text first, voice soon! ✓
+    - Meant to sound like air traffic control ✓
+    - Scripted or procedural at first ✓
     - Uses GPT-style generative dialogue eventually 
     - Text-to-voice? Pilot personalities? 
     - Realistic static, Apollo-style BEEPs, modem noises 
@@ -59,8 +59,8 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ### Two - First Flight 
 - Procedurally generate ship names for scripted events ✓
-- Move a ship from one planet to another with a random cargo 
-- Script the "arrival" and "departure" event categories 
+- Move a ship from one planet to another with a random cargo ✓
+- Script the "arrival" and "departure" event categories ✓
 - Orchestrator/timer/scheduler fires off randomized events 
 - Visualize ship traffic 
 
