@@ -14,4 +14,3 @@
 - On departure from a station you should announce your ship's name, cargo, and destination ("Control, this is PUMA SWEDE carrying Sulfur bound for Jupiter, requesting a departure time and launch vector.") 
 - On arrival to a new Planet, you should also announce your name, cargo, and destination. Planetary Control stations may do a customs scan or not; their choice. 
 
-
