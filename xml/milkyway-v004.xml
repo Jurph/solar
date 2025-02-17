@@ -10,12 +10,16 @@
         <name>Sol</name>
         <type>G2V</type>
         <magnitude>4.83</magnitude>
-        
         <planet>
           <name>Mercury</name>
           <type>SI</type>
+          <station>
+            <name>Mercury Control</name>
+            <large_berths>0</large_berths>
+            <medium_berths>0</medium_berths>
+            <small_berths>0</small_berths>
+          </station>
         </planet>
-        
         <planet>
           <name>Venus</name>
           <type>TE</type>
@@ -26,7 +30,6 @@
             <small_berths>64</small_berths>
           </station>
         </planet>
-        
         <planet>
           <name>Earth</name>
           <type>TE</type>
@@ -188,6 +191,12 @@
             <name>Miranda</name>
             <variety>I</variety>
           </moon>
+          <station>
+            <name>Uranus Control</name>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>2</small_berths>
+          </station>
         </planet>
         
         <planet>
