@@ -10,8 +10,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('ship_id', type=int, help='ID of the ship to move')
         parser.add_argument('destination_id', type=int, help='ID of the destination')
-        parser.add_argument('--move', action='store_true', 
-                          help='Actually move the ship (default is just show script)')
+        parser.add_argument('--move', action='store_true', help='Actually move the ship (default is just show script)')
 
     def handle(self, *args, **options):
         try:
@@ -29,6 +28,7 @@ class Command(BaseCommand):
             
             steps = route_service.plan_route(ship.current_location, destination)
             script = script_service.script_handler(ship, steps)
+            script += ''
                         
             # Move the ship if requested
             if options['move']:

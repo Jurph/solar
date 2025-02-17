@@ -40,8 +40,8 @@ class ScriptService:
             elif event.maneuver == ManeuverType.PLANE_CHANGE:
                 lines.extend([
                     f'SHIP: "{control_name}, {ship.name} requesting clearance for plane change maneuver."',
-                    f'CONTROL: "{ship.name}, you are cleared for plane change. Mind your delta-v."',
-                    f'SHIP: "Thank you, Control."'
+                    f'CONTROL: "{ship.name}, you are cleared for plane change. Mind your delta-v. Stay on reaction engines please."',
+                    'SHIP: "Thank you, Control."'
                 ])
                 
             elif event.maneuver == ManeuverType.TRANSFER:
@@ -51,7 +51,7 @@ class ScriptService:
                         f'SHIP: "{control_name}, this is {ship.name} carrying {ship.cargo} bound for {destination}. '
                         f'Requesting transfer burn clearance."',
                         f'CONTROL: "{ship.name}, transfer pending. Stand by for customs scan."',
-                        f'CONTROL: "Alright {ship.name}, your transfer is approved. Here are your burn elements."'
+                        f'CONTROL: "Alright {ship.name}, your transfer is approved. Clear for sublight burn."'
                     ])
                 else:
                     lines.extend([
@@ -75,7 +75,7 @@ class ScriptService:
                 lines.extend([
                     f'SHIP: "{control_name}, this is {ship.name}. Requesting hyperspace corridor clearance."',
                     f'CONTROL: "{ship.name}, corridor is clear. You are go for jump."',
-                    f'SHIP: "Acknowledged. Spooling up hyperspace drive."'
+                    'SHIP: "Acknowledged. Spooling up hyperspace drive."'
                 ])
                 
             elif event.maneuver == ManeuverType.UNDOCK:

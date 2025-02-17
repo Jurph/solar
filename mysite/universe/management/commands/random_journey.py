@@ -10,11 +10,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--move', action='store_true', 
-                          help='Actually move the ship (default is just show script)')
+                        help='Actually move the ship (default is just show script)')
         parser.add_argument('--list', action='store_true',
-                          help='List all ships and locations first')
+                        help='List all ships and locations first')
         parser.add_argument('--debug', action='store_true',
-                          help='Show debug information')
+                        help='Show debug information')
 
     def handle(self, *args, **options):
         try:
@@ -65,6 +65,7 @@ class Command(BaseCommand):
                     self.stdout.write(f"{i}. {step.maneuver.value} towards {step.target.name}")
             
             script = script_server.script_handler(ship, steps)
+            script += '' # For now we just store the script; later on we'll push it as an event 
             
             # Move the ship if requested
             if options['move']:
