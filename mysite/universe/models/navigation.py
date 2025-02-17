@@ -6,6 +6,7 @@ from itertools import chain
 from django.db import models
 from .base import Location
 from .station import Station
+import warnings
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
@@ -42,8 +43,8 @@ class NavigationEvent:
 #  · Departing from a Station requires a LAUNCH event. 
 #  · After LAUNCH, we generally execute a CIRCULARIZE maneuver (to get into the proper orbit).
 #  · For transfers between two Planets, we do a PLANE_CHANGE followed by a TRANSFER.
-#  · Upon entering a Planet’s or Moon’s sphere of influence we circularize.
-#  · The final event is either DOCK (if the target is a Station) or LAND (if it’s a Moon/Planet).
+#  · Upon entering a Planet's or Moon's sphere of influence we circularize.
+#  · The final event is either DOCK (if the target is a Station) or LAND (if it's a Moon/Planet).
 #
 # (Additional rules—like hyperspace transitions when changing StarSystems—can be inserted here.)
 # -------------------------------------------------------------------
@@ -52,10 +53,10 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
     Build a sequence of NavigationEvent objects from a path of Locations.
     
     Uses world-building rules (see World Building Rules.md):
-      - If the starting location is a Station, begin with a LAUNCH event and then a CIRCULARIZE.
-      - Traveling between two Planets requires a PLANE_CHANGE followed by a TRANSFER.
-      - Approaching a Planet or Moon calls for a circularization.
-      - The final maneuver is DOCK if the destination is a Station or LAND if it is not.
+    - If the starting location is a Station, begin with a LAUNCH event and then a CIRCULARIZE.
+    - Traveling between two Planets requires a PLANE_CHANGE followed by a TRANSFER.
+    - Approaching a Planet or Moon calls for a circularization.
+    - The final maneuver is DOCK if the destination is a Station or LAND if it is not.
       
     This builder can be extended to include other events (e.g. HYPERSPACE) as needed.
     """
@@ -277,13 +278,13 @@ def effective_controller(location: Location) -> Optional[Station]:
     Recursively determine the controlling station for a given location.
 
     World-building rules:
-      - If the concrete instance is a Station:
+    - If the concrete instance is a Station:
            * If its name contains "Control", then that station controls departures.
            * Otherwise, defer to its parent's controller.
-      - Otherwise, if the object (say, a Planet or Moon) has orbiting stations:
+    - Otherwise, if the object (say, a Planet or Moon) has orbiting stations:
            * Return the one whose name includes "Control" (if one exists),
            * Or use the first available station as fallback.
-      - If there are no orbiting stations, repeat the process using the parent
+    - If there are no orbiting stations, repeat the process using the parent
         (i.e. the object that this one orbits).
 
     Assumes that each location's concrete type is available via get_concrete_instance().
@@ -324,33 +325,3 @@ def effective_controller(location: Location) -> Optional[Station]:
     
     print(f"[effective_controller] No controlling station found for {concrete.name}.")
     return None
-
-def plan_navigation_steps(path: List[Location]) -> List[NavigationStep]:
-    """
-    Given a path (list of Locations) from origin to destination,
-    generate a list of NavigationStep objects with the appropriate controlling station.
-
-    For each leg, we use effective_controller() to determine which station should control that leg.
-    The controlling station is carried forward until a new controlling station becomes available.
-    """
-    steps: List[NavigationStep] = []
-    if not path:
-        return steps
-
-    current_controller = effective_controller(path[0])
-    if current_controller is None:
-        raise ValueError(f"No controlling station found for starting location {path[0].name}")
-
-    for from_node, to_node in zip(path, path[1:]):
-        dest_controller = effective_controller(to_node)
-        step = NavigationStep(
-            contact_station=current_controller,
-            maneuver=ManeuverType.TRANSFER,
-            target=to_node,
-        )
-        steps.append(step)
-        # Carry forward the controller if the destination provides one.
-        if dest_controller is not None:
-            current_controller = dest_controller
-
-    return steps

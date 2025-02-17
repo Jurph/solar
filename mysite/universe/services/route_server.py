@@ -1,33 +1,37 @@
 from typing import List, Optional
-from ..models.navigation import UniverseGraph, NavigationStep, effective_controller, plan_navigation_steps
+from ..models.navigation import UniverseGraph, build_navigation_events, effective_controller
 from ..models.base import Location
+from ..models.event import Event  # If needed elsewhere.
 from ..models.station import Station
 import random
 
 class RouteService:
     """Service for planning routes using the universe graph"""
     
-    def plan_route(self, origin: Location, destination: Location) -> List[NavigationStep]:
-        """Generate navigation steps between two points using the domain logic."""
+    def plan_route(self, origin: Location, destination: Location) -> List:
+        """
+        Generate navigation events between two points using the domain logic.
+        This now uses build_navigation_events, which implements the full world-building logic.
+        """
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
+        # Use the richer, world-building-aware function:
+        events = build_navigation_events(path)
 
-        # Domain helper that computes steps based on effective contact stations.
-        steps = plan_navigation_steps(path)
-
-        # Fallback: if any step does not have a contact station, fall back to the previous known station.
+        # Optionally, if needed, attach or adjust controlling station information here.
+        # For each event, you might want to check and propagate effective controllers.
         current_station: Optional[Station] = effective_controller(origin)
-        for step in steps:
-            if step.contact_station is None:
-                if current_station is None:
-                    raise ValueError(
-                        f"Error: No effective station found for {step.target.name}."
-                    )
-                step.contact_station = current_station
-            else:
-                current_station = step.contact_station
+        for event in events:
+            # In case your NavigationEvent doesn't include a contact station,
+            # you could create a NavigationStep object from event info if required
+            if current_station is None:
+                raise ValueError(f"No effective station found for {event.target.name}.")
+            # Optionally update current_station based on the event target:
+            candidate = effective_controller(event.target)
+            if candidate is not None:
+                current_station = candidate
 
-        return steps
+        return events
 
     def pick_random_destination(self, excluding: Location) -> Location:
         """
@@ -41,31 +45,23 @@ class RouteService:
         random_id = random.choice(all_ids)
         return Location.objects.get(id=random_id)
 
-    def random_journey(self, ship) -> List[NavigationStep]:
+    def random_journey(self, ship) -> List:
         """
-        Plans a random journey for the given ship.
-        For each leg of the journey, ensure that the effective contact station
-        is carried forward until a new station is available.
+        Plans a random journey for the ship using build_navigation_events.
         """
         origin = ship.current_location
         destination = self.pick_random_destination(excluding=origin)
         print(f"Random journey: {origin.name} -> {destination.name}")
-
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
-        steps = plan_navigation_steps(path)
+        # Now using the new, richer event builder:
+        events = build_navigation_events(path)
 
-        # Propagate the effective station down the journey.
         current_station = effective_controller(origin)
-        for step in steps:
-            if step.contact_station is None:
-                if current_station is None:
-                    raise ValueError(
-                        f"No effective station found for leg towards {step.target.name}"
-                    )
-                # Fall back to the previous station if this leg lacks one.
-                step.contact_station = current_station
-            else:
-                current_station = step.contact_station
-
-        return steps
+        for event in events:
+            if current_station is None:
+                raise ValueError(f"No effective station found for leg towards {event.target.name}")
+            candidate = effective_controller(event.target)
+            if candidate is not None:
+                current_station = candidate
+        return events
