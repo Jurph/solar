@@ -26,6 +26,7 @@ Beirut
 Belgrade
 Berlin
 Bern
+Bethany
 Bishkek
 Bismarck
 Bogota
@@ -146,6 +147,7 @@ Quebec City
 Rabat
 Raleigh
 Recife
+Rehoboth
 Reykjavik
 Riga
 Richmond
@@ -162,7 +164,6 @@ San Diego
 San Francisco
 San Jose
 Santa Fe
-Saskatoon
 Santiago
 Sao Paulo
 Saskatoon
