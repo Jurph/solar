@@ -3,6 +3,7 @@ from django.test import TestCase
 from unittest.mock import patch
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.base import Location
+from mysite.universe.models.scale import Scale
 from mysite.universe.services.cargo_server import CargoService
 
 class ShipGenerateNameTests(TestCase):
@@ -11,7 +12,7 @@ class ShipGenerateNameTests(TestCase):
         # Assuming Location has a 'name' and a 'scale' field.
         self.station = Location.objects.create(
             name="Test Station",
-            scale=Location.Scale.STATION  # Use the proper constant from Location.Scale
+            scale=Scale.STATION  # Use the proper constant from Scale
         )
         # Get the list of templates from the Ship model
         self.templates = Ship.NAME_TEMPLATES
@@ -47,7 +48,7 @@ class ShipCreationTests(TestCase):
         # Create a station location fixture necessary for Ship.create().
         self.station = Location.objects.create(
             name="Test Station",
-            scale=Location.Scale.STATION
+            scale=Scale.STATION
         )
 
     def test_create_ship_for_each_size(self):

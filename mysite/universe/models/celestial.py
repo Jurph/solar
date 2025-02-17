@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from .base import Location
+from .scale import Scale  # Use the enhanced Scale class
 
 class Galaxy(Location):
     ## https://en.wikipedia.org/wiki/Galaxy#Types_and_morphology    
@@ -30,12 +31,22 @@ class Galaxy(Location):
     galaxy_size = models.CharField(max_length=1, choices=sizes, default='L')
     orbits = None
 
+    def save(self, *args, **kwargs):
+        if not self.scale:  # If scale is not already set, then assign Galaxy scale.
+            self.scale = Scale.GALAXY
+        super().save(*args, **kwargs)
+
 class StarSystem(Location):
     orbits = models.ForeignKey(
         Galaxy,
         on_delete=models.CASCADE,
         related_name='star_systems'
     )
+
+    def save(self, *args, **kwargs):
+        if not self.scale:
+            self.scale = Scale.STARSYSTEM
+        super().save(*args, **kwargs)
 
 class Star(Location):
     # othernames = TODO: figure out how to create a list of CharFields
@@ -62,6 +73,11 @@ class Star(Location):
         default=4.31
     )
 
+    def save(self, *args, **kwargs):
+        if not self.scale:
+            self.scale = Scale.STAR
+        super().save(*args, **kwargs)
+
 class Planet(Location):
     class planetType(models.TextChoices):
         MESOPLANET = 'MP', _('Mesoplanet')
@@ -84,6 +100,11 @@ class Planet(Location):
         default=planetType.TERRESTRIAL
     )
 
+    def save(self, *args, **kwargs):
+        if not self.scale:
+            self.scale = Scale.PLANET
+        super().save(*args, **kwargs)
+
 class Moon(Location):
     VARIETIES = [
         ('R', 'Rocky'),     # e.g. Luna, Deimos, Phobos - no atmosphere to speak of, dry 
@@ -103,3 +124,8 @@ class Moon(Location):
         default='R',
         help_text="The primary composition of the moon"        
     )
+
+    def save(self, *args, **kwargs):
+        if not self.scale:
+            self.scale = Scale.MOON
+        super().save(*args, **kwargs)

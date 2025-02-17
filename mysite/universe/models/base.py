@@ -1,32 +1,39 @@
 from django.db import models
 from typing import Optional
 from django.utils.translation import gettext_lazy as _
+from .scale import Scale  # Import the enhanced Scale class
 # Contains the base "Location" model that we can use to instantiate other stuff
 
 class Location(models.Model):
     name = models.CharField(max_length=255)
     # orbits = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE)
 
+    # Use the enhanced Scale class for assigning and comparing scales.
+    # The field stores a two-character string value, with choices defined in Scale.choices.
+    scale = models.CharField(
+        max_length=2,
+        choices=Scale.choices,
+        default=Scale.STATION,
+    )
+
+    def __str__(self):
+        return self.name
 
     def get_concrete_instance(self):
         """
         Returns the concrete (i.e. most specific) instance of this Location.
         If this instance is already concrete (not just a Location),
-        it simply returns self. Otherwise, we attempt to re-fetch the object using
+        it simply returns self. Otherwise, it attempts to re-fetch the object using
         each known subclass. (This incurs extra queries, so you might want to cache the result.)
         """
-        # If this object is already not a bare Location, return self.
         if self.__class__.__name__ != "Location":
             return self
 
-        # Import the known subclasses.
-        # (List them in order of priority, if needed.)
         from .station import Station
         from .celestial import Moon, Planet, Star, StarSystem, Galaxy
 
         for subclass in (Station, Moon, Planet, Star, StarSystem, Galaxy):
             try:
-                # Try to get a concrete instance of this subclass with the same primary key.
                 instance = subclass.objects.get(pk=self.pk)
                 if instance.__class__.__name__ != "Location":
                     return instance
@@ -36,90 +43,58 @@ class Location(models.Model):
 
     def get_type_name(self) -> str:
         """
-        Returns a string with the real (concrete) class name.
+        Returns the real (concrete) class name as a string.
         """
         return self.get_concrete_instance().__class__.__name__
 
-
-    class Scale(models.TextChoices):
-        GALAXY = 'GX', _('galaxy')
-        STARSYSTEM = 'SY', _('star system')
-        STAR = 'SR', _('star')
-        PLANET = 'PL', _('planet')
-        MOON = 'MN', _('moon')
-        STATION = 'SS', _('space station')
-    
-    scale = models.CharField(
-        max_length=2, 
-        choices=Scale.choices,
-        default=Scale.STATION
-    )
+    @classmethod
+    def create(cls, **kwargs):
+        """
+        Factory method to create a new Location (or a subclass thereof). Uses the
+        Django model manager to create the new instance and returns
+        its concrete instance.
+        """
+        instance = cls.objects.create(**kwargs)
+        return instance.get_concrete_instance()
 
     def may_have_station(self):
-        return self.scale in{
-            self.scale.STAR,
-            self.scale.PLANET,
-            self.scale.MOON            
-        }
+        """
+        Determines if this location may have a space station.
+        Typically applies for locations at the STAR, PLANET, or MOON scales.
+        """
+        return self.scale in {Scale.STAR, Scale.PLANET, Scale.MOON}
 
     def can_dock(self):
-        return self.scale in{
-            self.scale.STATION,
-        }
+        """
+        Determines if this location is a space station suitable for docking.
+        """
+        return self.scale == Scale.STATION
 
     def can_land(self):
-        return self.scale in{
-            self.scale.PLANET,
-            self.scale.MOON,
-        }
+        """
+        Determines if this location supports landing, typically for PLANET or MOON scales.
+        """
+        return self.scale in {Scale.PLANET, Scale.MOON}
 
     def requires_launch_clearance(self) -> bool:
-        """Whether this location requires launch clearance to depart"""
-        return self.scale == 'SF'
+        """
+        Indicates whether leaving this location requires launch clearance.
+        (This could be based on special scale values, for example.)
+        """
+        return self.scale in {Scale.PLANET, Scale.MOON, Scale.Station} 
 
     def requires_docking_clearance(self) -> bool:
-        """Whether this location requires docking clearance to arrive"""
-        return self.scale == 'SS'
+        """
+        Indicates whether arriving at this location requires docking clearance.
+        """
+        return self.scale == Scale.STATION
 
     def get_control_station(self) -> Optional['Station']:
-        """Get the control station responsible for this location"""
+        """
+        Retrieves the control station responsible for this location.
+        """
         from .station import Station  # Avoid circular import
         return Station.objects.filter(
             orbits=self,
             name__icontains='Control'
         ).first()
-
-    def get_concrete_instance(self):
-        """
-        Returns the concrete (i.e. most specific) instance of this Location.
-        If this instance is already concrete (not just a Location),
-        it simply returns self. Otherwise, we attempt to re-fetch the object using
-        each known subclass. (This incurs extra queries, so you might want to cache the result.)
-        """
-        # If this object is already not a bare Location, return self.
-        if self.__class__.__name__ != "Location":
-            return self
-
-        # Import the known subclasses.
-        # (List them in order of priority, if needed.)
-        from .station import Station
-        from .celestial import Moon, Planet, Star, StarSystem, Galaxy
-
-        for subclass in (Station, Moon, Planet, Star, StarSystem, Galaxy):
-            try:
-                # Try to get a concrete instance of this subclass with the same primary key.
-                instance = subclass.objects.get(pk=self.pk)
-                if instance.__class__.__name__ != "Location":
-                    return instance
-            except subclass.DoesNotExist:
-                continue
-        return self
-
-    def get_type_name(self) -> str:
-        """
-        Returns a string with the real (concrete) class name.
-        """
-        return self.get_concrete_instance().__class__.__name__
-
-    def __str__(self):
-        return self.name

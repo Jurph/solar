@@ -6,7 +6,7 @@ from itertools import chain
 from django.db import models
 from .base import Location
 from .station import Station
-import warnings
+from collections import deque
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
@@ -57,7 +57,7 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
     - Traveling between two Planets requires a PLANE_CHANGE followed by a TRANSFER.
     - Approaching a Planet or Moon calls for a circularization.
     - The final maneuver is DOCK if the destination is a Station or LAND if it is not.
-      
+    
     This builder can be extended to include other events (e.g. HYPERSPACE) as needed.
     """
     events: List[NavigationEvent] = []
@@ -137,7 +137,6 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
             # Additional final actions could be inserted here if needed.
 
     return events
-
 
 class UniverseGraph:
     """Graph representation of the universe for navigation"""
@@ -263,6 +262,59 @@ class UniverseGraph:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
 
 # end of UniverseGraph 
+
+"""
+Helper functions for graph-based navigation queries.
+
+These functions help answer common queries such as:
+    - "Where is the nearest X?" (e.g., the nearest planet, station, or other celestial object)
+    - "What is the concrete type of Node Y?"
+    
+They are designed to be small, atomic, and easily composable with other route and scheduling functions.
+"""
+
+def get_concrete_type(node):
+    """
+    Return the concrete type of the given node as a string.
+
+    Args:
+        node: The node instance (e.g., a Celestial body, Ship, Station, etc.).
+
+    Returns:
+        A string representing the concrete class name of the node.
+    """
+    return node.__class__.__name__
+
+
+def find_nearest_node(start_node, target_check, get_neighbors):
+    """
+    Find the nearest node from a starting node that satisfies a given condition.
+
+    This function performs a breadth-first search (BFS) starting from `start_node`
+    across the graph defined by neighbors. It returns the first node for which 
+    `target_check(node)` returns True.
+
+    Args:
+        start_node: The node where the search begins.
+        target_check: A callable that takes a node and returns True if it meets the desired condition.
+        get_neighbors: A callable that takes a node and returns an iterable of neighboring nodes.
+
+    Returns:
+        The nearest node satisfying the condition, or None if no such node is found.
+    """
+    visited = set()
+    queue = deque([start_node])
+
+    while queue:
+        current = queue.popleft()
+        if target_check(current):
+            return current
+        visited.add(current)
+        for neighbor in get_neighbors(current):
+            if neighbor not in visited:
+                queue.append(neighbor)
+                visited.add(neighbor)
+    return None
 
 def _normalize(item: Any) -> Any:
     """

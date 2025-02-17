@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 import random
 from .base import Location
+from .scale import Scale
 
 class Ship(models.Model):
     name = models.CharField(max_length=100)
@@ -76,7 +77,7 @@ class Ship(models.Model):
 
     @classmethod
     def create(cls, *, name: str = None, location: Location = None, 
-               size: str = None, cargo: str = None) -> 'Ship':
+            size: str = None, cargo: str = None) -> 'Ship':
         """
         Create a new Ship instance with sensible defaults.
         
@@ -116,7 +117,7 @@ class Ship(models.Model):
     def get_random_station(cls) -> Location:
         """Get a random station from available stations."""
         station = Location.objects.filter(
-            scale=Location.Scale.STATION
+            scale=Scale.STATION
         ).order_by('?').first()
         if station is None:
             raise ValueError("No station locations available in the database.")
