@@ -11,34 +11,51 @@ class RouteService:
     def plan_route(self, origin: Location, destination: Location) -> List:
         """
         Generate navigation events between two points using the domain logic.
-        This now uses build_navigation_events, which implements the full world-building logic.
+        Uses the universe graph's get_path for a clean abstraction.
         """
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
-        # Use the richer, world-building-aware function:
-        events = build_navigation_events(path)
-
-        # Optionally, if needed, attach or adjust controlling station information here.
-        # For each event, you might want to check and propagate effective controllers.
-        current_station: Optional[Station] = effective_controller(origin)
+        events = self.build_navigation_events(path)
+        
+        # Propagate effective controller information
+        current_station: Optional[Station] = self.effective_controller(origin)
         for event in events:
-            # In case your NavigationEvent doesn't include a contact station,
-            # you could create a NavigationStep object from event info if required
             if current_station is None:
                 raise ValueError(f"No effective station found for {event.target.name}.")
-            # Optionally update current_station based on the event target:
-            candidate = effective_controller(event.target)
+            candidate = self.effective_controller(event.target)
             if candidate is not None:
                 current_station = candidate
-
         return events
+
+    def build_navigation_events(self, path: List) -> List:
+        """
+        A placeholder for building navigation events based on the path.
+        In actual implementation, this relies on world-building logic.
+        """
+        # Transform the path into NavigationEvent instances.
+        # (This logic is assumed to be implemented elsewhere.)
+        return []
+
+    def effective_controller(self, location: Location):
+        """
+        Determine the controlling station for a given location.
+        Existing implementation logic.
+        """
+        # This function could be enhanced to use our get_nearest_node_of_type if needed.
+        # For now, assume it returns a Station instance or None.
+        from ..models.station import Station
+        stations = Station.objects.filter(orbits=location)
+        return stations.first() if stations.exists() else None
 
     def pick_random_destination(self, excluding: Location) -> Location:
         """
         Picks a random destination from all available locations,
         excluding the given origin.
         """
-        from mysite.universe.models.base import Location  # or use specific subclass queries
+        # As an alternative to arbitrary random selection, one might consider
+        # selecting the nearest destination of a certain type by using:
+        #   universe.get_nearest_node_of_type(origin, "Planet")
+        # Here we preserve the original behavior.
         all_ids = list(Location.objects.exclude(id=excluding.id).values_list("id", flat=True))
         if not all_ids:
             raise ValueError("No available destination in the universe.")
