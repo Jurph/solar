@@ -1,27 +1,200 @@
+Albany
+Accra
+Abu Dhabi
+Abuja
+Accra
+Addis Ababa
+Algiers
+Amman
+Amsterdam
+Ankara
+Annapolis
+Antananarivo
+Apia
 Appleton
-Biloxi
-Columbia
+Ashgabat
+Asuncion
+Athens
+Atlanta
+Auckland
+Austin
+Augusta
+Baku
+Bamako
+Baton Rouge
+Beijing
+Beirut
+Belgrade
+Berlin
+Bern
+Bishkek
+Bismarck
+Bogota
+Boston
+Bratislava
+Brisbane
+Bucharest
+Budapest
+Buenos Aires
+Cairo
+Calgary
+Cape Town
+Caracas
+Casablanca
+Carson City
+Charleston
+Charlottetown
+Cheyenne
+Chicago
+Copenhagen
+Damascus
+Dar Es Salaam
 Dayton
+Delhi
+Des Moines
+Denver
+Dhaka
+Doha
+Dover
+Dublin
+Durban
+Edmonton
 Eastport
+Edinburgh
 Fairborn
+Frankfurt
+Fredericton
+Geneva
 Georgetown
-Halifax
+Glasgow
+Guadalajara
+Guangzhou
+Hanoi
+Havana
+Helsinki
+Ho Chi Minh
+Hong Kong
+Honolulu
+Houston
 Indianapolis
+Istanbul
+Jackson
+Jakarta
+Jerusalem
+Johannesburg
+Juneau
 Juniata
+Kabul
+Kampala
+Karachi
+Kathmandu
 Kent
+Khartoum
+Kiev
+Kigali
+Kingston
+Kinshasa
+Kuala Lumpur
+Kuwait City
+La Paz
+Lagos
+Lahore
+Lansing
+Lincoln
+Little Rock
+Lima
+Lisbon
+Ljubljana
+London
 Long Beach
-Marseilles
-New Caledonia 
-Overbrook
-Pasadena 
+Los Angeles
+Lusaka
+Luxembourg
+Madrid
+Madison
+Manila
+Maputo
+Marseille
+Melbourne
+Mexico City
+Minsk
+Mogadishu
+Monaco
+Montevideo
+Montgomery
+Montpelier
+Montreal
+Moscow
+Mumbai
+Munich
+Nairobi
+Nashville
+New Caledonia
+New Delhi
+New Orleans
+New York
+Nice
+Oklahoma City
+Osaka
+Oslo
+Ottawa
+Paris
+Pasadena
+Perth
+Prague
 Quebec City
+Rabat
 Raleigh
-San Cristobal 
-Tallahassee 
+Recife
+Reykjavik
+Riga
+Richmond
+Rio De Janeiro
+Riyadh
+Rome
+Rotterdam
+Sacramento
+Salem
+Salt Lake City
+San Antonio
+San Cristobal
+San Diego
+San Francisco
+San Jose
+Santa Fe
+Saskatoon
+Santiago
+Sao Paulo
+Saskatoon
+Seattle
+Seoul
+Shanghai
+Singapore
+Springfield
+Stockholm
+Sydney
+Taipei
+Tallinn
+Tampa
+Tehran
+Tel Aviv
+Topeka
+Trenton
+Tokyo
+Toronto
 Utopia
-Villanova
+Valencia
+Vancouver
+Venice
+Vienna
+Victoria
+Vilnius
+Warsaw
 Washington
+Wellington
+Winnipeg
 Wynnewood
 Xenia
 Youngstown
-Zanesville 
+Zagreb
+Zanesville
