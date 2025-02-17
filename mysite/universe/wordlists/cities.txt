@@ -1,9 +1,8 @@
-Albany
-Accra
 Abu Dhabi
 Abuja
 Accra
 Addis Ababa
+Albany
 Algiers
 Amman
 Amsterdam
@@ -46,6 +45,7 @@ Charleston
 Charlottetown
 Cheyenne
 Chicago
+Columbia
 Copenhagen
 Damascus
 Dar Es Salaam
