@@ -1,7 +1,7 @@
 from django.db import models
 from typing import Optional
 from django.utils.translation import gettext_lazy as _
-from .scale import Scale  # Import the enhanced Scale class
+from .scale import Scale, OrderedScale  # Import the enhanced Scale class
 # Contains the base "Location" model that we can use to instantiate other stuff
 
 class Location(models.Model):
@@ -15,6 +15,10 @@ class Location(models.Model):
         choices=Scale.choices,
         default=Scale.STATION,
     )
+
+    @property
+    def ordered_scale(self):
+        return OrderedScale(self.scale)
 
     def __str__(self):
         return self.name

@@ -7,17 +7,21 @@ from django.db import models
 from .base import Location
 from .station import Station
 from collections import deque
+from django.core.exceptions import ObjectDoesNotExist
+from .scale import Scale, OrderedScale
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
     CIRCULARIZE = "circularize"    
+    INSERTION = "insertion"         # always followed by circularization 
     DOCK = "dock"                  
     HYPERSPACE = "hyperspace"      
     LANDING = "landing"            
-    LAUNCH = "launch"              
+    LAUNCH = "launch"               # always followed by orbital insertion         
     PLANE_CHANGE = "plane_change"  
     TRANSFER = "transfer"          
-    UNDOCK = "undock"              
+    UNDOCK = "undock"               # always followed by orbital insertion 
+    # TODO: add AEROBRAKING as a subset of INSERTION 
     # TODO: consider REENTRY as a future option, where we evaluate whether or not the target
     # has an atmosphere 
 
@@ -138,130 +142,127 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
 
     return events
 
+"""
+Encapsulates graph-based navigational logic for the universe.
+
+This module represents the universe as a NetworkX graph built from Location objects.
+It provides helper methods to:
+  1. Build or rebuild the universe graph.
+  2. Return the neighbors for a given node.
+  3. Retrieve a "local" graph, i.e. all nodes reachable from a given location within a maximum scale.
+  4. Find the nearest node from a starting location that satisfies a specified condition.
+
+These functions will be used by the RouteServer for advanced route planning and maneuver determination.
+"""
+
+import networkx as nx
+from collections import deque
+from django.core.exceptions import ObjectDoesNotExist
+from .base import Location
+from .scale import Scale
+
 class UniverseGraph:
-    """Graph representation of the universe for navigation"""
     _instance = None
-    _graph: Optional[nx.Graph] = None
-    
-    @classmethod
-    def get_instance(cls) -> 'UniverseGraph':
-        if cls._instance is None:
-            cls._instance = cls()
-            cls._instance.rebuild_graph()  # Build the graph immediately
-        return cls._instance
-                
-    def _get_relation_items(self, obj: Any, attr_name: str):
-        """Helper to safely obtain items from a reverse relationship."""
-        items = getattr(obj, attr_name, [])
-        # If the attribute has an .all() method (as Django managers do), use it.
-        if hasattr(items, "all"):
-            return items.all()
-        # Otherwise assume it's already an iterable (list, etc.)
-        return items
 
-    def _normalize(self, item: Any) -> Any:
-        """
-        Normalize a related item to a model instance.
-        If the item is a tuple, assume the first element is the model.
-        """
-        if isinstance(item, tuple):
-            return item[0]
-        return item
+    @staticmethod
+    def get_instance():
+        if UniverseGraph._instance is None:
+            UniverseGraph._instance = UniverseGraph()
+        return UniverseGraph._instance
 
-    def rebuild_graph(self) -> None:
-        """Rebuild the universe graph from database relationships with full hierarchy"""
+    def __init__(self):
+        self._graph = None  # Will hold an instance of a networkx graph.
+
+    def rebuild_graph(self):
+        """
+        Rebuilds the universe graph from all Location objects and their interconnections.
+        For each Location, an edge is added to each of its neighbors (assumed to be available via a 'neighbors'
+        relationship).
+        """
         G = nx.Graph()
-        
-        # Retrieve all subclass objects so that we get their real types.
-        from mysite.universe.models import Galaxy, StarSystem, Star, Planet, Moon, Station
-        
-        objects = list(
-            {
-                obj.pk: obj
-                for obj in chain(
-                    Galaxy.objects.all(),
-                    StarSystem.objects.all(),
-                    Star.objects.all(),
-                    Planet.objects.all(),
-                    Moon.objects.all(),
-                    Station.objects.all(),
-                )
-            }.values()
-        )
-        
-        # First add all nodes
-        for loc in objects:
-            G.add_node(loc.id, name=loc.name)
-            # print(f"{loc.id}: {loc.name} is of type {type(loc)}")
-        
-        # print("\nAdded all nodes. Now creating edges:")
-        
-        for loc in objects:
-            # Upward edge: if this object defines an 'orbits' attribute
-            if hasattr(loc, "orbits"):
-                parent = loc.orbits  # May be None even if the attribute exists.
-                if parent:
-                    parent = self._normalize(parent)
-                    if hasattr(parent, "id"):
-                        G.add_edge(loc.id, parent.id)
-        #              print(f"Added upward edge: {loc.name} <-> {parent.name}")
-            
-            # Downward edges using reverse relationships:
-            if hasattr(loc, "star_systems"):
-                for system in self._get_relation_items(loc, "star_systems"):
-                    system = self._normalize(system)
-                    if hasattr(system, "id"):
-                        G.add_edge(loc.id, system.id)
-        #               print(f"Added star system edge: {loc.name} <-> {system.name}")
-            
-            if hasattr(loc, "stars"):
-                for star in self._get_relation_items(loc, "stars"):
-                    star = self._normalize(star)
-                    if hasattr(star, "id"):
-                        G.add_edge(loc.id, star.id)
-        #               print(f"Added star edge: {loc.name} <-> {star.name}")
-            
-            if hasattr(loc, "planets"):
-                for planet in self._get_relation_items(loc, "planets"):
-                    planet = self._normalize(planet)
-                    if hasattr(planet, "id"):
-                        G.add_edge(loc.id, planet.id)
-                        #print(f"Added planet edge: {loc.name} <-> {planet.name}")
-            
-            if hasattr(loc, "moons"):
-                for moon in self._get_relation_items(loc, "moons"):
-                    moon = self._normalize(moon)
-                    if hasattr(moon, "id"):
-                        G.add_edge(loc.id, moon.id)
-        #               print(f"Added moon edge: {loc.name} <-> {moon.name}")
-            
-            if hasattr(loc, "orbiting_stations"):
-                for station in self._get_relation_items(loc, "orbiting_stations"):
-                    station = self._normalize(station)
-                    if hasattr(station, "id"):
-                        G.add_edge(loc.id, station.id)
-        #               print(f"Added station edge: {loc.name} <-> {station.name}")
-        
-        print(f"\nGraph built with {len(G.nodes)} nodes and {len(G.edges())} edges")
+        for loc in Location.objects.all():
+            G.add_node(loc.id)
+            # If a Location defines a 'neighbors' relationship (for example, via a ManyToManyField), add the edges.
+            if hasattr(loc, "neighbors"):
+                for neighbor in loc.neighbors.all():
+                    G.add_edge(loc.id, neighbor.id)
         self._graph = G
 
-    def get_path(self, origin: Location, destination: Location) -> List[Location]:
-        """Find shortest path between two locations"""
-        if not self._graph:
+    def get_neighbors(self, node: Location):
+        """
+        Retrieves all neighboring Location objects for a given node.
+        """
+        if self._graph is None:
             self.rebuild_graph()
-            
-        print(f"\nSearching for path from {origin.name} to {destination.name}")
-        print(f"Origin ID: {origin.id}, Destination ID: {destination.id}")
-        
         try:
-            path = nx.shortest_path(self._graph, origin.id, destination.id)
-            print(f"Found path: {path}")
-            # Instead of using Location.objects.get, use get_real_instance
-            return [Location.objects.get(id=node_id) for node_id in path]
+            neighbor_ids = list(self._graph.neighbors(node.id))
+            return [Location.objects.get(id=nid) for nid in neighbor_ids]
+        except (KeyError, ObjectDoesNotExist):
+            return []
+
+    def get_path(self, origin: Location, destination: Location):
+        """
+        Returns the shortest path between two Locations as a list.
+        Raises a ValueError if no valid path exists.
+        """
+        if self._graph is None:
+            self.rebuild_graph()
+        try:
+            path_ids = nx.shortest_path(self._graph, origin.id, destination.id)
+            return [Location.objects.get(id=node_id) for node_id in path_ids]
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
 
-# end of UniverseGraph 
+    def local_graph(self, relative_location: Location, max_scale: Scale = None):
+        """
+        Returns a list of Location objects reachable from 'relative_location' whose scale is less than
+        or equal to 'max_scale'. If max_scale is not provided, relative_location.scale is used.
+        
+        If relative_location.scale is greater than max_scale, an empty list is returned.
+        """
+        if max_scale is None:
+            max_scale = relative_location.scale
+        # If the starting node is already "too large," return an empty list.
+        if relative_location.scale > max_scale:
+            return []
+        visited = set()
+        local_nodes = []
+        queue = deque([relative_location])
+        while queue:
+            current = queue.popleft()
+            if current.id in visited:
+                continue
+            visited.add(current.id)
+            if current.scale <= max_scale:
+                local_nodes.append(current)
+                for neighbor in self.get_neighbors(current):
+                    if neighbor.id not in visited and neighbor.scale <= max_scale:
+                        queue.append(neighbor)
+        return local_nodes
+
+    def find_nearest_node(self, start: Location, condition, max_scale: Scale = None):
+        """
+        Finds and returns the nearest Location from 'start' that satisfies the given condition (a callable that
+        accepts a Location and returns True when the condition is met).
+
+        If 'max_scale' is provided, only nodes with scale <= max_scale are considered in the search.
+        If not supplied, the search considers the entire graph.
+        """
+        visited = set()
+        queue = deque([start])
+        while queue:
+            current = queue.popleft()
+            # Skip nodes that exceed the maximum allowed scale.
+            if max_scale and current.scale > max_scale:
+                continue
+            if condition(current):
+                return current
+            visited.add(current.id)
+            for neighbor in self.get_neighbors(current):
+                if neighbor.id not in visited:
+                    queue.append(neighbor)
+        # If no node satisfies the condition, return None.
+        return None
 
 """
 Helper functions for graph-based navigation queries.
