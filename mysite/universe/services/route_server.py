@@ -9,7 +9,7 @@ to synthesize navigation events from the low-level graph path.
 
 from typing import List, Optional
 from ..models.base import Location
-from ..models.scale import Scale
+from ..models.scale import Scale, OrderedScale
 from ..models.station import Station
 from ..models.navigation import ManeuverType, UniverseGraph
 from dataclasses import dataclass
@@ -164,7 +164,7 @@ class RouteService:
         max_scale, that neighbor is omitted.
         """
         universe = UniverseGraph.get_instance()
-        return universe.local_graph(current, max_scale)
+        return universe.local_graph(current, OrderedScale(max_scale))
 
     def generate_segment_events(
         self, start: Location, end: Location, final: bool = False

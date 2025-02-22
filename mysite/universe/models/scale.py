@@ -1,47 +1,36 @@
-"""
-Provides an enhanced Scale implementation that preserves our two-character
-text values (for XML import and database storage) and plain-English descriptions,
-while also supporting comparison operators (<, <=, >, >=, ==, !=) via a custom ordering.
-
-This is achieved by defining a custom string subclass, OrderedScale, that uses a
-predefined mapping to determine ordering, then using OrderedScale as the value type
-in our TextChoices enumeration.
-"""
-
-from django.db import models
-from django.utils.translation import gettext_lazy as _
 from functools import total_ordering
+from typing import Union
+from django.db import models
+from django.utils.translation import gettext as _
 
 @total_ordering
 class OrderedScale(str):
-    """
-    A string subclass that supports ordering based on a custom mapping.
-    
-    The mapping defines the relative sizes of each scale:
-    'SS' (space station) < 'MN' (moon) < 'PL' (planet) < 'SR' (star) < 'SY' (star system) < 'GX' (galaxy)
-    """
     ORDERING = {
-        'SS': 1,  # space station
-        'MN': 2,  # moon
-        'PL': 3,  # planet
-        'SR': 4,  # star
-        'SY': 5,  # star system
-        'GX': 6,  # galaxy
+        'SS': 1,
+        'MN': 2,
+        'PL': 3,
+        'SR': 4,
+        'SY': 5,
+        'GX': 6,
     }
 
-    def __new__(cls, value):
-        # Create a new instance of OrderedScale as a string.
-        obj = str.__new__(cls, value)
-        return obj
+    def __new__(cls, value: Union[str, "OrderedScale"]) -> "OrderedScale":
+        return super().__new__(cls, value)
 
-    def __lt__(self, other):
-        if isinstance(other, str):
-            return OrderedScale.ORDERING.get(self, 0) < OrderedScale.ORDERING.get(other, 0)
+    def __hash__(self) -> int:
+        print(f"Hashing OrderedScale: {self}")
+        return hash(str(self))
+
+    def __lt__(self, other: Union[str, "OrderedScale"]) -> bool:
+        print(f"Comparing {self} < {other}")
+        if isinstance(other, (OrderedScale, str)):
+            return self.ORDERING[str(self)] < self.ORDERING.get(str(other), 0)
         return NotImplemented
 
-    def __eq__(self, other):
-        if isinstance(other, str):
-            return OrderedScale.ORDERING.get(self, 0) == OrderedScale.ORDERING.get(other, 0)
+    def __eq__(self, other: Union[str, "OrderedScale"]) -> bool:
+        print(f"Comparing {self} == {other}")
+        if isinstance(other, (OrderedScale, str)):
+            return self.ORDERING[str(self)] == self.ORDERING.get(str(other), 0)
         return NotImplemented
 
 class Scale(models.TextChoices):

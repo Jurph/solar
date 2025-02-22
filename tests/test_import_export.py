@@ -53,6 +53,18 @@ class ImportExportTest(TestCase):
                     if planets:
                         for planet in planets:
                             print(f"    Planet: {planet.name} (ID: {planet.pk})")
+                            if hasattr(planet, 'station'):
+                                planetstations = planet.station.all()
+                                for pstation in planetstations:
+                                    print(f"        Station: {pstation.name} (ID: {pstation.pk})")
+                            if hasattr(planet, 'moon'):
+                                planetmoons = planet.moon.all()
+                                for pmoon in planetmoons:
+                                    print(f"        Moon   : {pmoon.name} (ID: {pmoon.pk})")
+                                    if hasattr(pmoon, 'station'):
+                                        mstations = pmoon.station.all()
+                                        for mstation in mstations:
+                                            print(f"            Station: {mstation.name} (ID: {mstation.pk})")
                     moons = star.moons.all()
                     if moons:
                         for moon in moons:
