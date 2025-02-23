@@ -2,7 +2,6 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, List, Any
 import networkx as nx
-from django.db import models
 from .base import Location
 from .station import Station
 from collections import deque
@@ -180,27 +179,24 @@ class UniverseGraph:
         
         The graph is undirected so that an edge from A to B is traversable both ways.
         """
-        G = nx.Graph()
+        self._graph = nx.Graph()
         for loc in Location.objects.all():
             concrete = loc.get_concrete_instance()
-            G.add_node(concrete.id)
+            self._graph.add_node(concrete.id, location=concrete)
+
             if hasattr(concrete, "orbits") and concrete.orbits is not None:
                 # Ensure the parent is also concrete.
                 parent = concrete.orbits.get_concrete_instance()
-                G.add_edge(concrete.id, parent.id)
-        self._graph = G
+                self._graph.add_edge(concrete.id, parent.id)
 
-    def get_neighbors(self, node: Location):
+    def get_neighbors(self, location: Location) -> List[Location]:
         """
-        Retrieves all neighboring Location objects for a given node.
+        Returns the neighboring Location objects connected to the given Location in the graph.
         """
-        if self._graph is None:
-            self.rebuild_graph()
         try:
-            neighbor_ids = list(self._graph.neighbors(node.get_concrete_instance().id))
-            # Return concrete instances for consistency.
-            return [Location.objects.get(id=nid).get_concrete_instance() for nid in neighbor_ids]
-        except (KeyError, ObjectDoesNotExist):
+            neighbors_ids = list(self._graph.neighbors(location.id))
+            return [self._graph.nodes[nid]['location'] for nid in neighbors_ids]
+        except nx.NetworkXError:
             return []
 
     def get_path(self, origin: Location, destination: Location):
@@ -218,18 +214,10 @@ class UniverseGraph:
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
 
-    def local_graph(self, relative_location: "Location", max_scale=None) -> List[Location]:
+    def get_local_graph(self, relative_location: Location, max_scale: Optional[OrderedScale] = None) -> List[Location]:
         """
-        Returns a list of concrete Location objects representing the
-        connected component (local area) reachable from the starting node,
-        filtering out any whose ordered_scale does not meet the allowed granularity.
-        
-        In our ordering, higher numerical values represent larger, more global scales.
-        If the starting node's ordered scale is higher than max_scale, it means that
-        it is more global than permitted, and we return [].
-        
-        For example, if max_scale is PLANET, then any object (or connected object)
-        whose ordered_scale is at least that of a planet (e.g., Moon, Station) will be included.
+        Returns all Location objects reachable from 'relative_location' whose scale is less than or equal to 'max_scale'.
+        If 'max_scale' is None, it defaults to the scale of 'relative_location'.
         """
         concrete = relative_location.get_concrete_instance()
         if max_scale is None:
@@ -237,29 +225,24 @@ class UniverseGraph:
         elif not isinstance(max_scale, OrderedScale):
             max_scale = OrderedScale(max_scale)
 
-        # Return an empty list if the starting object's scale is more global (higher)
-        # than the allowed max_scale. For example, a StarSystem queried with max_scale(Scale=PLANET)
-        # Otherwise this could return many unconnected moons, stations, and planets in a system
-        
-        if concrete.ordered_scale > max_scale:
-            return []
-            
-        if self._graph is None:
-            self.rebuild_graph()
-        try:
-            start_id = concrete.id
-            component_ids = nx.node_connected_component(self._graph, start_id)
-        except nx.NetworkXError:
-            return []
-        # Retrieve concrete instances for all nodes in the component.
-        component_locations = [
-            Location.objects.get(id=nid).get_concrete_instance() for nid in list(component_ids)
-        ]
-        # Include only nodes with an ordered scale that is detailed enough,
-        # i.e. greater than or equal to max_scale.
-        local_nodes = [
-            loc for loc in component_locations if loc.ordered_scale >= max_scale
-        ]
+        visited = set()
+        queue = deque([concrete])
+        local_nodes = []
+
+        while queue:
+            current = queue.popleft()
+            if current.id in visited:
+                continue
+            visited.add(current.id)
+
+            # Ensure we're doing the scale comparison correctly
+            current_scale = OrderedScale(current.scale) if not isinstance(current.scale, OrderedScale) else current.scale
+            if current_scale <= max_scale:
+                local_nodes.append(current)
+                for neighbor in self.get_neighbors(current):
+                    if neighbor.id not in visited:
+                        queue.append(neighbor)
+
         return local_nodes
 
     def find_nearest_node(self, start: Location, condition, max_scale=None):
@@ -399,16 +382,20 @@ def effective_controller(location: Location) -> Optional[Station]:
 def print_tree(universe_graph, root_id, level=0, visited=None):
     if visited is None:
         visited = set()
-    
+
     # Access the internal NetworkX graph
     graph = universe_graph._graph
-    
+
     # Mark the current node as visited
     visited.add(root_id)
-    
+
     # Print the current node with indentation based on its level
     node_data = graph.nodes[root_id]
-    print("  " * level + f"Node {root_id}: {node_data.get('location', 'Unknown')}")
+    location = node_data.get('location')
+    if location:
+        print("  " * level + f"Node {root_id}: {location.name}")
+    else:
+        print("  " * level + f"Node {root_id}: {'Unknown'}")
 
     # Recursively print all unvisited children
     for neighbor in graph.neighbors(root_id):

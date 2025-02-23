@@ -164,7 +164,7 @@ class RouteService:
         max_scale, that neighbor is omitted.
         """
         universe = UniverseGraph.get_instance()
-        return universe.local_graph(current, OrderedScale(max_scale))
+        return universe.get_local_graph(current, OrderedScale(max_scale))
 
     def generate_segment_events(
         self, start: Location, end: Location, final: bool = False

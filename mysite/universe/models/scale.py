@@ -4,7 +4,7 @@ from django.db import models
 from django.utils.translation import gettext as _
 
 @total_ordering
-class OrderedScale(str):
+class OrderedScale(int):
     ORDERING = {
         'SS': 1,
         'MN': 2,
@@ -14,24 +14,27 @@ class OrderedScale(str):
         'GX': 6,
     }
 
-    def __new__(cls, value: Union[str, "OrderedScale"]) -> "OrderedScale":
+    def __new__(cls, value: Union[str, int, "OrderedScale"]) -> "OrderedScale":
+        if isinstance(value, OrderedScale):
+            return value
+        if isinstance(value, str):
+            try:
+                numeric_value = cls.ORDERING[value]
+            except KeyError:
+                raise ValueError(f"Invalid scale code: {value}")
+            return super().__new__(cls, numeric_value)
         return super().__new__(cls, value)
+    
+    def __str__(self) -> str:
+        # Convert back to code for string representation
+        for code, value in self.ORDERING.items():
+            if value == self:
+                return code
+        return str(int(self))
 
     def __hash__(self) -> int:
         print(f"Hashing OrderedScale: {self}")
         return hash(str(self))
-
-    def __lt__(self, other: Union[str, "OrderedScale"]) -> bool:
-        print(f"Comparing {self} < {other}")
-        if isinstance(other, (OrderedScale, str)):
-            return self.ORDERING[str(self)] < self.ORDERING.get(str(other), 0)
-        return NotImplemented
-
-    def __eq__(self, other: Union[str, "OrderedScale"]) -> bool:
-        print(f"Comparing {self} == {other}")
-        if isinstance(other, (OrderedScale, str)):
-            return self.ORDERING[str(self)] == self.ORDERING.get(str(other), 0)
-        return NotImplemented
 
 class Scale(models.TextChoices):
     """
