@@ -199,10 +199,22 @@ class UniverseGraph:
         except nx.NetworkXError:
             return []
 
-    def get_path(self, origin: Location, destination: Location):
+    def get_path(self, origin: Location, destination: Location) -> List[Location]:
         """
-        Returns the shortest path between two Locations as a list.
-        Raises a ValueError if no valid path exists.
+        Calculate the shortest path between two Locations in the universe graph.
+
+        This method finds the shortest path from the origin Location to the destination Location
+        using the universe graph. It returns a list of Location objects representing the path.
+        
+        Parameters:
+        - origin (Location): The starting point of the path.
+        - destination (Location): The endpoint of the path.
+
+        Returns:
+        - List[Location]: A list of Location objects representing the shortest path from origin to destination.
+
+        Raises:
+        - ValueError: If no valid path exists between the origin and destination.
         """
         if self._graph is None:
             self.rebuild_graph()
@@ -213,7 +225,9 @@ class UniverseGraph:
             return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
-
+        
+        
+        
     def get_local_graph(self, relative_location: Location, max_scale: Optional[OrderedScale] = None) -> List[Location]:
         """
         Returns all Location objects reachable from 'relative_location' whose scale is less than or equal to 'max_scale'.
