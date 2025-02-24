@@ -52,7 +52,8 @@ So then I might have the following tables:
 
 ## Orbits and Transfers as Events 
 
-- Departing from a Station requires a LAUNCH event using reaction engines 
+- Departing from a Station requires that you UNDOCK before a local TRANSFER using reaction engines 
+- Departing froma Moon or Planet you LAUNCH instead 
 - After a LAUNCH you nearly always CIRCULARIZE with reaction engines (unless your LAUNCH maneuver is actually a DIRECT ASCENT maneuver, which takes you from one local body straight into the landing pattern of another, or straight out to a TRANSFER. A DIRECT ASCENT is disruptive and dangerous!)
 - To travel between two Planets you need to do a PLANE CHANGE and then a TRANSFER, but this lets you skip the intervening Star / StarSystem - in other words, you don't really need to orbit Sol in order to go from Jupiter to Mars. Interplanetary travel within-system is done on sublight engines (.95C)  
 - Entering a Planet's sphere of influence after a sublight TRANSFER you'll need to CIRCULARIZE, again on reaction engines. 
@@ -60,6 +61,23 @@ So then I might have the following tables:
 - After you have CIRCULARIZEd at the Planet or Moon closest to your destination you can either DOCK (at a Station) or LAND (at a Moon or Planet)
 - If you need to change StarSystems, it's polite to TRANSFER to Solar Orbit around the nearest Star on sublight engines, then use a HYPERSPACE maneuver, but just like a TRANSFER lets you go planet-to-planet, a HYPERSPACE lets you go from star-to-star without ascending up to the intervening StarSystem or Galaxy node(s). You don't want to use your HYPERSPACE drive too close to a planet because the gravity well messes up the inertial calculations.   
 - If you arrive in a planetary system with no colonies, no Dispatch, and no Control, it's polite to broadcast your intentions - "This is PUMA SWEDE, broadcasting my intention to land. I'll be on 57 degrees inclination inbound in one hour." But if there's no colony... why are you taking cargo there? 
+
+## A Cleaner and More Complete List of Maneuver Rules 
+
+1. If your path starts with a Station, UNDOCK then do an INSERTION burn and then CIRCULARIZE to orbit.  
+2. If your path starts with a Moon or Planet, and the destination is a neighbor, you can do a DIRECT ASCENT followed by whatever arrival is appropriate (DOCK, or DEORBIT and LAND). This lets you skip the INSERTION and CIRCULARIZE steps, since your trip is so short.     
+3. If your path starts with a Moon or Planet and your destination is not a neighbor, you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit. 
+4. Once in orbit, evaluate the scales of the two bodies that are next in your list. Transfers in the local area around a Planet (from Luna to Earth, for example, or Mars to Phobos) are SUBLIGHT and don't require a PLANE CHANGE. You can shorthand this as "if the next object in the path is a Planet, no PLANE CHANGE required".   
+5. Transfers from a Planet or a Dwarf Planet (a Moon directly orbiting a Star) to anywhere outside the Planet's local scale but within the same StarSystem (Mars to Earth, Mars to Jupiter, etc.) require a PLANE CHANGE. Basically, if the next object on the path is a Star, skip the Star and deal with the StarSystem scale. Do a PLANE CHANGE and then a SUBLIGHT transfer within the StarSystem. You don't have to orbit the Star or look for a controller here! It's a Hohmann transfer and now you're at the StarSystem scale.  
+6. If the object after the StarSystem is still in the same StarSystem, skip the Star and begin the arrival process. 
+7. If the object after the StarSystem is in a different StarSystem, do a HYPERDRIVE transfer, skip the other StarSystem's Star, and start the arrival process.  
+8. As you work your way back down the path from Star scale to your destination's scale, you'll need to finish your transfers with an INSERTION burn and then CIRCULARIZE around the Planet. You're coming from a long way away, so do a PLANE CHANGE to prepare for the rest of your trip.    
+9. If the Planet is your destination you can then DEORBIT and LAND.
+10. If a station in orbit around the Planet is your destination, you can DOCK.  
+11. If you need to travel to the planet's Moon next, do a SUBLIGHT transfer. 
+12. If the Moon is your destination, you can DEORBIT and LAND.  
+13. If a station around the Moon is your destination, you can CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCk.  
+
 
 ## Radio etiquette 
 
