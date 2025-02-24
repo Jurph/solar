@@ -57,35 +57,6 @@ class RouteService:
                 current_station = candidate
         return events
 
-    def build_navigation_events(self, path: List[Location]) -> List[NavigationEvent]:
-        """
-        [Legacy helper]
-        Transforms a path (a list of Locations) into a series of basic navigation events.
-        This method is retained for simpler maneuvers.
-        """
-        events = []
-        if not path:
-            return events
-
-        for i in range(len(path) - 1):
-            current, nxt = path[i], path[i + 1]
-            if current.scale < nxt.scale:
-                maneuver = "HYPERSPACE"
-                description = f"Hyperspace jump from {current.name} to {nxt.name}"
-            else:
-                maneuver = "TRANSFER"
-                description = f"Standard transfer from {current.name} to {nxt.name}"
-            events.append(NavigationEvent(maneuver=maneuver, target=nxt, description=description))
-
-        destination = path[-1]
-        if destination.get_type_name() == "Station":
-            events.append(NavigationEvent(maneuver="DOCK", target=destination,
-                                        description=f"Dock at {destination.name}"))
-        else:
-            events.append(NavigationEvent(maneuver="LAND", target=destination,
-                                        description=f"Land on {destination.name}"))
-        return events
-
     def effective_controller(self, location: Location) -> Optional[Station]:
         """
         Determines the controlling Station for a given Location.
@@ -167,7 +138,7 @@ class RouteService:
         return universe.get_local_graph(current, OrderedScale(max_scale))
 
     def generate_segment_events(
-        self, start: Location, end: Location, final: bool = False
+        self, start: Location, end: Location, path: List[Location], final: bool = False
     ) -> List[NavigationEvent]:
         """
         Generates a list of NavigationEvent objects that transition from the 'start' location to the 'end'
@@ -176,99 +147,121 @@ class RouteService:
         1. Departure:
             - If at a Station: UNDOCK, then TRANSFER burn, then CIRCULARIZE.
             - If at a Planet or Moon: LAUNCH, then INSERTION burn, then CIRCULARIZE.
-            (TODO: Handle the case where the origin exceeds Planet scale.)
         
         2. Transit:
-            - From a Moon: perform a short TRANSFER burn.
-            - From a Planet to a Moon: include a PLANE CHANGE maneuver, then a short TRANSFER burn.
-            - From a Planet to another Planet: execute a standard TRANSFER burn.
-            - (If departing from a Station, the initial transfer is already provided.)
+            - Use SUBLIGHT for transfers within the same star system.
+            - Use HYPERDRIVE for transfers between different star systems or galaxies.
         
         3. Arrival:
             - For intermediate stops (final=False) at a Planet or Moon: perform an INSERTION burn followed by CIRCULARIZATION
                 to capture orbit.
             - For final segments (final=True):
-             * At a Planet or Moon: execute a DEORBIT burn followed by LANDING.
-             * At a Station: perform a DOCK maneuver.
+            * At a Planet or Moon: execute a DEORBIT burn followed by LANDING.
+            * At a Station: perform a DOCK maneuver.
         
         Returns:
             List[NavigationEvent]: A list of events for the segment.
         """
         events: List[NavigationEvent] = []
+        universe = UniverseGraph.get_instance()
 
-        # Departure sequence
-        if start.scale == Scale.STATION:
-            events.extend([
-                NavigationEvent(maneuver="UNDOCK", target=start,
-                                description=f"Undock from station {start.name}"),
-                NavigationEvent(maneuver="TRANSFER", target=start,
-                                description=f"Initial transfer burn from station {start.name}"),
-                NavigationEvent(maneuver="CIRCULARIZE", target=start,
-                                description=f"Circularize after undocking at {start.name}")
-            ])
-        elif start.scale in {Scale.PLANET, Scale.MOON}:
-            events.extend([
-                NavigationEvent(maneuver="LAUNCH", target=start,
-                                description=f"Launch from {start.name}"),
-                NavigationEvent(maneuver="INSERTION", target=start,
-                                description=f"Insertion burn to exit {start.name}'s gravity well"),
-                NavigationEvent(maneuver="CIRCULARIZE", target=start,
-                                description=f"Circularize orbit after launch from {start.name}")
-            ])
-        else:
-            events.append(
-                NavigationEvent(maneuver="UNKNOWN_DEPARTURE", target=start,
-                                description=f"Departure procedure for scale {start.scale} not defined")
-            )
 
-        # Transit maneuvers based on origin and destination types
-        if start.scale == Scale.MOON:
-            events.append(
-                NavigationEvent(maneuver="TRANSFER", target=end,
-                                description=f"Short sublight transfer burn from moon {start.name}")
-            )
-        elif start.scale == Scale.PLANET and end.scale == Scale.MOON:
-            events.extend([
-                NavigationEvent(maneuver="PLANE_CHANGE", target=end,
-                                description=f"Plane change maneuver from planet {start.name} for transfer to moon {end.name}"),
-                NavigationEvent(maneuver="TRANSFER", target=end,
-                                description=f"Short sublight transfer burn from {start.name} to {end.name}")
-            ])
-        elif start.scale == Scale.PLANET and end.scale == Scale.PLANET:
-            events.append(
-                NavigationEvent(maneuver="TRANSFER", target=end,
-                                description=f"Sublight transfer burn from planet {start.name} to planet {end.name}")
-            )
-        elif start.scale == Scale.STATION and end.scale != Scale.STATION:
-            # No additional transit event needed if departing from a station.
-            pass
+        for i in range(len(path) - 1):
+            start = path[i]
+            end = path[i + 1]
+            is_final_segment = final and (i == len(path) - 2)
 
-        # Arrival sequence: differentiate between intermediate and final segments.
-        if final:
-            if end.scale in {Scale.PLANET, Scale.MOON}:
-                events.extend([
-                    NavigationEvent(maneuver="DEORBIT", target=end,
-                                    description=f"Deorbit burn to approach {end.name}"),
-                    NavigationEvent(maneuver="LANDING", target=end,
-                                    description=f"Landing procedure at {end.name}")
-                ])
-            elif end.scale == Scale.STATION:
+            # Departure sequence
+            if start.scale == Scale.STATION:  # Rule 1
+                if end in universe.get_neighbors(start) and is_final_segment:
+                    events.extend([
+                        NavigationEvent(maneuver="UNDOCK", target=start,
+                                        description=f"Undock from station {start.name}"),
+                        NavigationEvent(maneuver="DIRECT_ASCENT", target=start,
+                                        description=f"Direct ascent from {start.name} to {end.name}")
+                    ])
+                else:
+                    events.extend([
+                        NavigationEvent(maneuver="UNDOCK", target=start,
+                                        description=f"Undock from station {start.name}"),
+                        NavigationEvent(maneuver="TRANSFER", target=start,
+                                        description=f"Initial transfer burn from station {start.name}"),
+                        NavigationEvent(maneuver="CIRCULARIZE", target=start,
+                                        description=f"Circularize after undocking at {start.name}")
+                    ])
+            elif start.scale in {Scale.PLANET, Scale.MOON}:
+                if end in universe.get_neighbors(start) and is_final_segment:
+                    # DIRECT ASCENT for neighbors - Rule 2 
+                    events.append(
+                        NavigationEvent(maneuver="DIRECT_ASCENT", target=start,
+                                        description=f"Direct ascent from {start.name} to {end.name}")
+                    )
+                else:   # Rule 3 
+                    events.extend([
+                        NavigationEvent(maneuver="LAUNCH", target=start,
+                                        description=f"Launch from {start.name}"),
+                        NavigationEvent(maneuver="INSERTION", target=start,
+                                        description=f"Insertion burn to exit {start.name}'s gravity well"),
+                        NavigationEvent(maneuver="CIRCULARIZE", target=start,
+                                        description=f"Circularize orbit after launch from {start.name}")
+                    ])
+            else:
                 events.append(
-                    NavigationEvent(maneuver="DOCK", target=end,
-                                    description=f"Docking procedure at station {end.name}")
+                    NavigationEvent(maneuver="UNKNOWN_DEPARTURE", target=start,
+                                    description=f"Departure procedure for scale {start.scale} not defined")
                 )
-        else:
-            if end.scale in {Scale.PLANET, Scale.MOON}:
-                events.extend([
-                    NavigationEvent(maneuver="INSERTION", target=end,
-                                    description=f"Insertion burn to get captured by {end.name}'s gravity well"),
-                    NavigationEvent(maneuver="CIRCULARIZE", target=end,
-                                    description=f"Orbit circularization at {end.name}")
-                ])
-            elif end.scale == Scale.STATION:
-                # Intermediate docking (rare, but possible)
+
+            # Determine the maximum scale on the path
+            max_scale = max(location.scale for location in path)
+
+            if max_scale <= Scale.STARSYSTEM:
+                # Same star system
+                while end.ordered_scale > start.ordered_scale and i < len(path) - 1:
+                    i += 1
+                    end = path[i + 1]
                 events.append(
-                    NavigationEvent(maneuver="DOCK", target=end,
-                                    description=f"Docking procedure at station {end.name} [intermediate]")
+                    NavigationEvent(maneuver="SUBLIGHT", target=end,
+                                    description=f"Sublight transfer from {start.name} to {end.name}")
                 )
+            else:
+                # Different star systems
+                while end.ordered_scale > start.ordered_scale and i < len(path) - 1:
+                    i += 1
+                    end = path[i + 1]
+                events.append(
+                    NavigationEvent(maneuver="HYPERDRIVE", target=end,
+                                    description=f"Hyperdrive jump from {start.name} to {end.name}")
+                )
+
+            # Arrival sequence: differentiate between intermediate and final segments.
+            if is_final_segment:
+                if end.scale in {Scale.PLANET, Scale.MOON}:
+                    events.extend([
+                        NavigationEvent(maneuver="DEORBIT", target=end,
+                                        description=f"Deorbit burn to approach {end.name}"),
+                        NavigationEvent(maneuver="LANDING", target=end,
+                                        description=f"Landing procedure at {end.name}")
+                    ])
+                elif end.scale == Scale.STATION:
+                    events.append(
+                        NavigationEvent(maneuver="DOCK", target=end,
+                                        description=f"Docking procedure at station {end.name}")
+                    )
+            else:
+                if end.scale in {Scale.PLANET, Scale.MOON}:
+                    events.extend([
+                        NavigationEvent(maneuver="INSERTION", target=end,
+                                        description=f"Insertion burn to get captured by {end.name}'s gravity well"),
+                        NavigationEvent(maneuver="CIRCULARIZE", target=end,
+                                        description=f"Orbit circularization at {end.name}")
+                    ])
+                elif end.scale == Scale.STATION:
+                    # Intermediate docking (rare, but possible)
+                    events.append(
+                        NavigationEvent(maneuver="DOCK", target=end,
+                                        description=f"Docking procedure at station {end.name} [intermediate]")
+                    )
+            
+            i+=1
+            
         return events

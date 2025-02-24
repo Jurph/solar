@@ -40,41 +40,10 @@ class ImportExportTest(TestCase):
             "moons": Moon.objects.count(),
             "stations": Station.objects.count(),
         }
-        pprint(counts)
-
-        print("\n---- Detailed Star Systems ----")
-        for system in StarSystem.objects.all():
-            print(f"System: {system.name} (ID: {system.pk})")
-            stars = system.stars.all()
-            if stars:
-                for star in stars:
-                    print(f"  Star: {star.name} (ID: {star.pk})")
-                    planets = star.planets.all()
-                    if planets:
-                        for planet in planets:
-                            print(f"    Planet: {planet.name} (ID: {planet.pk})")
-                            if hasattr(planet, 'station'):
-                                planetstations = planet.orbiting_station.all()
-                                for pstation in planetstations:
-                                    print(f"        Station: {pstation.name} (ID: {pstation.pk})")
-                            if hasattr(planet, 'moon'):
-                                planetmoons = planet.moons.all()
-                                for pmoon in planetmoons:
-                                    print(f"        Moon   : {pmoon.name} (ID: {pmoon.pk})")
-                                    if hasattr(pmoon, 'station'):
-                                        mstations = pmoon.orbiting_station.all()
-                                        for mstation in mstations:
-                                            print(f"            Station: {mstation.name} (ID: {mstation.pk})")
-                    moons = star.moons.all()
-                    if moons:
-                        for moon in moons:
-                            print(f"    Moon: {moon.name} (ID: {moon.pk})")
-            else:
-                print("  No stars found!")
-        print("==== End Debug Info ====")
-
-        # Optionally, you can also assert at least one system is imported.
+        pprint(counts)        # Optionally, you can also assert at least one system is imported.
         self.assertGreater(StarSystem.objects.count(), 0, "Expected at least one star system.")
+        self.assertGreater(Planet.objects.count(), 0, "Expected at least one planet.")
+        self.assertGreater(Moon.objects.count(), 0, "Expected at least one moon.")
 
     def test_import_export_roundtrip(self):
         """
