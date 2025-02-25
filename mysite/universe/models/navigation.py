@@ -219,9 +219,16 @@ class UniverseGraph:
         if self._graph is None:
             self.rebuild_graph()
         try:
+            path = []
             origin_id = origin.get_concrete_instance().id
             dest_id = destination.get_concrete_instance().id
             path_ids = nx.shortest_path(self._graph, origin_id, dest_id)
+            print(f"Calculated path from {origin.name} to {destination.name}:")
+            for nid in path_ids:
+                path.append(Location.objects.get(id=nid).get_concrete_instance())
+            for node in path:   
+                print(f" - {node.name} (Scale: {node.scale})")
+            print(f"Total nodes in path: {len(path)}")
             return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
