@@ -64,20 +64,26 @@ So then I might have the following tables:
 
 ## A Cleaner and More Complete List of Maneuver Rules 
 
-1. If your path starts with a Station, UNDOCK then do an INSERTION burn and then CIRCULARIZE to orbit.  
-2. If your path starts with a Moon or Planet, and the destination is a neighbor, you can do a DIRECT ASCENT followed by whatever arrival is appropriate (DOCK, or DEORBIT and LAND). This lets you skip the INSERTION and CIRCULARIZE steps, since your trip is so short.     
-3. If your path starts with a Moon or Planet and your destination is not a neighbor, you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit. 
-4. Once in orbit, evaluate the scales of the two bodies that are next in your list. Transfers in the local area around a Planet (from Luna to Earth, for example, or Mars to Phobos) are SUBLIGHT and don't require a PLANE CHANGE. You can shorthand this as "if the next object in the path is a Planet, no PLANE CHANGE required".   
-5. Transfers from a Planet or a Dwarf Planet (a Moon directly orbiting a Star) to anywhere outside the Planet's local scale but within the same StarSystem (Mars to Earth, Mars to Jupiter, etc.) require a PLANE CHANGE. Basically, if the next object on the path is a Star, skip the Star and deal with the StarSystem scale. Do a PLANE CHANGE and then a SUBLIGHT transfer within the StarSystem. You don't have to orbit the Star or look for a controller here! It's a Hohmann transfer and now you're at the StarSystem scale.  
-6. If the object after the StarSystem is still in the same StarSystem, skip the Star and begin the arrival process. 
-7. If the object after the StarSystem is in a different StarSystem, do a HYPERDRIVE transfer, skip the other StarSystem's Star, and start the arrival process.  
-8. As you work your way back down the path from Star scale to your destination's scale, you'll need to finish your transfers with an INSERTION burn and then CIRCULARIZE around the Planet. You're coming from a long way away, so do a PLANE CHANGE to prepare for the rest of your trip.    
-9. If the Planet is your destination you can then DEORBIT and LAND.
-10. If a station in orbit around the Planet is your destination, you can DOCK.  
-11. If you need to travel to the planet's Moon next, do a SUBLIGHT transfer. 
-12. If the Moon is your destination, you can DEORBIT and LAND.  
-13. If a station around the Moon is your destination, you can CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCk.  
+1. First, figure out what kind of Departure you need: 
+    - If your path starts with a Station, UNDOCK then do an INSERTION burn and then CIRCULARIZE to orbit.  
+    - If your path starts with a Moon or Planet, and the destination is a neighbor, you can do a DIRECT ASCENT followed by whatever arrival is appropriate (DOCK, or DEORBIT and LAND). This lets you skip the INSERTION and CIRCULARIZE steps, since your trip is so short.
+    - If your path starts with a Moon or Planet and your destination is not a neighbor, you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit. 
 
+2. You'll need to combine different Transfers to get across space:
+
+    - Transfers within the local area around a Planet (from Luna to Earth, for example, or Mars to Phobos) are SUBLIGHT and don't require a PLANE CHANGE. You can shorthand this as "if the local planet is the single largest-scale object in the path, no PLANE CHANGE required". Just do a SUBLIGHT transfer between the two points on the path.     
+    - If the local Star is the single largest-scale object on the path, then you will need a PLANE CHANGE, and then a SUBLIGHT transfer within the star system: not to the local Star, but to the destination planet! This replaces a (planet -> star -> planet) series of points on the path with a single transfer event.  
+    - If the local StarSystem is the single largest-scale object on the path, then you will still need a PLANE CHANGE and a SUBLIGHT transfer within the star system. Again, this creates a transfer event between two planet-scale objects and replaces (planet -> star -> starsystem -> star -> planet) with a single transfer event.  
+    - If the largest scale in the path is higher than StarSystem, then you need a HYPERDRIVE transfer, but luckily that means you can skip the plane change. You'll do a SUBLIGHT transfer away from the Planet scale, a HYPERSPACE transfer to the destination system, and a SUBLIGHT transfer to the Planet. 
+    - Finish all of these transfers with an INSERTION burn and then CIRCULARIZE around the Planet. You're coming from a long way away, so do a PLANE CHANGE to re-orient and prepare for the rest of your trip.
+
+3. When you arrive in orbit around the last planet on your itinerary, prepare for Arrival: 
+
+    - If the Planet is your destination you can then DEORBIT and LAND.
+    - If a station in orbit around the Planet is your destination, you can DOCK.  
+    - If you need to travel to the planet's Moon next, do a SUBLIGHT transfer. 
+    - If the Moon is your destination, you can DEORBIT and LAND.  
+    - If a station around the Moon is your destination, you can CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCK.  
 
 ## Radio etiquette 
 
