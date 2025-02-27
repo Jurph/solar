@@ -10,18 +10,21 @@ from .scale import OrderedScale
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
-    CIRCULARIZE = "circularize"    
-    INSERTION = "insertion"         # always followed by circularization 
-    DOCK = "dock"                  
-    HYPERSPACE = "hyperspace"      
-    LANDING = "landing"            
-    LAUNCH = "launch"               # always followed by orbital insertion         
-    PLANE_CHANGE = "plane_change"  
-    TRANSFER = "transfer"          
-    UNDOCK = "undock"               # always followed by orbital insertion 
-    # TODO: add AEROBRAKING as a subset of INSERTION 
+    CIRCULARIZE = "circularize"
+    DEORBIT = "deorbit"
+    DIRECT_ASCENT = "direct ascent"
+    DOCK = "dock"
+    HYPERSPACE = "hyperspace"
+    INSERTION = "insertion"         # always followed by circularization
+    LANDING = "landing"
+    LAUNCH = "launch"               # always followed by orbital insertion
+    PLANE_CHANGE = "plane change"
+    SUBLIGHT = "sublight"
+    TRANSFER = "transfer"
+    UNDOCK = "undock"               # always followed by orbital insertion
+    # TODO: add AEROBRAKING as a subset of INSERTION
     # TODO: consider REENTRY as a future option, where we evaluate whether or not the target
-    # has an atmosphere 
+    # has an atmosphere
 
 @dataclass
 class NavigationStep:

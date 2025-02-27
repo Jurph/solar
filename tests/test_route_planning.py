@@ -109,13 +109,13 @@ class TestManeuverPlanning(TestCase):
         self.route_service = RouteService()
         # IMPORTANT: store the universe instance for later tests.
         self.universe = UniverseGraph.get_instance()
-
+        
     def test_direct_ascent_earth_to_moon(self):
         origin = self.earth
         destination = self.moon
         events = self.route_service.plan_route(origin, destination)
         expected_maneuvers = ["DIRECT_ASCENT", "DEORBIT", "LANDING"]
-        actual_maneuvers = [event.maneuver for event in events]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
 
     def test_direct_ascent_earth_control_to_earth(self):
@@ -123,21 +123,40 @@ class TestManeuverPlanning(TestCase):
         destination = self.earth
         events = self.route_service.plan_route(origin, destination)
         expected_maneuvers = ["UNDOCK", "DIRECT_ASCENT", "DEORBIT", "LANDING"]
-        actual_maneuvers = [event.maneuver for event in events]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
 
     def test_sublight_transfer_between_moons(self):
         origin = self.moon
         destination = self.luna
         events = self.route_service.plan_route(origin, destination)
-        expected_maneuvers = ["LAUNCH", "INSERTION", "CIRCULARIZE", "SUBLIGHT", "DEORBIT", "LANDING"]
-        actual_maneuvers = [event.maneuver for event in events]
+        expected_maneuvers = [
+            "LAUNCH",      # Depart Moon
+            "INSERTION",   # Enter Earth orbit
+            "CIRCULARIZE", # Stabilize Earth orbit
+            "SUBLIGHT",    # Transfer to Luna
+            "CIRCULARIZE", # Establish Luna orbit
+            "DEORBIT",     # Begin landing sequence
+            "LANDING"      # Land on Luna
+        ]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
 
     def test_transfer_earth_to_phobos_station(self):
         origin = self.earth
         destination = self.phobos_station
         events = self.route_service.plan_route(origin, destination)
-        expected_maneuvers = ["LAUNCH", "INSERTION", "CIRCULARIZE", "SUBLIGHT", "DOCK"]
-        actual_maneuvers = [event.maneuver for event in events]
+        expected_maneuvers = [
+            "LAUNCH",        # Depart Earth
+            "INSERTION",     # Enter Earth orbit
+            "CIRCULARIZE",   # Stabilize Earth orbit
+            "PLANE_CHANGE",  # Align for Mars transfer
+            "SUBLIGHT",      # Transfer to Mars
+            "CIRCULARIZE",   # Establish Mars orbit
+            "SUBLIGHT",      # Transfer to Phobos
+            "CIRCULARIZE",   # Establish Phobos orbit
+            "PLANE_CHANGE",  # Align for station approach
+            "DOCK"           # Dock at Phobos Control
+        ]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
