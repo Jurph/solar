@@ -6,7 +6,15 @@ We are working with `ruff` which incorporates the best features of `black`, `fla
 
 ## File & Class Naming
 
+### Models
+Models use plain descriptive names, and capture essential things about how the world works. They are for the use of services; code calling them directly is probably wrong:
+- `navigation.py`
+- `location.py`
+- `ship.py`
+
 ### Services
+Services compose model features together. By pulling in parts of  `ship.py` and `celestial.py` and `navigation.py`, the `route_server.py` can generate routes without risking circular imports. The simulation should be built on services! 
+
 All service-layer components use the suffix `_server` but offer up a class `Service`::
 - `route_server.py` exposes `routeService` - Not `route_service.py` or `routeServer`
 - `script_server.py` exposes `scriptService` - Not `script_service.py` or `scriptServer`
@@ -18,12 +26,6 @@ Classes within these files follow the same convention:
 class RouteServer:  # Not RouteService
 class ScriptServer:  # Not ScriptService
 ```
-
-### Models
-Models use plain descriptive names:
-- `navigation.py`
-- `location.py`
-- `ship.py`
 
 ### Commands
 Management commands use descriptive action names:
@@ -38,6 +40,7 @@ from ...services.route_server import RouteServer
 ```
 
 ## Code Style
+- Follow "ruff"s best practices 
 - Follow Black formatting
 - Follow PEP 8
 - Use type hints
@@ -47,3 +50,9 @@ from ...services.route_server import RouteServer
 - Test files mirror implementation files
 - Use pytest-style tests
 - Include docstrings in test functions
+- Test tiny simple things first then build up 
+
+## Architecture 
+- We prefer tiny modular pieces that are well isolated  
+- Don't repeat yourself! 
+- Helper functions, all day long 

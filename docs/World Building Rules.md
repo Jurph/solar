@@ -80,10 +80,11 @@ So then I might have the following tables:
 3. When you arrive in orbit around the last planet on your itinerary, prepare for Arrival: 
 
     - If the Planet is your destination you can then DEORBIT and LAND.
-    - If a station in orbit around the Planet is your destination, you can DOCK.  
-    - If you need to travel to the planet's Moon next, do a SUBLIGHT transfer. 
-    - If the Moon is your destination, you can DEORBIT and LAND.  
-    - If a station around the Moon is your destination, you can CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCK.  
+    - If the Planet is not your final destination you should CIRCULARIZE around the Planet to get into a stable orbit for subsequent maneuvers. 
+    - Once circularized, if a station in orbit around the Planet is your destination, you can then DOCK.  
+    - If you need to travel to the planet's Moon next, you'll need to do a SUBLIGHT transfer to that Moon. 
+    - If the Moon is your destination, you can go straight from transfer to DEORBIT and LAND.  
+    - If a station around the Moon is your destination, you will need to CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCK.  
 
 ## Radio etiquette 
 
