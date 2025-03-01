@@ -96,13 +96,13 @@
           <name>Ceres</name>
           <scale>MN</scale>
           <variety>R</variety>
-            <station>
-                <name>Ceres Control</name>
-                <scale>SS</scale>
-                <large_berths>1</large_berths>
-                <medium_berths>2</medium_berths>
-                <small_berths>4</small_berths>
-            </station>
+          <station>
+            <name>Ceres Control</name>
+            <scale>SS</scale>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>4</small_berths>
+          </station>
         </moon>
       </star>
     </system>
