@@ -104,6 +104,8 @@ class TestManeuverPlanning(TestCase):
         self.mars = Location.objects.get(name="Mars")
         self.sol = Location.objects.get(name="Sol")
         self.beta_minor_moon = Location.objects.get(name="Beta Minor Moon")
+        self.beta_major = Location.objects.get(name="Beta Major")
+        self.beta_major_moon = Location.objects.get(name="Beta Moon 1")
         self.phobos_station = Location.objects.get(name="Phobos Control")
         # -- Set up a Route Service -- 
         self.route_service = RouteService()
@@ -125,7 +127,6 @@ class TestManeuverPlanning(TestCase):
         expected_maneuvers = ["LAUNCH", "DIRECT_ASCENT", "DEORBIT", "LANDING"]
         actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
-
 
     def test_direct_ascent_earth_control_to_earth(self):
         origin = self.earth_control
@@ -169,3 +170,25 @@ class TestManeuverPlanning(TestCase):
         ]
         actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
+
+    def test_hyperdrive_travel_between_planets(self):
+        origin = self.earth
+        destination = self.beta_major
+        events = self.route_service.plan_route(origin, destination)
+        expected_maneuvers = [
+            "LAUNCH",        # Depart Earth
+            "INSERTION",     # Enter Earth orbit
+            "CIRCULARIZE",   # Stabilize Earth orbit
+            "SUBLIGHT",      # Execute sublight burn to depart local orbit
+            "HYPERSPACE",    # Perform hyperspace jump
+            "SUBLIGHT",      # Execute sublight burn into destination orbit
+            "CIRCULARIZE",   # Stabilize Beta Major orbit
+            "DEORBIT",       # Begin landing sequence
+            "LANDING"        # Land on Beta Major
+        ]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
+        self.assertEqual(actual_maneuvers, expected_maneuvers)
+
+    def test_hyperdrive_travel_between_planet_and_moon(self):
+        origin = self.earth
+        destination = self.beta_major

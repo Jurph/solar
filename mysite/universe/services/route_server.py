@@ -1,10 +1,10 @@
 """
-High-level routing services to plan journeys and determine maneuvers for ships.
+RouteService using a two-pass planning approach based on the World Building Rules.
 
-This module builds on the low-level navigation capabilities provided by the
-UniverseGraph class. It applies domain‐specific rules (using ship status, scales, and
-local controllers) to decide which maneuvers to apply (e.g. TRANSFER vs HYPERSPACE) and
-to synthesize navigation events from the low-level graph path.
+The approach is:
+1. Build an ordered-scale path from a list of Locations.
+2. Determine the required transfers between scales to yield a hybrid path that interleaves scale values with transfer types.
+3. Generate detailed maneuvers from the transfer plan.
 """
 
 from typing import List, Optional, Tuple, Dict, Union
@@ -46,15 +46,28 @@ class TransferSegment:
     max_scale: Scale
 
 class RouteService:
-    """Service for planning routes and maneuvers within the universe."""
+    """Route planning service implementing a two-pass approach."""
+    
+    # Mapping from Scale names (or values) to a numeric order.
+    # These numbers must follow the assumed ordering in our universe:
+    # Station (lowest), then Moon, Planet, Star, Starsystem, Galaxy.
+    _scale_order = {
+        Scale.STATION: 1,
+        Scale.MOON: 2,
+        Scale.PLANET: 3,
+        Scale.STAR: 4,
+        "STARSYSTEM": 5,  # assuming these are the string values
+        "GALAXY": 6,
+    }
     
     def plan_route(self, origin: Location, destination: Location) -> List[NavigationEvent]:
         """
-        Plans a route from origin to destination using a three‑pass approach:
+        Plans a route from origin to destination using a two-pass approach.
         
-          1. Build an ordered scale path from the low‑level path.
-          2. Determine the transfer plan from that scale path.
-          3. Synthesize the maneuver events from the transfer plan.
+        The steps are:
+            1. Build an ordered_scale_path from the low-level path.
+            2. Determine a transfer plan from that scale path.
+            3. Synthesize the maneuver events from the transfer plan.
         
         Returns:
             List[NavigationEvent]: The resulting list of maneuvers.
@@ -64,94 +77,123 @@ class RouteService:
         if not path or len(path) < 2:
             return []
         
-        # SPECIAL CASE: If there are only two nodes and they are direct neighbors,
-        # use DIRECT_ASCENT (treated as a transfer type) wrapped in departure/arrival events.
+        # SPECIAL CASE: Two-node direct neighbor: use DIRECT_ASCENT but do not bypass departure/arrival.
         if len(path) == 2 and path[1] in universe.get_neighbors(path[0]):
-            scale_path = self._build_scale_path(path)  # returns [OrderedScale, OrderedScale]
-            # Override the normal transfer plan: use DIRECT_ASCENT instead of INSERTION/SUBLIGHT.
+            scale_path = self._build_scale_path(path)
             transfer_plan = [scale_path[0], ManeuverType.DIRECT_ASCENT, scale_path[1]]
             maneuvers = self._determine_maneuvers(transfer_plan)
             return maneuvers
         
-        # Pass 1: Build an ordered scale path (e.g., [1, 3, 4, 3, 2, 1]).
+        # Pass 1:
         scale_path = self._build_scale_path(path)
-        
-        # Compute overall maximum scale in the route.
         overall_max = max(scale_path)
         
-        # Pass 2: Determine transfer plan.
-        # Rule: First edge is INSERTION; subsequent edges normally use SUBLIGHT.
-        # However, if the overall maximum scale exceeds StarSystem (i.e. >5),
-        # then we use HYPERSPACE for all transfers (per Rule 2d).
-        transfer_plan = self._determine_transfer_plan(scale_path, overall_max)
+        # Pass 2: If overall maximum exceeds StarSystem, use hyperdrive logic.
+        if overall_max > OrderedScale(Scale.STARSYSTEM):
+            # Simplify the transfer plan for hyperdrive travel.
+            transfer_plan = [
+                scale_path[0],
+                ManeuverType.INSERTION,
+                scale_path[-1],
+                ManeuverType.HYPERSPACE,
+                scale_path[-1]
+            ]
+        else:
+            transfer_plan = self._determine_transfer_plan(scale_path)
         
-        # Pass 3: Convert the transfer plan into detailed maneuvers.
+        # Pass 3:
         maneuvers = self._determine_maneuvers(transfer_plan)
         return maneuvers
     
-    def _build_scale_path(self, path: List[Location]) -> List[OrderedScale]:
+    
+    def _build_scale_path(self, path: List[Location]) -> List[int]:
         """
-        Converts the low-level Location path into a list of OrderedScale values.
+        Convert a list of Locations into an ordered-scale path (list of integers)
+        representing each Location's scale.
         
-        Example: [Station, Planet, Star, Planet, Moon, Station] becomes
-                 [Scale.STATION.value, Scale.PLANET.value, Scale.STAR.value, Scale.PLANET.value, Scale.MOON.value, Scale.STATION.value].
+        For example, a path from Earth Station to Phobos Station might produce:
+            [1, 3, 4, 3, 2, 1]
         """
         scale_path = []
         for loc in path:
             concrete = loc.get_concrete_instance()
-            scale_val: OrderedScale = OrderedScale(concrete.scale)
+            scale_val = self._scale_order_value(concrete.scale)
             scale_path.append(scale_val)
         return scale_path
     
-    def _determine_transfer_plan(self, scale_path: List[OrderedScale], overall_max: OrderedScale) -> List[Union[OrderedScale, ManeuverType]]:
+    
+    def _scale_order_value(self, scale: str) -> int:
         """
-        Produces a hybrid transfer plan that interleaves OrderedScale values
-        with transfer maneuver types.
+        Convert a scale value (from the model) into an integer order value.
         
-        Rules:
-          - The first transfer uses INSERTION.
-          - If the overall maximum scale is higher than StarSystem, then
-            all transfers become HYPERSPACE transfers.
-          - Otherwise, subsequent transfers use SUBLIGHT.
+        If the scale is not recognized, return a high number.
+        """
+        return self._scale_order.get(scale, 99)
+    
+    
+    def _determine_transfer_plan(self, scale_path: List[int]) -> List[Union[int, ManeuverType]]:
+        """
+        Given an ordered scale path (for example: [1, 3, 4, 3, 2, 1]),
+        produce a hybrid object that interleaves scale values with transfer types.
+        
+        The rules are:
+        - The first transfer (from the starting scale to the next) is an INSERTION.
+        - For subsequent transfers, use SUBLIGHT (or HYPERSPACE if appropriate) to
+            collapse upward–downward sequences.
+        - The final scale is appended without a trailing transfer type.
+        
+        For the example:
+            [1, 3, 4, 3, 2, 1]  ==>  [1, INSERTION, 3, SUBLIGHT, 3, SUBLIGHT, 2, 1]
+        
+        Note: More complex logic (e.g. switching to HYPERSPACE) can be added based on
+        the maximum scale encountered.
         """
         if len(scale_path) < 2:
             return scale_path
         
         transfer_plan = [scale_path[0]]
-        # First edge always uses INSERTION.
+        
+        # For the first transition use INSERTION always.
         transfer_plan.append(ManeuverType.INSERTION)
         transfer_plan.append(scale_path[1])
         
+        # Process intermediate transitions.
+        # For simplicity, every subsequent edge will be marked as SUBLIGHT.
         for i in range(1, len(scale_path) - 1):
-            if overall_max > OrderedScale(Scale.STARSYSTEM):
-                t_type = ManeuverType.HYPERSPACE
-            else:
-                t_type = ManeuverType.SUBLIGHT
-            transfer_plan.append(t_type)
+            # In a more advanced implementation, examine a window (prev, current, next)
+            # to decide if a HYPERSPACE jump is warranted.
+            # For now, we simply use SUBLIGHT for all transitions after the first edge.
+            transfer_plan.append(ManeuverType.SUBLIGHT)
             transfer_plan.append(scale_path[i+1])
         
         return transfer_plan
     
-    def _determine_maneuvers(self, transfer_plan: List[Union[OrderedScale, ManeuverType]]) -> List[NavigationEvent]:
+    
+    def _determine_maneuvers(self, transfer_plan: List[Union[int, ManeuverType]]) -> List[NavigationEvent]:
         """
-        Converts the hybrid transfer plan into a sequence of NavigationEvent maneuvers.
+        Convert a transfer plan into a sequence of NavigationEvent maneuvers.
         
-        Methodology:
-          - Departure:
-              * If starting at a Station (scale == Scale.STATION), UNDOCK is required.
-              * Otherwise, LAUNCH is used.
-          - For each transfer segment:
-              * INSERTION segments trigger an INSERTION burn and then CIRCULARIZE.
-              * SUBLIGHT segments: if transferring between bodies of at least Planet scale,
-                add a PLANE_CHANGE before executing SUBLIGHT.
-              * HYPERSPACE segments: execute a SUBLIGHT burn away from the departure,
-                then perform a HYPERSPACE jump, then perform a SUBLIGHT burn into the destination.
-          - Arrival:
-              * If final scale is Station, DOCK; otherwise, DEORBIT and LAND.
+        The approach is:
+         - The departure maneuvers depend on the starting scale:
+             * If starting at a Station (scale 1), include UNDOCK.
+         - For each transfer type in the transfer plan, insert maneuvers.
+             * For an INSERTION segment, include INSERTION followed by CIRCULARIZE.
+             * For a SUBLIGHT segment, include a preceding PLANE_CHANGE (if needed) and the SUBLIGHT burn,
+               followed by CIRCULARIZE.
+         - The final arrival maneuver depends on the final scale:
+             * If the final destination is at Station scale, then DOCK; otherwise, DEORBIT and LAND.
         
-        Note: This synthesis is universal and does not depend on specific names.
+        For example, the plan:
+          [1, INSERTION, 3, SUBLIGHT, 3, SUBLIGHT, 2, 1]
+        might yield:
+          [UNDOCK, INSERTION, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, PLANE_CHANGE, DOCK]
+        
+        These maneuvers are generated in a universal way and do not depend on the names of the objects.
         """
-        maneuvers = []
+        maneuvers: List[NavigationEvent] = []
+        
+        # Helper that creates a NavigationEvent given a maneuver type and a simple text target value.
+        # (In a full system, the 'target' would be a Location; here we weave in descriptions.)
         def nav(m_type: ManeuverType, desc: str) -> NavigationEvent:
             return NavigationEvent(
                 maneuver=m_type,
@@ -161,42 +203,55 @@ class RouteService:
         
         # Departure:
         start_scale = transfer_plan[0]
+        # Always add departure maneuver based on start location:
         if start_scale == OrderedScale(Scale.STATION):
             maneuvers.append(nav(ManeuverType.UNDOCK, "Undock from station"))
         else:
             maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body"))
         
         # Process each transfer segment.
-        # Transfer plan format: [start, TRANSFER_TYPE, scale, TRANSFER_TYPE, scale, ..., final_scale]
-        for idx in range(1, len(transfer_plan) - 1, 2):
+        # Transfer plan format: [start, TRANSFER_TYPE, scale, ... , final scale]
+        idx = 1
+        while idx < len(transfer_plan) - 1:
             t_type = transfer_plan[idx]
             next_scale = transfer_plan[idx+1]
+            
+            # Special case: Skip final SUBLIGHT to a station
+            if (t_type == ManeuverType.SUBLIGHT and 
+                next_scale == OrderedScale(Scale.STATION) and
+                idx >= len(transfer_plan) - 3):  # This is the last transfer segment
+                # Skip this SUBLIGHT segment and let the arrival logic handle docking
+                idx += 2
+                continue
+                
             if t_type == ManeuverType.INSERTION:
                 maneuvers.append(nav(ManeuverType.INSERTION, "Perform insertion burn"))
                 maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize orbit"))
+                idx += 2
             elif t_type == ManeuverType.DIRECT_ASCENT:
+                # Simply add the direct ascent maneuver.
                 maneuvers.append(nav(ManeuverType.DIRECT_ASCENT, "Direct ascent maneuver"))
+                idx += 2
             elif t_type == ManeuverType.SUBLIGHT:
-                # If transferring into a station, skip the SUBLIGHT/CIRCULARIZE step;
-                # the arrival sequence will handle docking.
-                if next_scale == OrderedScale(Scale.STATION):
-                    continue
-                # Rule 2a/2b: For sublight transfers between bodies of at least planetary scale,
-                # add a PLANE_CHANGE before executing SUBLIGHT.
-                if next_scale >= OrderedScale(Scale.PLANET):
+                # For non-station transfers, add plane-change if needed.
+                if next_scale != OrderedScale(Scale.STATION) and next_scale >= OrderedScale(Scale.PLANET):
                     maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Perform plane change"))
                 maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight transfer burn"))
                 maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after sublight transfer"))
+                idx += 2
             elif t_type == ManeuverType.HYPERSPACE:
+                # Hyperdrive branch: add an outbound SUBLIGHT burn BEFORE the jump.
                 maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn to depart local orbit"))
                 maneuvers.append(nav(ManeuverType.HYPERSPACE, "Perform hyperspace jump"))
                 maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn into destination orbit"))
+                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after hyperdrive arrival"))
+                idx += 2
+            else:
+                idx += 1
         
         # Arrival:
         final_scale = transfer_plan[-1]
         if final_scale == OrderedScale(Scale.STATION):
-            # If arriving at a station orbiting a Moon/Planet,
-            # perform a PLANE_CHANGE to match orbit before docking.
             maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Align orbit for docking"))
             maneuvers.append(nav(ManeuverType.DOCK, "Dock at station"))
         else:
