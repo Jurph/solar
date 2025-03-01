@@ -190,5 +190,13 @@ class TestManeuverPlanning(TestCase):
         self.assertEqual(actual_maneuvers, expected_maneuvers)
 
     def test_hyperdrive_travel_between_planet_and_moon(self):
-        origin = self.earth
-        destination = self.beta_major
+        origin = self.beta_major
+        destination = self.ceres
+        events = self.route_service.plan_route(origin, destination)
+        expected_maneuvers = [
+            "LAUNCH",        # Depart Beta Major
+            "INSERTION",     # Enter Beta Major orbit
+            "CIRCULARIZE",   # Stabilize Beta Major orbit
+            "SUBLIGHT",      # Execute sublight burn to depart local orbit
+            "HYPERSPACE",    # Perform hyperspace jump
+        
