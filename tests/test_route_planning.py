@@ -114,9 +114,18 @@ class TestManeuverPlanning(TestCase):
         origin = self.earth
         destination = self.moon
         events = self.route_service.plan_route(origin, destination)
-        expected_maneuvers = ["DIRECT_ASCENT", "DEORBIT", "LANDING"]
+        expected_maneuvers = ["LAUNCH", "DIRECT_ASCENT", "DEORBIT", "LANDING"]
         actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
+
+    def test_direct_ascent_moon_to_earth(self):
+        origin = self.moon
+        destination = self.earth
+        events = self.route_service.plan_route(origin, destination)
+        expected_maneuvers = ["LAUNCH", "DIRECT_ASCENT", "DEORBIT", "LANDING"]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
+        self.assertEqual(actual_maneuvers, expected_maneuvers)
+
 
     def test_direct_ascent_earth_control_to_earth(self):
         origin = self.earth_control
