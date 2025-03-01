@@ -92,18 +92,18 @@
             <small_berths>12</small_berths>
           </station>
         </planet>
-          <moon>
-            <name>Ceres</name>
-            <scale>MN</scale>
-            <variety>R</variety>
+        <moon>
+          <name>Ceres</name>
+          <scale>MN</scale>
+          <variety>R</variety>
             <station>
-                <name>Ceres Moon Control</name>
+                <name>Ceres Control</name>
                 <scale>SS</scale>
                 <large_berths>1</large_berths>
                 <medium_berths>2</medium_berths>
                 <small_berths>4</small_berths>
             </station>
-          </moon>
+        </moon>
       </star>
     </system>
     <system>

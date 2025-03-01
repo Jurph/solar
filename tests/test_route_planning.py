@@ -102,6 +102,7 @@ class TestManeuverPlanning(TestCase):
         self.luna = Location.objects.get(name="Luna")
         self.luna_orbital_control = Location.objects.get(name="Luna Orbital Control")
         self.mars = Location.objects.get(name="Mars")
+        self.ceres = Location.objects.get(name="Ceres")
         self.sol = Location.objects.get(name="Sol")
         self.beta_minor_moon = Location.objects.get(name="Beta Minor Moon")
         self.beta_major = Location.objects.get(name="Beta Major")
@@ -199,4 +200,4 @@ class TestManeuverPlanning(TestCase):
             "CIRCULARIZE",   # Stabilize Beta Major orbit
             "SUBLIGHT",      # Execute sublight burn to depart local orbit
             "HYPERSPACE",    # Perform hyperspace jump
-        
+        ]
