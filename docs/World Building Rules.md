@@ -65,26 +65,43 @@ So then I might have the following tables:
 ## A Cleaner and More Complete List of Maneuver Rules 
 
 1. First, figure out what kind of Departure you need: 
-    - If your path starts with a Station, UNDOCK then do an INSERTION burn and then CIRCULARIZE to orbit.  
-    - If your path starts with a Moon or Planet, and the destination is a neighbor, you can do a DIRECT ASCENT followed by whatever arrival is appropriate (DOCK, or DEORBIT and LAND). This lets you skip the INSERTION and CIRCULARIZE steps, since your trip is so short.
-    - If your path starts with a Moon or Planet and your destination is not a neighbor, you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit. 
+    a. If your path starts with a Station, UNDOCK then do an INSERTION burn and then CIRCULARIZE to orbit.  
+    b. If your path starts with a Moon or Planet, and the destination is a neighbor, you can do a DIRECT ASCENT followed by whatever arrival is appropriate (DOCK, or DEORBIT and LAND). This lets you skip the INSERTION and CIRCULARIZE steps, since your trip is so short.
+    c. If your path starts with a Moon or Planet and your destination is not a neighbor, you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit. 
 
 2. You'll need to combine different Transfers to get across space:
 
-    - Transfers within the local area around a Planet (from Luna to Earth, for example, or Mars to Phobos) are SUBLIGHT and don't require a PLANE CHANGE. You can shorthand this as "if the local planet is the single largest-scale object in the path, no PLANE CHANGE required". Just do a SUBLIGHT transfer between the two points on the path.     
-    - If the local Star is the single largest-scale object on the path, then you will need a PLANE CHANGE, and then a SUBLIGHT transfer within the star system: not to the local Star, but to the destination planet! This replaces a (planet -> star -> planet) series of points on the path with a single transfer event.  
-    - If the local StarSystem is the single largest-scale object on the path, then you will still need a PLANE CHANGE and a SUBLIGHT transfer within the star system. Again, this creates a transfer event between two planet-scale objects and replaces (planet -> star -> starsystem -> star -> planet) with a single transfer event.  
-    - If the largest scale in the path is higher than StarSystem, then you need a HYPERDRIVE transfer, but luckily that means you can skip the plane change. You'll do a SUBLIGHT transfer away from the Planet scale, a HYPERSPACE transfer to the destination system, and a SUBLIGHT transfer to the Planet. 
-    - Finish all of these transfers with an INSERTION burn and then CIRCULARIZE around the Planet. You're coming from a long way away, so do a PLANE CHANGE to re-orient and prepare for the rest of your trip.
+    a. Transfers within the local area around a Planet (from Luna to Earth, for example, or Mars to Phobos) are SUBLIGHT and don't require a PLANE CHANGE. You can shorthand this as "if the local planet is the single largest-scale object in the path, no PLANE CHANGE required". Just do a SUBLIGHT transfer between the two points on the path.     
+    b. If the local Star is the single largest-scale object on the path, then you will need a PLANE CHANGE, and then a SUBLIGHT transfer within the star system: not to the local Star, but to the destination planet! This replaces a (planet -> star -> planet) series of points on the path with a single transfer event.  
+    c. If the local StarSystem is the single largest-scale object on the path, then you will still need a PLANE CHANGE and a SUBLIGHT transfer within the star system. Again, this creates a transfer event between two planet-scale objects and replaces (planet -> star -> starsystem -> star -> planet) with a single transfer event.  
+    d. If the largest scale in the path is higher than StarSystem, then you need a HYPERDRIVE transfer, but luckily that means you can skip the plane change. You'll do a SUBLIGHT transfer away from the Planet scale, a HYPERSPACE transfer to the destination system, and a SUBLIGHT transfer to the Planet. 
+    e. Finish all of these transfers with an INSERTION burn and then CIRCULARIZE around the Planet. You're coming from a long way away, so do a PLANE CHANGE to re-orient and prepare for the rest of your trip.
 
 3. When you arrive in orbit around the last planet on your itinerary, prepare for Arrival: 
 
-    - If the Planet is your destination you can then DEORBIT and LAND.
-    - If the Planet is not your final destination you should CIRCULARIZE around the Planet to get into a stable orbit for subsequent maneuvers. 
-    - Once circularized, if a station in orbit around the Planet is your destination, you can then DOCK.  
-    - If you need to travel to the planet's Moon next, you'll need to do a SUBLIGHT transfer to that Moon. 
-    - If the Moon is your destination, you can go straight from transfer to DEORBIT and LAND.  
-    - If a station around the Moon is your destination, you will need to CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCK.  
+    a. If the Planet is your destination you can then DEORBIT and LAND.
+    b. If the Planet is not your final destination you should CIRCULARIZE around the Planet to get into a stable orbit for subsequent maneuvers. 
+    c. Once circularized, if a station in orbit around the Planet is your destination, you can then DOCK.  
+    d. If you need to travel to the planet's Moon next, you'll need to do a SUBLIGHT transfer to that Moon. 
+    e. If the Moon is your destination, you can go straight from transfer to DEORBIT and LAND.  
+    f. If a station around the Moon is your destination, you will need to CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCK.  
+
+## Implementing the departure, transfer, and arrival rules 
+
+Let's treat this purely as a string-replacement problem.  
+
+- Crawl the UniverseGraph using nx.shortestpath to get a "path" which includes node_ids 
+- Convert the node_ids to their orderedScale values to get a "scale_path". Since our graph is a tree these should be monotonically ascending and then monotonically descending inbound. Earth Orbital Control to Deimos would be [ 1, 3, 4, 3, 2 ] corresponding to [station -> planet -> star -> planet -> moon]. 
+- We'll first figure out what kinds of transfer burns (INSERTION, SUBLIGHT, or HYPERDRIVE) need to be added to the trip: 
+    - Our max scale is 4 (star) so we'll look for that scale as part of our calculation. 
+    - Starting at the max scale, work outward until we find something Planet-scale (3) or Moon-Scale at either end, which in this case is [3, 4, 3]. That segment must be a SUBLIGHT transfer away from Earth to Mars. Remove everything except the endpoints to get [1, 3] ... [3, 2]
+    - The hop from [1, 3] is an INSERTION and the hop from [3, 2] is also SUBLIGHT. So we will have three sublight transfers. 
+    - Critically, once we finish this step, **no "foreach" operations on path or scale_path are valid** because the number of transfer / maneuver events has been successfully decoupled from the number of UniverseGraph nodes we are traversing. 
+- You could imagine our work-in-progress might be in an interim data structure like "transfers = [[1, INSERTION, 3], [3, SUBLIGHT, 3], [3, SUBLIGHT, 2]]" if you like but lots of solutions will work here. A construct like a list of events, in the format [startscale, transfer-type, endscale] helps us use the rules to define what other maneuvers we need: 
+    - Our departure is from Station scale so we need an UNDOCK before the first INSERTION. To prepare for the SUBLIGHT transfer we need to CIRCULARIZE and possibly PLANE CHANGE.  
+    - Between the SUBLIGHT transfers, we need to CIRCULARIZE around Mars and PLANE CHANGE again.  
+    - After the SUBLIGHT to Deimos we have to DEORBIT and LAND.
+- Doing this analysis in two steps lets us find **transfers** (INSERTION, SUBLIGHT, HYPERDRIVE) and then sketch in the **maneuvers** separately (DOCK, UNDOCK, PLANE_CHANGE, etc.) while not being constrained to iteration loops that are the wrong length ("foreach i in path") that will invariably lead us astray and introduce bugs.   
 
 ## Radio etiquette 
 

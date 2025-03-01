@@ -7,7 +7,7 @@ local controllers) to decide which maneuvers to apply (e.g. TRANSFER vs HYPERSPA
 to synthesize navigation events from the low-level graph path.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Union
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
 from ..models.station import Station
@@ -29,340 +29,182 @@ class NavigationEvent:
     target: Location
     description: str = ""
 
+@dataclass(frozen=True)
+class TransferSegment:
+    """
+    Represents a high-level transfer between two locations.
+    
+    Attributes:
+        start: The starting location
+        end: The ending location
+        transfer_type: The type of transfer (SUBLIGHT, HYPERSPACE)
+        max_scale: The maximum scale encountered during this transfer
+    """
+    start: Location
+    end: Location
+    transfer_type: ManeuverType
+    max_scale: Scale
+
 class RouteService:
     """Service for planning routes and maneuvers within the universe."""
+    
     def plan_route(self, origin: Location, destination: Location) -> List[NavigationEvent]:
         """
-        Generates a series of NavigationEvent objects for a journey from origin to destination.
+        Plans a route from origin to destination using a three‑pass approach:
         
-        This method:
-        1. Uses UniverseGraph to obtain a path between origin and destination
-        2. Analyzes the path to determine the maximum scale encountered
-        3. Generates appropriate NavigationEvents based on the path structure
+          1. Build an ordered scale path from the low‑level path.
+          2. Determine the transfer plan from that scale path.
+          3. Synthesize the maneuver events from the transfer plan.
         
-        The event sequence follows strict rules:
-        
-        DEPARTURE (first few nodes of path):
-        - From Station: UNDOCK -> INSERTION -> CIRCULARIZE
-        - From Planet/Moon (to neighbor): DIRECT_ASCENT
-        - From Planet/Moon (not neighbor): LAUNCH -> INSERTION -> CIRCULARIZE
-        
-        TRANSIT (analyzed by maximum scale in path):
-        - Within local planet's influence (max_scale <= PLANET):
-            * SUBLIGHT transfer only
-        - Within star system (max_scale <= STAR):
-            * PLANE_CHANGE -> SUBLIGHT to destination planet
-            * Skip intermediate star-scale nodes
-        - Within star cluster (max_scale <= STARSYSTEM):
-            * PLANE_CHANGE -> SUBLIGHT to destination planet
-            * Skip intermediate system-scale nodes
-        - Between star systems (max_scale > STARSYSTEM):
-            * SUBLIGHT transfer away from origin planet
-            * HYPERDRIVE to destination system
-            * SUBLIGHT transfer to destination planet
-            * Skip all intermediate galaxy/cluster nodes
-        
-        ARRIVAL (final few nodes of path):
-        - To Planet: DEORBIT -> LAND
-        - To Station (around planet): DOCK
-        - To Moon: SUBLIGHT -> DEORBIT -> LAND
-        - To Station (around moon): SUBLIGHT -> CIRCULARIZE -> PLANE_CHANGE -> DOCK
-
-        Args:
-            origin: Starting Location
-            destination: Ending Location
-            
         Returns:
-            List[NavigationEvent]: Sequence of navigation events for the journey
-            
-        Raises:
-            ValueError: If no valid path exists between origin and destination
+            List[NavigationEvent]: The resulting list of maneuvers.
         """
-        # Get the complete path from the navigation graph
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
+        if not path or len(path) < 2:
+            return []
         
-        # Determine the maximum scale encountered in the path
-        max_scale = self._determine_max_scale(path)
+        # SPECIAL CASE: If there are only two nodes and they are direct neighbors,
+        # use DIRECT_ASCENT (treated as a transfer type) wrapped in departure/arrival events.
+        if len(path) == 2 and path[1] in universe.get_neighbors(path[0]):
+            scale_path = self._build_scale_path(path)  # returns [OrderedScale, OrderedScale]
+            # Override the normal transfer plan: use DIRECT_ASCENT instead of INSERTION/SUBLIGHT.
+            transfer_plan = [scale_path[0], ManeuverType.DIRECT_ASCENT, scale_path[1]]
+            maneuvers = self._determine_maneuvers(transfer_plan)
+            return maneuvers
         
-        events: List[NavigationEvent] = []
+        # Pass 1: Build an ordered scale path (e.g., [1, 3, 4, 3, 2, 1]).
+        scale_path = self._build_scale_path(path)
         
-        # Generate DEPARTURE sequence based on origin type and first hop
-        if len(path) > 1:
-            events.extend(self._generate_departure_sequence(path))
+        # Compute overall maximum scale in the route.
+        overall_max = max(scale_path)
         
-        # Generate TRANSIT sequence based on max_scale
-        if len(path) > 2:
-            events.extend(self._generate_transit_sequence(path[1:-1], max_scale))
+        # Pass 2: Determine transfer plan.
+        # Rule: First edge is INSERTION; subsequent edges normally use SUBLIGHT.
+        # However, if the overall maximum scale exceeds StarSystem (i.e. >5),
+        # then we use HYPERSPACE for all transfers (per Rule 2d).
+        transfer_plan = self._determine_transfer_plan(scale_path, overall_max)
         
-        # Generate ARRIVAL sequence based on destination type
-        if len(path) > 1:
-            events.extend(self._generate_arrival_sequence(path[-2:]))
-        
-        return events
-
-    def _determine_max_scale(self, path: List[Location]) -> Scale:
-        """Helper to determine the maximum scale encountered in a path."""
-        return max(location.scale for location in path)
-
-    def _generate_departure_sequence(self, path: List[Location]) -> List[NavigationEvent]:
-        """
-        Generate departure sequence based on WBR rules:
-        
-        Rule: "If your path starts with a Station, UNDOCK then do an INSERTION burn 
-        and then CIRCULARIZE to orbit."
-        
-        Rule: "If your path starts with a Moon or Planet, and the destination is a neighbor, 
-        you can do a DIRECT ASCENT"
-        
-        Rule: "If your path starts with a Moon or Planet and your destination is not a neighbor, 
-        you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit."
-        """
-        events: List[NavigationEvent] = []
-        start = path[0]
-        next_stop = path[1] if len(path) > 1 else None
-        universe = UniverseGraph.get_instance()
-
-        if start.scale == Scale.STATION:
-            if next_stop and next_stop in universe.get_neighbors(start) and len(path) == 2:
-                # Direct neighbor case
-                events.extend([
-                    NavigationEvent(
-                        maneuver=ManeuverType.UNDOCK,
-                        target=start,
-                        description=f"Undock from station {start.name}"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.DIRECT_ASCENT,
-                        target=next_stop,
-                        description=f"Direct ascent from {start.name} to {next_stop.name}"
-                    )
-                ])
-            else:
-                # Standard station departure
-                events.extend([
-                    NavigationEvent(
-                        maneuver=ManeuverType.UNDOCK,
-                        target=start,
-                        description=f"Undock from station {start.name}"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.INSERTION,
-                        target=start,
-                        description=f"Initial transfer burn from station {start.name}"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.CIRCULARIZE,
-                        target=start,
-                        description=f"Circularize after undocking at {start.name}"
-                    )
-                ])
-                
-        elif start.scale in {Scale.PLANET, Scale.MOON}:
-            if next_stop and next_stop in universe.get_neighbors(start) and len(path) == 2:
-                # Rule: "DIRECT ASCENT is disruptive and dangerous!"
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.DIRECT_ASCENT,
-                        target=next_stop,
-                        description=f"Direct ascent from {start.name} to {next_stop.name} - Caution: Disruptive maneuver!"
-                    )
-                )
-            else:
-                # Standard launch sequence
-                events.extend([
-                    NavigationEvent(
-                        maneuver=ManeuverType.LAUNCH,
-                        target=start,
-                        description=f"Launch from {start.name}"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.INSERTION,
-                        target=start,
-                        description=f"Insertion burn to exit {start.name}'s gravity well"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.CIRCULARIZE,
-                        target=start,
-                        description=f"Circularize orbit after launch from {start.name}"
-                    )
-                ])
-        return events
-
-    def _generate_transit_sequence(self, path: List[Location], max_scale: Scale) -> List[NavigationEvent]:
-        """
-        Generate transit maneuvers following World Building Rules document.
-        """
-        events: List[NavigationEvent] = []
-        i = 0
-        
-        while i < len(path) - 1:
-            start = path[i]
-            end = path[i + 1]
-            
-            # Rule: "Transfers within the local area around a Planet (from Luna to Earth, 
-            # for example, or Mars to Phobos) are SUBLIGHT and don't require a PLANE CHANGE"
-            if max_scale <= Scale.PLANET:
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.SUBLIGHT,
-                        target=end,
-                        description=f"Sublight transfer from {start.name} to {end.name}"
-                    )
-                )
-                # Rule: "Entering a Planet's sphere of influence after a sublight TRANSFER 
-                # you'll need to CIRCULARIZE"
-                if end.scale in [Scale.PLANET, Scale.MOON]:
-                    events.append(
-                        NavigationEvent(
-                            maneuver=ManeuverType.CIRCULARIZE,
-                            target=end,
-                            description=f"Establish orbit around {end.name}"
-                        )
-                    )
-                    
-            # Rule: "If the local Star is the single largest-scale object on the path, 
-            # then you will need a PLANE CHANGE, and then a SUBLIGHT transfer within the star system: 
-            # not to the local Star, but to the destination planet!"
-            elif max_scale <= Scale.STAR:
-                if start.scale <= Scale.PLANET:  # Only do plane change from planet-scale objects
-                    events.append(
-                        NavigationEvent(
-                            maneuver=ManeuverType.PLANE_CHANGE,
-                            target=end,
-                            description="Align for interplanetary transfer"
-                        )
-                    )
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.SUBLIGHT,
-                        target=path[-1],  # Direct to destination planet
-                        description=f"Sublight transfer to {path[-1].name}"
-                    )
-                )
-                # Skip intermediate star-scale nodes
-                while i < len(path) - 1 and path[i + 1].scale == Scale.STAR:
-                    i += 1
-                    
-            # Rule: "If the local StarSystem is the single largest-scale object on the path,
-            # then you will still need a PLANE CHANGE and a SUBLIGHT transfer within the star system"
-            elif max_scale <= Scale.STARSYSTEM:
-                if start.scale <= Scale.PLANET:
-                    events.append(
-                        NavigationEvent(
-                            maneuver=ManeuverType.PLANE_CHANGE,
-                            target=end,
-                            description="Align for system transfer"
-                        )
-                    )
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.SUBLIGHT,
-                        target=path[-1],  # Direct to destination planet
-                        description=f"Sublight transfer to {path[-1].name}"
-                    )
-                )
-                # Skip intermediate system-scale nodes
-                while i < len(path) - 1 and path[i + 1].scale == Scale.STARSYSTEM:
-                    i += 1
-                    
-            # Rule: "If the largest scale in the path is higher than StarSystem, then you need 
-            # a HYPERDRIVE transfer... You'll do a SUBLIGHT transfer away from the Planet scale, 
-            # a HYPERSPACE transfer to the destination system, and a SUBLIGHT transfer to the Planet"
-            else:
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.SUBLIGHT,
-                        target=start,
-                        description=f"Sublight transfer away from {start.name}"
-                    )
-                )
-                
-                # Find the destination planet/moon
-                dest_idx = len(path) - 1
-                while dest_idx > i and path[dest_idx].scale > Scale.PLANET:
-                    dest_idx -= 1
-                    
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.HYPERSPACE,
-                        target=path[dest_idx],
-                        description=f"Hyperspace jump to {path[dest_idx].name} system"
-                    )
-                )
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.SUBLIGHT,
-                        target=path[dest_idx],
-                        description=f"Sublight transfer to {path[dest_idx].name}"
-                    )
-                )
-                
-                # Skip all intermediate galaxy/cluster nodes
-                i = dest_idx - 1
-                
-            i += 1
-        return events
-
-    def _generate_arrival_sequence(self, path: List[Location]) -> List[NavigationEvent]:
-        """
-        Generate arrival sequence based on WBR rules:
-        
-        Rule: "If the Planet is your destination you can then DEORBIT and LAND"
-        Rule: "If the Planet is not your final destination you should CIRCULARIZE around 
-        the Planet to get into a stable orbit for subsequent maneuvers"
-        Rule: "If a station around the Moon is your destination, you will need to 
-        CIRCULARIZE around the Moon, do a PLANE CHANGE, and then DOCK"
-        """
-        events: List[NavigationEvent] = []
-        final_stop = path[-1]
-        parent = path[-2] if len(path) > 1 else None
-
-        if final_stop.scale == Scale.STATION:
-            if parent and parent.scale == Scale.MOON:
-                # Station around moon requires extra steps
-                events.extend([
-                    NavigationEvent(
-                        maneuver=ManeuverType.CIRCULARIZE,
-                        target=parent,
-                        description=f"Establish stable orbit around {parent.name}"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.PLANE_CHANGE,
-                        target=final_stop,
-                        description=f"Align for approach to {final_stop.name}"
-                    ),
-                    NavigationEvent(
-                        maneuver=ManeuverType.DOCK,
-                        target=final_stop,
-                        description=f"Dock at station {final_stop.name}"
-                    )
-                ])
-            else:
-                # Direct station docking
-                events.append(
-                    NavigationEvent(
-                        maneuver=ManeuverType.DOCK,
-                        target=final_stop,
-                        description=f"Dock at station {final_stop.name}"
-                    )
-                )
-        elif final_stop.scale in {Scale.PLANET, Scale.MOON}:
-            events.extend([
-                NavigationEvent(
-                    maneuver=ManeuverType.DEORBIT,
-                    target=final_stop,
-                    description=f"Begin descent to {final_stop.name}"
-                ),
-                NavigationEvent(
-                    maneuver=ManeuverType.LANDING,
-                    target=final_stop,
-                    description=f"Land on {final_stop.name}"
-                )
-            ])
-
-        return events
+        # Pass 3: Convert the transfer plan into detailed maneuvers.
+        maneuvers = self._determine_maneuvers(transfer_plan)
+        return maneuvers
     
+    def _build_scale_path(self, path: List[Location]) -> List[OrderedScale]:
+        """
+        Converts the low-level Location path into a list of OrderedScale values.
+        
+        Example: [Station, Planet, Star, Planet, Moon, Station] becomes
+                 [Scale.STATION.value, Scale.PLANET.value, Scale.STAR.value, Scale.PLANET.value, Scale.MOON.value, Scale.STATION.value].
+        """
+        scale_path = []
+        for loc in path:
+            concrete = loc.get_concrete_instance()
+            scale_val: OrderedScale = OrderedScale(concrete.scale)
+            scale_path.append(scale_val)
+        return scale_path
+    
+    def _determine_transfer_plan(self, scale_path: List[OrderedScale], overall_max: OrderedScale) -> List[Union[OrderedScale, ManeuverType]]:
+        """
+        Produces a hybrid transfer plan that interleaves OrderedScale values
+        with transfer maneuver types.
+        
+        Rules:
+          - The first transfer uses INSERTION.
+          - If the overall maximum scale is higher than StarSystem, then
+            all transfers become HYPERSPACE transfers.
+          - Otherwise, subsequent transfers use SUBLIGHT.
+        """
+        if len(scale_path) < 2:
+            return scale_path
+        
+        transfer_plan = [scale_path[0]]
+        # First edge always uses INSERTION.
+        transfer_plan.append(ManeuverType.INSERTION)
+        transfer_plan.append(scale_path[1])
+        
+        for i in range(1, len(scale_path) - 1):
+            if overall_max > OrderedScale(Scale.STARSYSTEM):
+                t_type = ManeuverType.HYPERSPACE
+            else:
+                t_type = ManeuverType.SUBLIGHT
+            transfer_plan.append(t_type)
+            transfer_plan.append(scale_path[i+1])
+        
+        return transfer_plan
+    
+    def _determine_maneuvers(self, transfer_plan: List[Union[OrderedScale, ManeuverType]]) -> List[NavigationEvent]:
+        """
+        Converts the hybrid transfer plan into a sequence of NavigationEvent maneuvers.
+        
+        Methodology:
+          - Departure:
+              * If starting at a Station (scale == Scale.STATION), UNDOCK is required.
+              * Otherwise, LAUNCH is used.
+          - For each transfer segment:
+              * INSERTION segments trigger an INSERTION burn and then CIRCULARIZE.
+              * SUBLIGHT segments: if transferring between bodies of at least Planet scale,
+                add a PLANE_CHANGE before executing SUBLIGHT.
+              * HYPERSPACE segments: execute a SUBLIGHT burn away from the departure,
+                then perform a HYPERSPACE jump, then perform a SUBLIGHT burn into the destination.
+          - Arrival:
+              * If final scale is Station, DOCK; otherwise, DEORBIT and LAND.
+        
+        Note: This synthesis is universal and does not depend on specific names.
+        """
+        maneuvers = []
+        def nav(m_type: ManeuverType, desc: str) -> NavigationEvent:
+            return NavigationEvent(
+                maneuver=m_type,
+                target=None,  # Target resolution logic can be added later.
+                description=desc
+            )
+        
+        # Departure:
+        start_scale = transfer_plan[0]
+        if start_scale == OrderedScale(Scale.STATION):
+            maneuvers.append(nav(ManeuverType.UNDOCK, "Undock from station"))
+        else:
+            maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body"))
+        
+        # Process each transfer segment.
+        # Transfer plan format: [start, TRANSFER_TYPE, scale, TRANSFER_TYPE, scale, ..., final_scale]
+        for idx in range(1, len(transfer_plan) - 1, 2):
+            t_type = transfer_plan[idx]
+            next_scale = transfer_plan[idx+1]
+            if t_type == ManeuverType.INSERTION:
+                maneuvers.append(nav(ManeuverType.INSERTION, "Perform insertion burn"))
+                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize orbit"))
+            elif t_type == ManeuverType.DIRECT_ASCENT:
+                maneuvers.append(nav(ManeuverType.DIRECT_ASCENT, "Direct ascent maneuver"))
+            elif t_type == ManeuverType.SUBLIGHT:
+                # If transferring into a station, skip the SUBLIGHT/CIRCULARIZE step;
+                # the arrival sequence will handle docking.
+                if next_scale == OrderedScale(Scale.STATION):
+                    continue
+                # Rule 2a/2b: For sublight transfers between bodies of at least planetary scale,
+                # add a PLANE_CHANGE before executing SUBLIGHT.
+                if next_scale >= OrderedScale(Scale.PLANET):
+                    maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Perform plane change"))
+                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight transfer burn"))
+                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after sublight transfer"))
+            elif t_type == ManeuverType.HYPERSPACE:
+                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn to depart local orbit"))
+                maneuvers.append(nav(ManeuverType.HYPERSPACE, "Perform hyperspace jump"))
+                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn into destination orbit"))
+        
+        # Arrival:
+        final_scale = transfer_plan[-1]
+        if final_scale == OrderedScale(Scale.STATION):
+            # If arriving at a station orbiting a Moon/Planet,
+            # perform a PLANE_CHANGE to match orbit before docking.
+            maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Align orbit for docking"))
+            maneuvers.append(nav(ManeuverType.DOCK, "Dock at station"))
+        else:
+            maneuvers.append(nav(ManeuverType.DEORBIT, "Begin deorbit burn"))
+            maneuvers.append(nav(ManeuverType.LANDING, "Perform landing maneuver"))
+        
+        return maneuvers
+
     def effective_controller(self, location: Location) -> Optional[Station]:
         """
         Determines the controlling Station for a given Location.
