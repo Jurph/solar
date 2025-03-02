@@ -14,6 +14,8 @@ class DictionaryService:
             'COLOR': self._load_wordlist('colors.txt'),
             'ELEMENT': self._load_wordlist('elements.txt'),
             'GIVEN': self._load_wordlist('givennames.txt'),
+            'GOODBYE': self._load_wordlist('goodbye.txt'),
+            'HELLO': self._load_wordlist('hello.txt'),
             'MATERIAL': self._load_wordlist('materials.txt'),
             'NUMBER': self._load_wordlist('numbers.txt'),
             'SURNAME': self._load_wordlist('surnames.txt')

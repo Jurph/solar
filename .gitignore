@@ -130,5 +130,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-mysite/universe/models/language/Qwen
-mysite/universe/models/language/Qwen
+
+# Qwen2.5 - users should download the repo separately and place it in the models folder
+mysite/universe/models/language/*
+mysite/universe/models/language/Qwen-2_5/*
+mysite/universe/models/language/Qwen-2_5 

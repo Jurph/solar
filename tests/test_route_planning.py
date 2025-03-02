@@ -224,3 +224,98 @@ class TestManeuverPlanning(TestCase):
         actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
     
+class TestControllerAssignment(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        """
+        Import the entire test universe from test_universe.xml.
+        This creates our objects for our tests.
+        """
+        xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
+        importer = UniverseImporter(xml_file)
+        importer.import_universe()
+        
+        universe = UniverseGraph.get_instance()
+        galaxy_location = Location.objects.get(name="Galactus")
+        print_tree(universe, root_id=galaxy_location.id)
+    
+    def setUp(self):
+        self.route_service = RouteService()
+        self.universe = UniverseGraph.get_instance()
+        self.earth = Location.objects.get(name="Earth")
+        self.moon = Location.objects.get(name="Moon")
+        self.earth_control = Location.objects.get(name="Earth Orbital Control")
+        self.moon_control = Location.objects.get(name="Moon Control")
+        self.alpha_prime = Location.objects.get(name="Alpha Prime")
+        self.beta_major = Location.objects.get(name="Beta Major")
+        self.ceres = Location.objects.get(name="Ceres")
+        self.universe.rebuild_graph()
+
+    def test_earth_control_is_controller_for_earth(self):
+        """Test that Earth Orbital Control is the controller for Earth"""
+        self.assertEqual(self.earth_control.name, "Earth Orbital Control")
+
+    def test_moon_control_is_controller_for_moon(self):
+        """Test that Moon Control is the controller for Moon"""
+        self.assertEqual(self.moon_control.name, "Moon Control")
+                
+    def test_controller_assignment_direct_ascent(self):
+        """Test that controllers are correctly assigned for direct ascent"""
+        origin = self.earth
+        destination = self.moon
+        events = self.route_service.plan_route(origin, destination)
+        print(events)
+        
+        self.assertEqual(events[0].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[1].controller.name, "Moon Control")
+        
+    def test_controller_assignment_hyperspace_journey(self):
+        """Test that controllers are correctly assigned for hyperspace journey"""
+        origin = self.earth
+        destination = self.alpha_prime
+        events = self.route_service.plan_route(origin, destination)
+        print(events)
+        
+        self.assertEqual(events[0].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[1].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[2].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[3].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[4].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[5].controller.name, "Alpha Prime Orbital Control")
+        self.assertEqual(events[6].controller.name, "Alpha Prime Orbital Control")
+        self.assertEqual(events[7].controller.name, "Alpha Prime Orbital Control")
+        self.assertEqual(events[8].controller.name, "Alpha Prime Orbital Control")
+        
+    def test_controller_assignment_planet_to_moon(self):
+        """Test that controllers are correctly assigned for planet to moon journey"""
+        origin = self.beta_major
+        destination = self.ceres
+        events = self.route_service.plan_route(origin, destination)
+        print(events)
+        
+        self.assertEqual(events[0].controller.name, "Beta Major Orbital Control") # Departure is always at the origin
+        self.assertEqual(events[1].controller.name, "Beta Major Orbital Control")
+        self.assertEqual(events[2].controller.name, "Beta Major Orbital Control")
+        self.assertEqual(events[3].controller.name, "Beta Major Orbital Control")
+        self.assertEqual(events[4].controller.name, "Beta Major Orbital Control")
+        self.assertEqual(events[5].controller.name, "Ceres Control")
+        self.assertEqual(events[6].controller.name, "Ceres Control")
+        self.assertEqual(events[7].controller.name, "Ceres Control")
+        self.assertEqual(events[8].controller.name, "Ceres Control")
+        
+    def test_controller_assignment_docking(self):
+        """Test that controllers are correctly assigned for docking operations"""
+        origin = self.ceres
+        destination = self.earth_control
+        events = self.route_service.plan_route(origin, destination)
+        
+        self.assertEqual(events[0].controller.name, "Ceres Control")
+        self.assertEqual(events[1].controller.name, "Ceres Control")
+        self.assertEqual(events[2].controller.name, "Ceres Control")
+        self.assertEqual(events[3].controller.name, "Ceres Control")
+        self.assertEqual(events[4].controller.name, "Ceres Control")
+        self.assertEqual(events[5].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[6].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[7].controller.name, "Earth Orbital Control")
+
+

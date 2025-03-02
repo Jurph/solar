@@ -50,17 +50,8 @@ class TransferSegment:
 class RouteService:
     """Route planning service implementing a two-pass approach."""
     
-    # Mapping from Scale names (or values) to a numeric order.
-    # These numbers must follow the assumed ordering in our universe:
-    # Station (lowest), then Moon, Planet, Star, Starsystem, Galaxy.
-    _scale_order = {
-        Scale.STATION: 1,
-        Scale.MOON: 2,
-        Scale.PLANET: 3,
-        Scale.STAR: 4,
-        "STARSYSTEM": 5,  # assuming these are the string values
-        "GALAXY": 6,
-    }
+    # We use OrderedScale from the Scale model to handle scale ordering
+    # This provides a consistent way to compare scales across the application
     
     def plan_route(self, origin: Location, destination: Location) -> List[NavigationEvent]:
         """
@@ -114,24 +105,15 @@ class RouteService:
         representing each Location's scale.
         
         For example, a path from Earth Station to Phobos Station might produce:
-            [1, 3, 4, 3, 2, 1]
+            [OrderedScale.STATION, OrderedScale.PLANET, OrderedScale.STARSYSTEM, 
+            OrderedScale.PLANET, OrderedScale.MOON, OrderedScale.STATION]
         """
         scale_path = []
         for loc in path:
             concrete = loc.get_concrete_instance()
-            scale_val = self._scale_order_value(concrete.scale)
+            scale_val = OrderedScale(concrete.scale)
             scale_path.append(scale_val)
         return scale_path
-    
-    
-    def _scale_order_value(self, scale: str) -> int:
-        """
-        Convert a scale value (from the model) into an integer order value.
-        
-        If the scale is not recognized, return a high number.
-        """
-        return self._scale_order.get(scale, 99)
-    
     
     def _determine_transfer_plan(self, scale_path: List[int]) -> List[Union[int, ManeuverType]]:
         """
@@ -176,19 +158,19 @@ class RouteService:
         Convert a transfer plan into a sequence of NavigationEvent maneuvers.
         
         The approach is:
-         - The departure maneuvers depend on the starting scale:
-             * If starting at a Station (scale 1), include UNDOCK.
-         - For each transfer type in the transfer plan, insert maneuvers.
-             * For an INSERTION segment, include INSERTION followed by CIRCULARIZE.
-             * For a SUBLIGHT segment, include a preceding PLANE_CHANGE (if needed) and the SUBLIGHT burn,
-               followed by CIRCULARIZE.
-         - The final arrival maneuver depends on the final scale:
-             * If the final destination is at Station scale, then DOCK; otherwise, DEORBIT and LAND.
+        - The departure maneuvers depend on the starting scale:
+            * If starting at a Station (scale 1), include UNDOCK.
+        - For each transfer type in the transfer plan, insert maneuvers.
+            * For an INSERTION segment, include INSERTION followed by CIRCULARIZE.
+            * For a SUBLIGHT segment, include a preceding PLANE_CHANGE (if needed) and the SUBLIGHT burn,
+                followed by CIRCULARIZE.
+        - The final arrival maneuver depends on the final scale:
+            * If the final destination is at Station scale, then DOCK; otherwise, DEORBIT and LAND.
         
         For example, the plan:
-          [1, INSERTION, 3, SUBLIGHT, 3, SUBLIGHT, 2, 1]
+            [1, INSERTION, 3, SUBLIGHT, 3, SUBLIGHT, 2, 1]
         might yield:
-          [UNDOCK, INSERTION, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, PLANE_CHANGE, DOCK]
+            [UNDOCK, INSERTION, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, PLANE_CHANGE, DOCK]
         
         These maneuvers are generated in a universal way and do not depend on the names of the objects.
         """
@@ -208,10 +190,11 @@ class RouteService:
         start_scale = transfer_plan[0]
         start_location = location_path[0]
         # Always add departure maneuver based on start location:
+        ctrl = self.effective_controller(start_location)
         if start_scale == OrderedScale(Scale.STATION):
-            maneuvers.append(nav(ManeuverType.UNDOCK, "Undock from station", start_location))
+            maneuvers.append(nav(ManeuverType.UNDOCK, "Undock from station", start_location, start_location))
         else:
-            maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body", start_location))
+            maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body", start_location, controller=ctrl))
         
         # Process each transfer segment.
         # Transfer plan format: [start, TRANSFER_TYPE, scale, ... , final scale]
@@ -234,30 +217,34 @@ class RouteService:
                 continue
                 
             if t_type == ManeuverType.INSERTION:
-                maneuvers.append(nav(ManeuverType.INSERTION, "Perform insertion burn", target_location))
-                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize orbit", target_location))
+                ctrl = self.effective_controller(target_location)
+                maneuvers.append(nav(ManeuverType.INSERTION, "Perform insertion burn", target_location, controller=ctrl))
+                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize orbit", target_location, controller=ctrl))
                 idx += 2
             elif t_type == ManeuverType.DIRECT_ASCENT:
-                maneuvers.append(nav(ManeuverType.DIRECT_ASCENT, "Direct ascent maneuver", target_location))
+                ctrl = self.effective_controller(target_location)
+                maneuvers.append(nav(ManeuverType.DIRECT_ASCENT, "Direct ascent maneuver", target_location, controller=ctrl))
                 idx += 2
             elif t_type == ManeuverType.SUBLIGHT:
+                departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
+                outbound_ctrl = self.effective_controller(departure_location)
                 if next_scale != OrderedScale(Scale.STATION) and next_scale >= OrderedScale(Scale.PLANET):
                     departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
-                    ctrl = self.effective_controller(departure_location)
-                    maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Perform plane change", target_location, controller=ctrl))
-                departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
-                ctrl = self.effective_controller(departure_location)
-                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight transfer burn", target_location, controller=ctrl))
-                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after sublight transfer", target_location))
+                    inbound_ctrl = self.effective_controller(target_location)
+                    maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Perform plane change", target_location, controller=outbound_ctrl))
+                inbound_ctrl = self.effective_controller(target_location)
+                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute inbound sublight transfer burn", target_location, controller=inbound_ctrl))
+                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after sublight transfer", target_location, controller=inbound_ctrl))
                 idx += 2
             elif t_type == ManeuverType.HYPERSPACE:
                 departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
-                ctrl = self.effective_controller(departure_location)
-                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn to depart local orbit", target_location, controller=ctrl))
+                outbound_ctrl = self.effective_controller(departure_location)
+                inbound_ctrl = self.effective_controller(target_location)
+                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn to depart local orbit", target_location, controller=outbound_ctrl))
                 destination_location = location_path[-1]
-                maneuvers.append(nav(ManeuverType.HYPERSPACE, "Perform hyperspace jump", destination_location))
-                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn into destination orbit", destination_location))
-                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after hyperdrive arrival", destination_location))
+                maneuvers.append(nav(ManeuverType.HYPERSPACE, "Perform hyperspace jump", destination_location, controller=outbound_ctrl))
+                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn into destination orbit", destination_location, controller=inbound_ctrl))
+                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after hyperdrive arrival", destination_location, controller=inbound_ctrl))
                 current_location_idx = len(location_path) - 1
                 idx += 2
             else:
@@ -266,12 +253,13 @@ class RouteService:
         # Arrival:
         final_scale = transfer_plan[-1]
         final_location = location_path[-1]
+        ctrl = self.effective_controller(final_location)
         if final_scale == OrderedScale(Scale.STATION):
-            maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Align orbit for docking", final_location))
-            maneuvers.append(nav(ManeuverType.DOCK, "Dock at station", final_location))
+            maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Align orbit for docking", final_location, controller=final_location))
+            maneuvers.append(nav(ManeuverType.DOCK, "Dock at station", final_location, controller=final_location))
         else:
-            maneuvers.append(nav(ManeuverType.DEORBIT, "Begin deorbit burn", final_location))
-            maneuvers.append(nav(ManeuverType.LANDING, "Perform landing maneuver", final_location))
+            maneuvers.append(nav(ManeuverType.DEORBIT, "Begin deorbit burn", final_location, controller=ctrl))
+            maneuvers.append(nav(ManeuverType.LANDING, "Perform landing maneuver", final_location, controller=final_location))
         
         return maneuvers
     
@@ -281,6 +269,7 @@ class RouteService:
 
         Uses the UniverseGraph's find_nearest_node to look for the nearest Station (within the
         local graph bounded by location.scale) whose name contains "control" or "dispatch."
+        If no such Station is found, returns the location itself.
         """
         universe = UniverseGraph.get_instance()
         controller = universe.find_nearest_node(
@@ -289,7 +278,7 @@ class RouteService:
             and ("control" in node.name.lower() or "dispatch" in node.name.lower()),
             max_scale=location.scale,
         )
-        return controller
+        return controller if controller is not None else location
 
     def pick_random_destination(self, excluding: Location, max_scale: Scale = None) -> Location:
         """
@@ -311,35 +300,43 @@ class RouteService:
             - Chooses a random destination (with scale at or below Planet) different from the origin.
             - Builds and returns a sequence of NavigationEvent objects for the journey.
         """
-        # If the ship doesn't have a current location or the location is too large, assign a random origin.
         if not ship.current_location or ship.current_location.scale > Scale.PLANET:
             eligible_origins = [loc for loc in Location.objects.all() if loc.scale <= Scale.PLANET]
             if not eligible_origins:
                 raise ValueError("No eligible origin locations (scale <= Planet) found in the universe.")
             origin = random.choice(eligible_origins)
             ship.current_location = origin
-            # Assuming ship is a Django model:
             ship.save()
         else:
             origin = ship.current_location
 
-        # Pick a random destination with scale <= Planet, excluding the origin.
         destination = self.pick_random_destination(excluding=origin, max_scale=Scale.PLANET)
         print(f"Random journey: {origin.name} -> {destination.name}")
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
-        # Use our new segment generator for the full path.
-        events: List[NavigationEvent] = []
-        for i in range(len(path) - 1):
-            final = (i == len(path) - 2)
-            events.extend(self.generate_segment_events(path[i], path[i + 1], final=final))
-        current_station = self.effective_controller(origin)
-        for event in events:
-            if current_station is None:
-                raise ValueError(f"No effective controller found for leg toward {event.target.name}")
-            candidate = self.effective_controller(event.target)
-            if candidate is not None:
-                current_station = candidate
+
+        # Use plan_route to generate the full route with controller information
+        events = self.plan_route(origin, destination)
+
+        # Ensure all events have a controller assigned
+        for i, event in enumerate(events):
+            if event.controller is None:
+                if event.maneuver in [ManeuverType.LAUNCH, ManeuverType.UNDOCK, ManeuverType.SUBLIGHT, ManeuverType.HYPERSPACE]:
+                    current_idx = path.index(event.target) if event.target in path else 0
+                    departure_loc = path[max(0, current_idx - 1)]
+                    events[i] = NavigationEvent(
+                        maneuver=event.maneuver,
+                        target=event.target,
+                        description=event.description,
+                        controller=self.effective_controller(departure_loc)
+                    )
+                else:
+                    events[i] = NavigationEvent(
+                        maneuver=event.maneuver,
+                        target=event.target,
+                        description=event.description,
+                        controller=self.effective_controller(event.target)
+                    )
         return events
 
     def get_local_locations(self, current: Location, max_scale: Scale) -> List[Location]:
