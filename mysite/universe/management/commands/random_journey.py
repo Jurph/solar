@@ -1,8 +1,9 @@
 from django.core.management.base import BaseCommand
-from mysite.universe.models import Ship, Location
+from mysite.universe.models import Ship, Location 
 from mysite.universe.models.navigation import UniverseGraph  # Add this import
 from mysite.universe.services.route_server import RouteService  
 from mysite.universe.services.script_server import ScriptService
+from mysite.universe.models.scale import Scale
 import random
 
 class Command(BaseCommand):
@@ -41,7 +42,7 @@ class Command(BaseCommand):
             if not locations:
                 raise ValueError("No other locations available!")
             
-            destination = random.choice(locations)
+            destination = self.pick_random_destination(ship.current_location)
             
             if debug:
                 self.stdout.write("\nSelected objects:")
@@ -58,7 +59,6 @@ class Command(BaseCommand):
             self.stdout.write(f"To: {destination.name}\n")
             
             steps = route_server.plan_route(ship.current_location, destination)
-            print(steps)
             
             if debug:
                 self.stdout.write("\nNavigation steps:")
@@ -92,3 +92,13 @@ class Command(BaseCommand):
                 f"(orbits: {l.orbits.name if l.orbits else 'nothing'})"
             )
         self.stdout.write("\n")
+
+    def pick_random_destination(self, excluding: Location, max_scale: Scale = None) -> Location:
+        all_locations = list(Location.objects.exclude(id=excluding.id))
+        eligible = [
+            loc for loc in all_locations
+            if not max_scale or self._scale_order_value(loc.scale) <= self._scale_order_value(max_scale)
+        ]
+        if not eligible:
+            raise ValueError("No available destination in the universe matching criteria.")
+        return random.choice(eligible)
