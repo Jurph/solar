@@ -58,6 +58,7 @@ class Command(BaseCommand):
             self.stdout.write(f"To: {destination.name}\n")
             
             steps = route_server.plan_route(ship.current_location, destination)
+            print(steps)
             
             if debug:
                 self.stdout.write("\nNavigation steps:")
