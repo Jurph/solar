@@ -130,3 +130,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+mysite/universe/models/language/Qwen
+mysite/universe/models/language/Qwen
