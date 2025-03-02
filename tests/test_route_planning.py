@@ -103,7 +103,6 @@ class TestManeuverPlanning(TestCase):
         self.luna_orbital_control = Location.objects.get(name="Luna Orbital Control")
         self.mars = Location.objects.get(name="Mars")
         self.ceres = Location.objects.get(name="Ceres")
-        self.sol = Location.objects.get(name="Sol")
         self.beta_minor_moon = Location.objects.get(name="Beta Minor Moon")
         self.beta_major = Location.objects.get(name="Beta Major")
         self.beta_major_moon = Location.objects.get(name="Beta Moon 1")
@@ -200,4 +199,28 @@ class TestManeuverPlanning(TestCase):
             "CIRCULARIZE",   # Stabilize Beta Major orbit
             "SUBLIGHT",      # Execute sublight burn to depart local orbit
             "HYPERSPACE",    # Perform hyperspace jump
+            "SUBLIGHT",      # Execute sublight burn into destination orbit
+            "CIRCULARIZE",   # Stabilize Ceres orbit
+            "DEORBIT",       # Begin landing sequence
+            "LANDING"        # Land on Ceres
         ]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
+        self.assertEqual(actual_maneuvers, expected_maneuvers)
+        
+    def test_dwarf_planet_departure(self):
+        origin = self.ceres
+        destination = self.earth_control
+        events = self.route_service.plan_route(origin, destination)
+        expected_maneuvers = [
+            "LAUNCH",        # Depart Ceres
+            "INSERTION",     # Enter Ceres orbit
+            "CIRCULARIZE",   # Stabilize Ceres orbit
+            "PLANE_CHANGE",  # Align for Earth transfer
+            "SUBLIGHT",      # Execute sublight burn to depart local orbit
+            "CIRCULARIZE",   # Stabilize Earth orbit    
+            "PLANE_CHANGE",  # Align for station approach
+            "DOCK"           # Dock at Earth Orbital Control
+        ]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
+        self.assertEqual(actual_maneuvers, expected_maneuvers)
+    
