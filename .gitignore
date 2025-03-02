@@ -85,7 +85,7 @@ ipython_config.py
 .python-version
 
 # Qwen2.5 - users should download the repo separately and place it in the models folder
-mysite/universe/models/language/Qwen/*
+./mysite/universe/models/language/Qwen/*
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
