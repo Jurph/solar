@@ -23,6 +23,18 @@ if errorlevel 1 (
 REM Set PYTHONPATH to include the project root
 set "PYTHONPATH=%CD%"
 
+REM Attempt to start ollama server
+echo Attempting to start ollama server...
+start /B cmd /C "ollama serve"
+timeout /t 2 > NUL
+REM Check if ollama is running by looking for ollama.exe in the task list
+tasklist /FI "IMAGENAME eq ollama.exe" | find /I "ollama.exe" >nul
+if errorlevel 1 (
+    echo ollama didn't start - LLM features may not work properly
+) else (
+    echo Ollama server is running.
+)
+
 REM Run migrations
 echo Running database migrations...
 python mysite/manage.py makemigrations universe

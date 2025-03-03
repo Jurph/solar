@@ -81,7 +81,7 @@ class Command(BaseCommand):
             )
             
             # Print the narrative
-            self.stdout.write(self.style.SUCCESS(f"\nJourney Narrative:"))
+            self.stdout.write(self.style.SUCCESS("\nJourney Narrative:"))
             self.stdout.write(narrative)
             
         except Exception as e:

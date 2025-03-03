@@ -5,7 +5,6 @@ import networkx as nx
 from .base import Location
 from .station import Station
 from collections import deque
-from django.core.exceptions import ObjectDoesNotExist
 from .scale import OrderedScale
 
 class ManeuverType(Enum):

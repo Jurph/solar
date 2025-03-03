@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 from ..models.navigation import NavigationEvent, ManeuverType
 from ..models.ship import Ship
 from ..services.dictionary import DictionaryService
