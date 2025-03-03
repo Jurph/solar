@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from ..models.navigation import NavigationEvent, ManeuverType
 from ..models.ship import Ship
 from ..services.dictionary import DictionaryService
+from mysite.universe.services.llm_service import LLMService
 
 @dataclass
 class DialogLine:
@@ -112,4 +113,77 @@ class ScriptService:
         print("Generated Script:")
         print(script)
         return script
+
+    def generate_llm_script(self, events: List[NavigationEvent], ship_name: str, cargo: str, use_llm: bool = True) -> str:
+        """
+        Generate a script for a series of navigation events using an LLM for more natural dialogue.
+        
+        Args:
+            events: The navigation events to generate script for
+            ship_name: The name of the ship
+            cargo: The cargo the ship is carrying
+            use_llm: Whether to use the LLM (falls back to template if False or if LLM fails)
+            
+        Returns:
+            A string containing the script
+        """
+        # First generate the template-based script as a fallback
+        template_script = self.generate_script(events)
+        
+        if not use_llm:
+            return template_script
+            
+        try:
+            # Initialize the LLM service
+            llm = LLMService(model_name="qwen2.5:0.5b")
+            
+            # Create a detailed prompt for the LLM
+            system_prompt = """
+            You are a space traffic control AI that generates realistic radio communications between spacecraft and control stations.
+            Your task is to generate dialogue for a spacecraft journey, following these guidelines:
+            
+            1. Use proper radio communication etiquette, always stating who you're talking to, followed by who you are
+            2. Include call signs, acknowledgments, and technical terminology appropriate for space navigation
+            3. Each maneuver should have both the ship's request and the controller's response
+            4. Keep communications professional but with slight variations in personality for different controllers
+            5. Include occasional radio static markers [*static*] and technical issues in communications
+            6. Mention the cargo in at least one exchange
+            """
+            
+            # Build a description of the journey for the LLM
+            journey_details = []
+            for i, event in enumerate(events):
+                origin = events[i-1].target.name if i > 0 else "starting location"
+                controller = event.controller.name if event.controller else "Unknown Control"
+                journey_details.append(f"{i+1}. {event.maneuver.name} from {origin} to {event.target.name} (Controller: {controller})")
+            
+            journey_text = "\n".join(journey_details)
+            
+            user_message = f"""
+            Generate realistic radio communications for the journey of spacecraft "{ship_name}" carrying "{cargo}" as cargo.
+            
+            The navigation events are:
+            {journey_text}
+            
+            For reference, here is a template-based script that you can improve upon:
+            
+            {template_script}
+            
+            Please create a more natural, engaging script with realistic dialogue following proper radio protocols.
+            """
+            
+            # Get the LLM-generated script
+            llm_script = llm.generate_with_system_prompt(
+                user_message=user_message,
+                system_prompt=system_prompt,
+                temperature=0.7,
+                max_tokens=1024
+            )
+            
+            return llm_script
+            
+        except Exception as e:
+            # Fall back to template script if LLM fails
+            print(f"LLM script generation failed: {e}. Using template script instead.")
+            return template_script
 

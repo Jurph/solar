@@ -103,9 +103,17 @@ Let's treat this purely as a string-replacement problem.
     - After the SUBLIGHT to Deimos we have to DEORBIT and LAND.
 - Doing this analysis in two steps lets us find **transfers** (INSERTION, SUBLIGHT, HYPERDRIVE) and then sketch in the **maneuvers** separately (DOCK, UNDOCK, PLANE_CHANGE, etc.) while not being constrained to iteration loops that are the wrong length ("foreach i in path") that will invariably lead us astray and introduce bugs.   
 
+## Rules governing navigation control  
+
+- Outside of planetary spheres of influence there is no official navigation control; when we say "local" we explicitly mean local to a given planet  
+- If there are multiple Stations in the local area called "Dispatch" or "Control", the closest one has primacy
+- If only one Station in the local area is called "Dispatch" or "Control" they have control over all bodies up to and including the local planet scale   
+- To make a hyperspace jump away from a system, it's polite to use SUBLIGHT and then HYPERSPACE; permission for each is secured by the departing planet's local control. 
+- When arriving via hyperspace jump, the destination coordinates are well outside the local system, and so the destination's controller must be consulted.  
+- If there are no Stations in the local area, ships should broadcast a hailing call, and then broadcast their intentions. It is polite to broadcast a vector as a data file for other ships to download, so they can avoid you. "Ships near CERES, this is LAST TANGO IN PARIS, assuming autonomous operations. I'll be de-orbiting and landing. Broadcasting my vectors on channel 5 to deconflict." 
+
 ## Radio etiquette 
 
 - Always lead with who you are talking to, and then who you are: "Control, this is PUMA SWEDE..." 
 - On departure from a station you should announce your ship's name, cargo, and destination ("Control, this is PUMA SWEDE carrying Sulfur bound for Jupiter, requesting a departure time and launch vector.") 
 - On arrival to a new Planet, you should also announce your name, cargo, and destination. Planetary Control stations may do a customs scan or not; their choice. 
-

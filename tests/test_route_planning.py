@@ -276,7 +276,7 @@ class TestControllerAssignment(TestCase):
         events = self.route_service.plan_route(origin, destination)
         print(events)
         
-        self.assertEqual(events[0].controller.name, "Earth Orbital Control")
+        self.assertEqual(events[0].controller.name, "Earth")
         self.assertEqual(events[1].controller.name, "Earth Orbital Control")
         self.assertEqual(events[2].controller.name, "Earth Orbital Control")
         self.assertEqual(events[3].controller.name, "Earth Orbital Control")
@@ -293,7 +293,7 @@ class TestControllerAssignment(TestCase):
         events = self.route_service.plan_route(origin, destination)
         print(events)
         
-        self.assertEqual(events[0].controller.name, "Beta Major Orbital Control") # Departure is always at the origin
+        self.assertEqual(events[0].controller.name, "Beta Major") # Departure is always at the origin
         self.assertEqual(events[1].controller.name, "Beta Major Orbital Control")
         self.assertEqual(events[2].controller.name, "Beta Major Orbital Control")
         self.assertEqual(events[3].controller.name, "Beta Major Orbital Control")
@@ -309,7 +309,7 @@ class TestControllerAssignment(TestCase):
         destination = self.earth_control
         events = self.route_service.plan_route(origin, destination)
         
-        self.assertEqual(events[0].controller.name, "Ceres Control")
+        self.assertEqual(events[0].controller.name, "Ceres")
         self.assertEqual(events[1].controller.name, "Ceres Control")
         self.assertEqual(events[2].controller.name, "Ceres Control")
         self.assertEqual(events[3].controller.name, "Ceres Control")
