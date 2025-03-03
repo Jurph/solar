@@ -3,7 +3,7 @@ from mysite.universe.models import Ship, Location
 from mysite.universe.models.navigation import UniverseGraph  # Add this import
 from mysite.universe.services.route_server import RouteService  
 from mysite.universe.services.script_server import ScriptService
-from mysite.universe.models.scale import Scale
+from mysite.universe.models.scale import Scale, OrderedScale
 import random
 
 class Command(BaseCommand):
@@ -16,10 +16,16 @@ class Command(BaseCommand):
                         help='List all ships and locations first')
         parser.add_argument('--debug', action='store_true',
                         help='Show debug information')
+        parser.add_argument('--llm', action='store_true',
+                        help='Use LLM to generate more natural dialogue')
+        parser.add_argument('--model', type=str, default='qwen2.5:0.5b',
+                        help='LLM model to use (default: qwen2.5:0.5b)')
 
     def handle(self, *args, **options):
         try:
             debug = options['debug']  # Get debug flag
+            use_llm = options['llm']  # Get LLM flag
+            model = options.get('model', 'qwen2.5:0.5b')  # Get model name
             
             if options['list']:
                 self._list_universe()
@@ -58,15 +64,21 @@ class Command(BaseCommand):
             self.stdout.write(f"From: {ship.current_location.name}")
             self.stdout.write(f"To: {destination.name}\n")
             
-            steps = route_server.plan_route(ship.current_location, destination)
+            events = route_server.random_journey(ship)
             
-            if debug:
-                self.stdout.write("\nNavigation steps:")
-                for i, step in enumerate(steps, 1):
-                    self.stdout.write(f"{i}. {step.maneuver.value} towards {step.target.name}")
+            self.stdout.write(self.style.SUCCESS(f"\nGenerated journey for {ship.name}:"))
+            # Display journey table
+            self.stdout.write(route_server.pretty_print_events(events))
             
-            script = script_server.script_handler(ship, steps)
-            script += '' # For now we just store the script; later on we'll push it as an event 
+            # Generate script with optional LLM enhancement
+            if use_llm:
+                self.stdout.write(self.style.SUCCESS(f"\nGenerating enhanced journey script with {model}..."))
+                script = script_server.generate_llm_script(events, ship.name, ship.cargo)
+            else:
+                self.stdout.write(self.style.SUCCESS(f"\nJourney Script:"))
+                script = script_server.generate_script(events)
+            
+            self.stdout.write(script)
             
             # Move the ship if requested
             if options['move']:
@@ -102,3 +114,8 @@ class Command(BaseCommand):
         if not eligible:
             raise ValueError("No available destination in the universe matching criteria.")
         return random.choice(eligible)
+    
+    def _scale_order_value(self, scale: str) -> int:
+        """Convert a Scale string to its OrderedScale integer value"""
+        from mysite.universe.models.scale import OrderedScale
+        return OrderedScale(scale)

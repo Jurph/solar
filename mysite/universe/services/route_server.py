@@ -351,3 +351,62 @@ class RouteService:
         """
         universe = UniverseGraph.get_instance()
         return universe.get_local_graph(current, OrderedScale(max_scale))
+
+    def pretty_print_events(self, events: List[NavigationEvent], include_headers: bool = True) -> str:
+        """
+        Creates a readable table of navigation events with key information.
+        
+        Args:
+            events: List of NavigationEvent objects
+            include_headers: Whether to include column headers in the output
+            
+        Returns:
+            Formatted string representation of the events
+        """
+        if not events:
+            return "No navigation events to display"
+        
+        # Determine column widths based on content
+        origins = []
+        last_target = None
+        
+        # For the first event, we don't have a previous target, so use the event's target
+        # as the origin (this is a simplification; in reality the first event's origin
+        # should be determined elsewhere)
+        for i, event in enumerate(events):
+            if i == 0:
+                # For the first event, we assume origin information might be in the description
+                # or we just use "STARTING POINT" as a placeholder
+                origins.append("STARTING POINT")
+            else:
+                # For subsequent events, the origin is the previous event's target
+                origins.append(events[i-1].target.name if events[i-1].target else "Unknown")
+        
+        # Calculate column widths
+        origin_width = max(len("Origin"), max(len(str(o)) for o in origins))
+        next_stop_width = max(len("Next Stop"), max(len(str(e.target.name)) if e.target else 0 for e in events))
+        maneuver_width = max(len("Maneuver Type"), max(len(str(e.maneuver.name)) for e in events))
+        controller_width = max(len("Effective Controller"), 
+                             max(len(str(e.controller.name)) if e.controller else len("None") for e in events))
+        
+        # Create formatting template
+        row_template = f"{{:{origin_width}}} | {{:{next_stop_width}}} | {{:{maneuver_width}}} | {{:{controller_width}}}"
+        
+        # Build the table
+        result = []
+        
+        # Add headers if requested
+        if include_headers:
+            result.append(row_template.format("Origin", "Next Stop", "Maneuver Type", "Effective Controller"))
+            result.append("-" * (origin_width + next_stop_width + maneuver_width + controller_width + 9))  # +9 for separators
+        
+        # Add data rows
+        for i, event in enumerate(events):
+            origin = origins[i]
+            next_stop = event.target.name if event.target else "Unknown"
+            maneuver_type = event.maneuver.name
+            controller = event.controller.name if event.controller else "None"
+            
+            result.append(row_template.format(origin, next_stop, maneuver_type, controller))
+        
+        return "\n".join(result)
