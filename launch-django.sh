@@ -1,6 +1,15 @@
 #!/bin/bash
 
 launch_server() {
+    echo "Attempting to start ollama server..."
+    (ollama serve &) 
+    sleep 2
+    if ! pgrep -f "ollama serve" > /dev/null; then
+        echo "ollama didn't start - LLM features may not work properly"
+    else
+        echo "Ollama server is running."
+    fi
+
     echo "Starting Django development environment..."
 
     # Check if virtual environment exists, create if it doesn't
@@ -30,6 +39,7 @@ launch_server() {
     python manage.py migrate
 
     # Check if superuser exists, prompt to create if it doesn't
+    echo "Checking for superuser..."
     python - <<EOF
 from django.contrib.auth.models import User
 exit(0 if User.objects.filter(is_superuser=True).exists() else 1)

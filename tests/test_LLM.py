@@ -4,14 +4,14 @@ from mysite.universe.services.llm_service import LLMService
 @pytest.fixture
 def llm():
     """Fixture that returns an initialized LLM service."""
-    return LLMService(model_name="qwen2.5:0.5b")
+    return LLMService(model_name="qwen2.5:1.5b")
 
 @pytest.fixture
 def yes_no_prompt():
     """Fixture that returns a system prompt that encourages YES/NO answers."""
     return """
     You are an AI assistant that has been incorporated into a simple
-    software program. You are undergoing functional testing.
+    software program. You are undergoing functional unit testing. 
     
     IMPORTANT GUIDELINES:
     1. Answer all questions with YES or NO only
@@ -25,7 +25,7 @@ def ask_question(llm, system_prompt, question):
     response = llm.generate_with_system_prompt(
         user_message=question,
         system_prompt=system_prompt,
-        temperature=0.55, 
+        temperature=0.35, 
         max_tokens=10     # We only need a short response
     )
     print(f"Response: {response}")
