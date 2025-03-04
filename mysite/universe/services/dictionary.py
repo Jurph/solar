@@ -18,19 +18,33 @@ class DictionaryService:
             'HELLO': self._load_wordlist('hello.txt'),
             'MATERIAL': self._load_wordlist('materials.txt'),
             'NUMBER': self._load_wordlist('numbers.txt'),
-            'SURNAME': self._load_wordlist('surnames.txt')
+            'SURNAME': self._load_wordlist('surnames.txt'),
+            'TRAIT': self._load_wordlist('traits.txt')
         }
     
     def _load_wordlist(self, filename: str) -> List[str]:
         """Load a wordlist file into memory"""
         path = self.base_path / filename
-        with open(path) as f:
-            return [line.strip() for line in f if line.strip()]
+        try:
+            with open(path) as f:
+                return [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            print(f"Warning: Wordlist file {filename} not found at {path}")
+            return []
     
     def get_random(self, category: str) -> str:
         """Get random word from a category"""
+        if category not in self.wordlists or not self.wordlists[category]:
+            raise ValueError(f"Category '{category}' not found or empty")
         return random.choice(self.wordlists[category])
     
     def get_multiple(self, category: str, count: int) -> List[str]:
         """Get multiple random words from a category"""
-        return random.sample(self.wordlists[category], count)
+        if category not in self.wordlists or not self.wordlists[category]:
+            raise ValueError(f"Category '{category}' not found or empty")
+        
+        available_words = self.wordlists[category]
+        if count > len(available_words):
+            count = len(available_words)
+            
+        return random.sample(available_words, count)
