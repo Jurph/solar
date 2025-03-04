@@ -170,9 +170,12 @@ class Pilot(Actor):
         return f"You are a pilot named {self.name}."
 
     def get_instruction_prompt(self) -> str:
-        return ("You follow the rules of radio communication, keeping messages clear, concise, and professional. "
-                "Always address the controller by their station (e.g. 'Control' or 'Mars Control') and then identify your ship by name before making a request. "
-                "Keep each request simple and clear. Keep it short and to the point.")
+        return ("""You follow the rules of radio communication, keeping messages clear, concise, and professional.
+                Always address the controller by their station (e.g. 'Control' or 'Mars Control') and then identify your ship by name before making a request. "
+                Keep each request simple and clear. Keep it short and to the point.
+                You will always open requests with 'Control this is {ship} ...' or if you know their designator ('Earth Orbital Control') you can be more formal.
+                Only rookies make small talk, but "Thank you" goes a long way sometimes.  
+                """)
 
     @classmethod
     def generate_name(cls) -> str:
@@ -192,15 +195,10 @@ class Pilot(Actor):
         Returns:
             The created and saved Pilot instance.
         """
+        if 'name' not in kwargs:
+            kwargs['name'] = cls.generate_name()
+        
         kwargs['role'] = cls.Role.PILOT
-        kwargs['prompt_identity'] = f"You are a pilot named {kwargs['name']}."
-        kwargs['prompt_instructions'] = """You follow the rules of radio communication, keeping messages clear, concise, and professional. 
-                                Always address the controller by their station (e.g. 'Control' or 'Mars Control') and then identify your ship by name before making a request.
-                                Keep each request simple and clear. Nobody but rookies improvises out here! Keep it short and to the point. 
-                                On the other hand, superstitions die hard out here, and wishing someone 'good luck' or 'safe travels' is fine.
-                                But **mostly**, be brief!!
-                                You are here to safely get the mission done. 
-                                """
         
         pilot = super().create(**kwargs)
         
@@ -210,16 +208,15 @@ class Pilot(Actor):
         
         return pilot
 
-
 class Controller(Actor):
     """
     Specialized Actor class for controllers.
     
     Controllers manage traffic at stations, planets, or other locations.
+    
+    Nonetheless, we do not associate a location with a controller. Especially since doing that messes up our Django migrations.
     """
-    
-    location = models.ForeignKey('base.Location', on_delete=models.CASCADE, related_name='controllers')
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.role = self.Role.CONTROLLER
@@ -228,9 +225,11 @@ class Controller(Actor):
         return "You are a space traffic controller."
 
     def get_instruction_prompt(self) -> str:
-        return ("You strictly follow the rules of radio communication, keeping messages clear, concise, and professional. "
-                "Always address the ship (not the pilot!) and then identify your station (e.g. 'Control' or 'Mars Control') before granting permission. "
-                "Approvals are simple: 'Approved,' 'Cleared', 'Authorized', or 'Go for orbit'. Keep each approval simple and clear.")
+        return ("""You strictly follow the rules of radio communication, keeping messages clear, concise, and professional. 
+                Always address the ship (not the pilot!) and then identify your station (e.g. 'Control' or 'Mars Control') before granting permission.
+                Approvals are simple: 'Approved,' 'Cleared', 'Authorized', or 'Go for orbit'. Keep each approval simple and clear.
+                Only amateurs make small talk, but occasionally it's okay to say 'Good luck' or 'Safe travels' on departure.
+                """)    
 
     @classmethod
     def generate_name(cls) -> str:
@@ -249,14 +248,7 @@ class Controller(Actor):
             The created and saved Controller instance.
         """
         kwargs['role'] = cls.Role.CONTROLLER
-        kwargs['prompt_identity'] = "You are a space traffic controller."
-        kwargs['prompt_instructions'] = """You strictly follow the rules of radio communication, keeping messages clear, concise, and professional. 
-                                Always address the ship (not the pilot!) and then identify your station (e.g. 'Control' or 'Mars Control') before granting permission.
-                                Approvals are simple: "Approved," "Cleared", "Authorized", or even "Go for orbit". 
-                                Keep each approval simple and clear. Nobody but rookies improvises out here! Keep it short and to the point. 
-                                On the other hand, superstitions die hard out here, and wishing someone 'good luck' or 'safe travels' as they depart is fine.
-                                But **mostly**, be brief!!
-                                """
+        
         controller = super().create(**kwargs)
         
         if location:
@@ -271,10 +263,10 @@ class Satellite(Actor):
     Specialized Actor class for satellites.
     
     Satellites are for unit testing. They always say "BEEP BOOP" and that is all. 
+    
+    Satellites do not have a "Location" and are not associated with any celestial body - they are purely notional. 
     """
-    
-    location = models.ForeignKey('base.Location', on_delete=models.CASCADE, related_name='satellites')
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.role = self.Role.SATELLITE
@@ -287,14 +279,26 @@ class Satellite(Actor):
 
     @classmethod
     def generate_name(cls) -> str:
-        return ""
+        return "BB8"
 
     @classmethod
     def create(cls, *, location=None, **kwargs) -> 'Satellite':
-        # A satellite is a controller with a different prompt
+        """
+        Create a new Satellite instance with sensible defaults.
+        
+        Args:
+            **kwargs: Other arguments to pass to Actor.create()
+            
+        Returns:
+            The created and saved Satellite instance.
+        """
         kwargs['role'] = cls.Role.SATELLITE
-        kwargs['prompt_identity'] = "You are an automated satellite with a simple embedded system."
-        kwargs['prompt_instructions'] = "You respond with 'BEEP BOOP' and nothing else."
+        kwargs['name'] = cls.generate_name()
+        
         satellite = super().create(**kwargs)
+        
+        if location:
+            satellite.location = location
+            satellite.save()
         
         return satellite
