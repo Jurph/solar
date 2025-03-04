@@ -30,7 +30,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'mysite.universe.apps.UniverseConfig',  # Updated path
+    'mysite.universe',  # Simplified path based on the imports in models/__init__.py
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
