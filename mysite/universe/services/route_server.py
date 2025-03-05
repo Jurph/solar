@@ -7,7 +7,7 @@ The approach is:
 3. Generate detailed maneuvers from the transfer plan.
 """
 
-from typing import List, Optional, Tuple, Dict, Union
+from typing import List, Optional, Union
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
 from ..models.station import Station
@@ -194,7 +194,7 @@ class RouteService:
         if start_scale == OrderedScale(Scale.STATION):
             maneuvers.append(nav(ManeuverType.UNDOCK, "Undock from station", start_location, start_location))
         else:
-            maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body", start_location, controller=ctrl))
+            maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body", start_location, controller=start_location))
         
         # Process each transfer segment.
         # Transfer plan format: [start, TRANSFER_TYPE, scale, ... , final scale]
@@ -263,22 +263,63 @@ class RouteService:
         
         return maneuvers
     
-    def effective_controller(self, location: Location) -> Optional[Station]:
+    def effective_controller(self, location: Location) -> Location:
         """
-        Determines the controlling Station for a given Location.
-
-        Uses the UniverseGraph's find_nearest_node to look for the nearest Station (within the
-        local graph bounded by location.scale) whose name contains "control" or "dispatch."
-        If no such Station is found, returns the location itself.
+        Determines the controlling entity for a given Location.
+        
+        Rules:
+        1. Select the nearest local Location of type Station whose name contains 'Control' or 'Dispatch'.
+        2. If none, select the nearest local Location of type Station.
+        3. If still none, select the nearest local Location of type Planet or Moon.
+        4. Otherwise, return the location itself.
         """
         universe = UniverseGraph.get_instance()
-        controller = universe.find_nearest_node(
-            start=location,
-            condition=lambda node: node.get_type_name() == "Station"
-            and ("control" in node.name.lower() or "dispatch" in node.name.lower()),
-            max_scale=location.scale,
-        )
-        return controller if controller is not None else location
+        concrete_location = location.get_concrete_instance()
+        local_nodes = universe.get_local_graph(concrete_location, OrderedScale(Scale.PLANET))
+        
+        # Helper function to compute path distance
+        def distance(node: Location) -> int:
+            path = universe.get_path(concrete_location, node)
+            return len(path) if path else float('inf')
+            
+        # Helper to get actual type name (Station, Planet, etc.)
+        def get_type_name(node: Location) -> str:
+            try:
+                return node.get_concrete_instance().__class__.__name__
+            except Exception:
+                return ""
+        
+        # 1. Find nearest Station with "Control" or "Dispatch" in name
+        control_stations = []
+        for node in local_nodes:
+            node_type = get_type_name(node)
+            if node_type == "Station" and ("Control" in node.name or "Dispatch" in node.name):
+                control_stations.append(node)
+                
+        if control_stations:
+            return min(control_stations, key=distance)
+            
+        # 2. Find nearest Station
+        stations = []
+        for node in local_nodes:
+            if get_type_name(node) == "Station":
+                stations.append(node)
+                
+        if stations:
+            return min(stations, key=distance)
+            
+        # 3. Find nearest Planet or Moon
+        celestials = []
+        for node in local_nodes:
+            node_type = get_type_name(node)
+            if node_type in ["Planet", "Moon"]:
+                celestials.append(node)
+                
+        if celestials:
+            return min(celestials, key=distance)
+            
+        # 4. Return the location itself
+        return concrete_location
 
     def pick_random_destination(self, excluding: Location, max_scale: Scale = None) -> Location:
         """
@@ -368,7 +409,6 @@ class RouteService:
         
         # Determine column widths based on content
         origins = []
-        last_target = None
         
         # For the first event, we don't have a previous target, so use the event's target
         # as the origin (this is a simplification; in reality the first event's origin
@@ -387,7 +427,7 @@ class RouteService:
         next_stop_width = max(len("Next Stop"), max(len(str(e.target.name)) if e.target else 0 for e in events))
         maneuver_width = max(len("Maneuver Type"), max(len(str(e.maneuver.name)) for e in events))
         controller_width = max(len("Effective Controller"), 
-                             max(len(str(e.controller.name)) if e.controller else len("None") for e in events))
+                            max(len(str(e.controller.name)) if e.controller else len("None") for e in events))
         
         # Create formatting template
         row_template = f"{{:{origin_width}}} | {{:{next_stop_width}}} | {{:{maneuver_width}}} | {{:{controller_width}}}"

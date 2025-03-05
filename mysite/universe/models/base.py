@@ -1,6 +1,4 @@
 from django.db import models
-from typing import Optional
-from django.utils.translation import gettext_lazy as _
 from .scale import Scale, OrderedScale  # Import the enhanced Scale class
 # Contains the base "Location" model that we can use to instantiate other stuff
 
@@ -92,13 +90,3 @@ class Location(models.Model):
         Indicates whether arriving at this location requires docking clearance.
         """
         return self.scale == Scale.STATION
-
-    def get_control_station(self) -> Optional['Station']:
-        """
-        Retrieves the control station responsible for this location.
-        """
-        from .station import Station  # Avoid circular import
-        return Station.objects.filter(
-            orbits=self,
-            name__icontains='Control'
-        ).first()
