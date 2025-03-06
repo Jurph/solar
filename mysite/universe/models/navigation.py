@@ -31,11 +31,28 @@ class NavigationStep:
     contact_station: Station
     maneuver: ManeuverType
     target: Location
-    
+
 @dataclass
 class NavigationEvent:
+    """An enriched navigation event with full narrative and operational context.
+
+    Attributes:
+        origin: The starting location for this maneuver leg.
+        current: The current location from which the maneuver is executed.
+        next: The upcoming location (target) for this maneuver.
+        destination: The final destination of the route plan.
+        maneuver: The type of maneuver (e.g., LAUNCH, INSERTION, SUBLIGHT, etc.).
+        controller: The controlling Station for this maneuver (if applicable).
+        duration: Estimated duration of the maneuver; defaults to a static value per type. 
+        description: Additional narrative or descriptive information about the maneuver.
+    """
+    origin: Location
+    current: Location
+    next: Location
+    destination: Location
     maneuver: ManeuverType
-    target: Location
+    controller: Optional[Location] = None
+    duration: int = 0
     description: str = ""
 
 
@@ -48,7 +65,7 @@ class NavigationEvent:
 #  · After LAUNCH, we generally execute a CIRCULARIZE maneuver (to get into the proper orbit).
 #  · For transfers between two Planets, we do a PLANE_CHANGE followed by a TRANSFER.
 #  · Upon entering a Planet's or Moon's sphere of influence we circularize.
-#  · The final event is either DOCK (if the target is a Station) or LAND (if it's a Moon/Planet).
+#  · The final event is either DOCK (if the target is a Station) or LAND (if it is not).
 #
 # (Additional rules—like hyperspace transitions when changing StarSystems—can be inserted here.)
 # -------------------------------------------------------------------
@@ -77,14 +94,20 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
     depart_type = type_of(departure)
     if depart_type == "Station":
         events.append(NavigationEvent(
-            maneuver=ManeuverType.LAUNCH,
-            target=departure,
-            description=f"Departing from station {departure.name}: Launch initiated."
+            origin=None,
+            current=departure,
+            next=departure,
+            destination=departure,
+            maneuver=ManeuverType.UNDOCK,
+            description=f"Undocking from {departure.name} and preparing for departure."
         ))
         # Following a launch, we generally circularize.
         events.append(NavigationEvent(
+            origin=departure,
+            current=departure,
+            next=departure,
+            destination=departure,
             maneuver=ManeuverType.CIRCULARIZE,
-            target=departure,
             description="Initial orbital circularization after launch."
         ))
     
@@ -98,20 +121,29 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
         # Rule: If traveling between two Planets, perform a PLANE_CHANGE and then a TRANSFER.
         if current_type == "Planet" and next_type == "Planet":
             events.append(NavigationEvent(
+                origin=current,
+                current=current,
+                next=nxt,
+                destination=nxt,
                 maneuver=ManeuverType.PLANE_CHANGE,
-                target=nxt,
                 description=f"Plane change maneuver from {current.name} to align for transfer orbit."
             ))
             events.append(NavigationEvent(
+                origin=current,
+                current=current,
+                next=nxt,
+                destination=nxt,
                 maneuver=ManeuverType.TRANSFER,
-                target=nxt,
                 description=f"Transfer burn from {current.name} towards {nxt.name}."
             ))
         else:
             # Otherwise, a standard transfer burn between current and next.
             events.append(NavigationEvent(
+                origin=current,
+                current=current,
+                next=nxt,
+                destination=nxt,
                 maneuver=ManeuverType.TRANSFER,
-                target=nxt,
                 description=f"Transfer burn from {current.name} towards {nxt.name}."
             ))
         
@@ -119,8 +151,11 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
         # to enter its sphere of influence.
         if next_type in ("Planet", "Moon"):
             events.append(NavigationEvent(
+                origin=current,
+                current=current,
+                next=nxt,
+                destination=nxt,
                 maneuver=ManeuverType.CIRCULARIZE,
-                target=nxt,
                 description=f"Circularization maneuver upon entering {nxt.name}'s sphere of influence."
             ))
         
@@ -128,14 +163,20 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
         if i == len(path) - 2:
             if next_type == "Station":
                 events.append(NavigationEvent(
+                    origin=current,
+                    current=current,
+                    next=nxt,
+                    destination=nxt,
                     maneuver=ManeuverType.DOCK,
-                    target=nxt,
                     description=f"Dock at station {nxt.name}."
                 ))
             elif next_type in ("Planet", "Moon"):
                 events.append(NavigationEvent(
+                    origin=current,
+                    current=current,
+                    next=nxt,
+                    destination=nxt,
                     maneuver=ManeuverType.LANDING,
-                    target=nxt,
                     description=f"Landing maneuver on {nxt.name}."
                 ))
             # Additional final actions could be inserted here if needed.
@@ -234,7 +275,6 @@ class UniverseGraph:
             return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
-        
         
         
     def get_local_graph(self, relative_location: Location, max_scale: Optional[OrderedScale] = None) -> List[Location]:
