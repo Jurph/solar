@@ -10,7 +10,7 @@ This ambient simulation creates a radio-like environment for ship communications
 - **Time-Based Simulation:** A simulation loop that advances time at regular intervals (approximately every 2 seconds), allowing dialogue events to unfold sequentially rather than all at once.
 - **Scheduling and Reservations:** A global (or per star system) scheduler that reserves discrete time slots for dialogue events, ensuring that no two events conflict.
 - **Simulation Parameters:** Adjustable knobs for simulation speed (acceleration factor), event density (e.g., average comms per minute), and audio mixing (TTS volume vs. ambient static/beeps). These parameters will eventually influence dynamic audio generation.
-- **Planetary & System Fidelity:** Initially uses an XML file for the Milky Way (e.g., `milkyway-v004.xml`). For planetary fidelity, the focus is on orbital parameters (median orbital distance, orbital inclination) that influence travel times and maneuver requirements. Later extensions will incorporate planet types, resource lists, and commodity cargo profiles.
+- **Celestial & System Hierarchy:** Universe structure is defined in XML and stored in the database. The system successfully models the hierarchical relationships between galaxies, star systems, stars, planets, moons, and stations.
 
 ---
 
@@ -18,10 +18,13 @@ This ambient simulation creates a radio-like environment for ship communications
 
 ### 2.1 Ship Events and Communications
 
-- **Core Event Types:**
-  - **Departure Events:** Launch, circularization, and docking.
-  - **Arrival Events:** Landing and undocking.
-  - **Maneuver Events:** Hyperspace jumps and plane changes (influenced by orbital inclinations).
+- **Core Navigation Event Types:**
+  - **Departure Maneuvers:** UNDOCK, LAUNCH, INSERTION, DIRECT_ASCENT
+  - **Transition Maneuvers:** PLANE_CHANGE, SUBLIGHT, HYPERSPACE, CIRCULARIZE
+  - **Arrival Maneuvers:** DEORBIT, LANDING, DOCK
+  - **All maneuvers have associated controllers** assigned using the effective_controller logic.
+  
+- **Other Event Types:**
   - **Anomaly Events:** Subsystem failures (introducing procedural delays), in-flight emergencies (e.g., sick passenger), navigation errors, and near misses.
   - **Small Talk:** Spontaneous inter-ship chatter to introduce variability in dialogue.
 
@@ -41,7 +44,7 @@ This ambient simulation creates a radio-like environment for ship communications
 
 - **Mission Structure:**
   - **Mission Class:** Encapsulates a narrative-driven journey with a Ship, Pilot (Actor), start Location, end Location, and for transport missions, a Cargo.
-  - **Route Generation:** Each Mission generates a route with a series of maneuvers, each having an associated duration.
+  - **Route Generation:** Each Mission generates a route with a series of NavigationEvents using the three-pass planning approach.
   - **Dialogue Events:** Navigation events are transformed into time-stamped dialogue events between the ship's Pilot and Control Actors along the route.
 
 - **Scheduler and Time Management:**
@@ -75,17 +78,22 @@ This ambient simulation creates a radio-like environment for ship communications
     - **Event Density:** Adjust the number of communications per minute.
     - **Volume/Mixing Levels:** Controls for TTS voices vs. ambient effects (static/beeps).
 
-### 2.6 Planetary and System Fidelity
+### 2.6 Celestial and System Hierarchy
 
-- **Planetary Parameters:**
+- **Implemented Hierarchy:**
+  - **Galaxy → Star System → Star → Planet → Moon → Station**: The system models the hierarchical relationships between these celestial objects.
+  - **XML Import/Export:** The universe structure is defined in XML and can be imported/exported using command-line tools.
+  
+- **Celestial Parameters:**
   - **Orbital Parameters:** Each planet has a median orbital distance (basis for travel time calculations) and an orbital inclination (influencing plane-change maneuvers).
-  - **Future Enhancements:**
-    - Add planet types (e.g., SILICATE, GAS GIANT, ICE GIANT) which will affect available commodity cargo profiles.
-    - Incorporate resource lists and custom cargo modifiers to allow for unique planetary profiles.
-- **Star and System Information:**
-  - Use provided XML (e.g., `milkyway-v004.xml`) for the Milky Way system.
-  - Each system should include recognizable star names, correct stellar types, and proper distances from the galactic center.
-  - Future plans include a universe builder that generates XML files from a star catalog, allowing for different output filenames and multiple universe iterations.
+  - **Planetary Types:** Planet classifications (e.g., SILICATE, GAS GIANT, ICE GIANT) which affect available commodity cargo profiles.
+
+- **Navigation and Route Planning:**
+  - **Three-Pass Route Planning:**
+    - **First Pass:** Create departure and arrival events based on origin and destination types.
+    - **Second Pass:** Insert transfer events between intermediate nodes based on the transfer plan, including specialized handling for HYPERSPACE and intra-system transfers.
+    - **Third Pass:** Refine navigation events with controller information.
+  - **World Building Rules:** Detailed navigation rules govern the generation of routes, ensuring realistic space travel mechanics.
 
 ---
 
@@ -94,19 +102,21 @@ This ambient simulation creates a radio-like environment for ship communications
 ### 3.1 Code Organization
 
 - **Modules / Packages:**
-  - **`models`:** Data classes for entities such as `Ship`, `Actor`, `Mission`, `DialogueEvent`, `Planet`, etc.
-  - **`services`:** Contains business logic—including `ScriptService`, `Scheduler`, `AudioService`, and (future) `LLMIntegration`.
+  - **`models`:** Data classes for entities such as `Ship`, `Actor`, `Mission`, `NavigationEvent`, `DialogueEvent`, `Planet`, etc.
+  - **`services`:** Contains business logic—including `ScriptService`, `RouteService`, `Scheduler`, `CargoService`, and (future) `LLMIntegration`.
   - **`ui`:** User interface components (text log display, admin control panels).
-  - **`data`:** XML universe loader for the Milky Way and the (future) Universe builder.
+  - **`import_xml.py/export_xml.py`:** XML universe loader and exporter for the celestial hierarchy.
   - **`utils`:** Helper functions (e.g., `allcaps(text: str)`) for common string formatting.
   - **`simulation`:** Contains the simulation engine with the game loop and time management.
 
 ### 3.2 Data Flow and Handling
 
 - **XML Universe Data:**
-  - Parse the Milky Way XML file to extract systems, stars, planets, and stations. Use robust XML parsing strategies and fallback defaults if data is missing.
+  - Parse XML files to extract systems, stars, planets, and stations. Use robust XML parsing strategies and fallback defaults if data is missing.
+  - Support exporting the current universe state back to XML.
 - **Mission and Event Generation:**
-  - Each Mission generates a route with maneuvers, which are then transformed into dialogue events with timestamps.
+  - Each Mission generates a route with NavigationEvents using the RouteService.
+  - NavigationEvents are transformed into dialogue events with timestamps.
   - The Scheduler queues these events based on their scheduled time.
   - The simulation loop advances time and processes events as their scheduled time arrives.
 - **View Layer:**
@@ -137,15 +147,16 @@ This ambient simulation creates a radio-like environment for ship communications
 
 - **Module Testing:**
   - Write unit tests for:
-    - Each service (e.g., `ScriptService`, `Scheduler`) to ensure correct dialogue generation and scheduling.
-    - Model classes (e.g., `Actor`, `Mission`) to verify proper initialization and behavior.
+    - Each service (e.g., `ScriptService`, `RouteService`) to ensure correct dialogue generation and navigation planning.
+    - Model classes (e.g., `Actor`, `Mission`, `NavigationEvent`) to verify proper initialization and behavior.
     - Helper functions (e.g., `allcaps()`).
     - XML parsing modules to handle expected and edge-case XML structures.
-- **Scheduler Testing:**
-  - Simulate various scheduling scenarios:
-    - Verify that time slot reservations are conflict-free.
-    - Ensure proper delay and rescheduling on conflicts.
-    - Test the simulation loop's ability to process events at the correct times.
+- **Route Planning Testing:**
+  - Test various navigation scenarios:
+    - Direct ascent between neighboring bodies
+    - Multi-leg journeys with intermediate stops
+    - Hyperspace travel between distant systems
+    - Controller assignment and verification
 
 ### 5.2 Integration Testing
 
@@ -176,7 +187,7 @@ This ambient simulation creates a radio-like environment for ship communications
 - **Universe Builder:**
   - Develop a tool to generate new Universe/Galaxy XML files from a star catalog, with a configurable output file naming and versioning scheme.
 - **Enhanced Planetary Fidelity:**
-  - Extend the simulation to include planet types and unique resource distributions for deeper commodity cargo mechanics and specialized maneuver scenarios (e.g., aerobraking).
+  - Extend the simulation to include more detailed planet types and unique resource distributions for deeper commodity cargo mechanics and specialized maneuver scenarios (e.g., aerobraking).
 - **Advanced Mission Types:**
   - Implement different mission subclasses for various narrative scenarios beyond simple transport missions.
 
@@ -186,12 +197,14 @@ This ambient simulation creates a radio-like environment for ship communications
 
 This specification outlines a modular, extensible simulation designed to create an immersive, ambient radio communications environment in space. The key components include:
 
-- **Mission and Actor Modeling:** Where narrative-driven missions with Actors (Pilots, Controllers) generate dialogue events.
+- **Celestial Hierarchy:** A structure modeling galaxies, star systems, stars, planets, moons, and stations, all defined in XML and stored in the database.
+- **NavigationEvent System:** A sophisticated three-pass approach to route planning that creates realistic space travel maneuvers with appropriate controllers.
+- **Mission and Actor Modeling:** Narrative-driven missions with Actors (Pilots, Controllers) that generate dialogue events.
 - **Time-Based Simulation:** A game loop that advances time and processes dialogue events sequentially.
 - **Dynamic Scheduling and Reservation:** A Scheduler that queues dialogue events with timestamps and ensures non-overlapping communication.
 - **Dual-View Architecture:** A decoupled view layer that can render dialogue events as text (initially) or audio (future).
 - **Admin Controls:** Tools for spawning missions, creating anomalous events, and adjusting simulation parameters.
 - **Future Integration Points:** Hooks for local LLM and TTS modules to enhance dialogue variability and audio realism, and a Universe Builder tool for generating complex galaxy XML files.
 
-Developers should begin by implementing foundational models (Actor, Mission), services (Scheduler, ScriptService), the simulation loop, and the text-based view, then incrementally add features as outlined in the future enhancements.
+The development roadmap follows the progression outlined in TODO.md, with initial phases focused on building the core simulation framework, and later phases expanding into character development, audio integration, and advanced procedural generation.
 
