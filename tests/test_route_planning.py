@@ -5,8 +5,7 @@ from mysite.universe.import_xml import UniverseImporter
 from mysite.universe.models.base import Location
 from mysite.universe.models.scale import Scale 
 from mysite.universe.services.route_server import RouteService
-from mysite.universe.models.navigation import UniverseGraph, print_tree, ManeuverType, NavigationEvent
-from typing import List
+from mysite.universe.models.navigation import UniverseGraph, print_tree, ManeuverType
 
 class TestRoutePlanning(TestCase):
     @classmethod
