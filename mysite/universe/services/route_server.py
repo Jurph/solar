@@ -7,29 +7,12 @@ The approach is:
 3. Generate detailed maneuvers from the transfer plan.
 """
 
-from typing import List, Optional, Union
+from typing import List, Union
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
-from ..models.station import Station
-from ..models.navigation import ManeuverType, UniverseGraph
+from ..models.navigation import ManeuverType, UniverseGraph, NavigationEvent, is_planetary
 from dataclasses import dataclass
 import random
-
-@dataclass(frozen=True)
-class NavigationEvent:
-    """
-    A NavigationEvent represents a single maneuver step in a navigation plan.
-    
-    Attributes:
-        maneuver: The type of maneuver (e.g., TRANSFER, LAUNCH, LANDING).
-        target: The destination Location object for this maneuver.
-        description: A human-readable description of the maneuver.
-        controller: The controlling Station for this maneuver, if any.
-    """
-    maneuver: ManeuverType
-    target: Location
-    description: str = ""
-    controller: Optional[Station] = None
 
 @dataclass(frozen=True)
 class TransferSegment:
@@ -70,20 +53,88 @@ class RouteService:
         if not path or len(path) < 2:
             return []
         
-        # SPECIAL CASE: Two-node direct neighbor: use DIRECT_ASCENT but do not bypass departure/arrival.
-        if len(path) == 2 and path[1] in universe.get_neighbors(path[0]):
-            scale_path = self._build_scale_path(path)
-            transfer_plan = [scale_path[0], ManeuverType.DIRECT_ASCENT, scale_path[1]]
-            maneuvers = self._determine_maneuvers(transfer_plan, path)
-            return maneuvers
+        # Compute overall_max from the original path scales
+        original_scale_path = self._build_scale_path(path)
+        overall_max = max(original_scale_path)
+
+        # Compress the path to remove transit nodes (e.g., Stars) not needed for maneuver events
+        compressed_path = self._compress_location_path(path)
+
+        # SPECIAL CASE: Direct ascent if the path has exactly two nodes
+        if len(path) == 2:
+            origin_type = origin.get_concrete_instance().get_type_name()
+            dest_type = destination.get_concrete_instance().get_type_name()
+            events = []
+
+            # Departure phase
+            if origin_type == "Station":
+                events.append(NavigationEvent(
+                    maneuver=ManeuverType.UNDOCK,
+                    origin=origin,
+                    current=origin,
+                    next=destination,
+                    destination=destination,
+                    description=f"UNDOCK from {origin.name} to {destination.name}",
+                    controller=None
+                ))
+            elif origin_type == "Moon":
+                events.append(NavigationEvent(
+                    maneuver=ManeuverType.LAUNCH,
+                    origin=origin,
+                    current=origin,
+                    next=destination,
+                    destination=destination,
+                    description=f"LAUNCH from {origin.name} to {destination.name}",
+                    controller=None
+                ))
+
+            # Transfer phase: always one DIRECT_ASCENT event
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.DIRECT_ASCENT,
+                origin=origin,
+                current=origin,
+                next=destination,
+                destination=destination,
+                description=f"DIRECT_ASCENT from {origin.name} to {destination.name}",
+                controller=None
+            ))
+
+            # Arrival phase
+            if dest_type == "Moon" and origin_type != "Moon":
+                events.append(NavigationEvent(
+                    maneuver=ManeuverType.CIRCULARIZE,
+                    origin=origin,
+                    current=destination,
+                    next=destination,
+                    destination=destination,
+                    description=f"CIRCULARIZE at {destination.name}",
+                    controller=None
+                ))
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.DEORBIT,
+                origin=origin,
+                current=destination,
+                next=destination,
+                destination=destination,
+                description=f"DEORBIT at {destination.name}",
+                controller=None
+            ))
+            events.append(NavigationEvent(
+                maneuver=ManeuverType.LANDING,
+                origin=origin,
+                current=destination,
+                next=destination,
+                destination=destination,
+                description=f"LANDING at {destination.name}",
+                controller=None
+            ))
+            return self._enhance_with_controllers(events)
         
-        # Pass 1:
-        scale_path = self._build_scale_path(path)
-        overall_max = max(scale_path)
+        # Pass 1: Build scale path from the compressed path
+        scale_path = self._build_scale_path(compressed_path)
         
-        # Pass 2: If overall maximum exceeds StarSystem, use hyperdrive logic.
+        # Pass 2: Determine transfer plan
         if overall_max > OrderedScale(Scale.STARSYSTEM):
-            # Simplify the transfer plan for hyperdrive travel.
             transfer_plan = [
                 scale_path[0],
                 ManeuverType.INSERTION,
@@ -94,8 +145,8 @@ class RouteService:
         else:
             transfer_plan = self._determine_transfer_plan(scale_path)
         
-        # Pass 3:
-        maneuvers = self._determine_maneuvers(transfer_plan, path)
+        # Pass 3: Generate maneuvers using the compressed path and overall_max from the original path
+        maneuvers = self._determine_maneuvers(transfer_plan, compressed_path, overall_max)
         return maneuvers
     
     
@@ -153,116 +204,215 @@ class RouteService:
         return transfer_plan
     
     
-    def _determine_maneuvers(self, transfer_plan: List[Union[int, ManeuverType]], location_path: List[Location]) -> List[NavigationEvent]:
+    def _determine_maneuvers(self, transfer_plan: List[Union[int, ManeuverType]], location_path: List[Location], overall_max: int) -> List[NavigationEvent]:
+        """Using a 3-pass approach, create navigation events from the transfer plan.
+        
+        This function handles:
+        1. Direct neighbor routes - these are simple direct-ascent maneuvers.
+        2. Hyperspace routes - require specific departure, hyperspace, and arrival procedures.
+        3. Non-hyperspace routes - standard multi-leg journeys.
         """
-        Convert a transfer plan into a sequence of NavigationEvent maneuvers.
-        
-        The approach is:
-        - The departure maneuvers depend on the starting scale:
-            * If starting at a Station (scale 1), include UNDOCK.
-        - For each transfer type in the transfer plan, insert maneuvers.
-            * For an INSERTION segment, include INSERTION followed by CIRCULARIZE.
-            * For a SUBLIGHT segment, include a preceding PLANE_CHANGE (if needed) and the SUBLIGHT burn,
-                followed by CIRCULARIZE.
-        - The final arrival maneuver depends on the final scale:
-            * If the final destination is at Station scale, then DOCK; otherwise, DEORBIT and LAND.
-        
-        For example, the plan:
-            [1, INSERTION, 3, SUBLIGHT, 3, SUBLIGHT, 2, 1]
-        might yield:
-            [UNDOCK, INSERTION, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, CIRCULARIZE, PLANE_CHANGE, SUBLIGHT, PLANE_CHANGE, DOCK]
-        
-        These maneuvers are generated in a universal way and do not depend on the names of the objects.
-        """
-        maneuvers: List[NavigationEvent] = []
-        
-        # Helper that creates a NavigationEvent given a maneuver type and a simple text target value.
-        # (In a full system, the 'target' would be a Location; here we weave in descriptions.)
-        def nav(m_type: ManeuverType, desc: str, target_location: Location, controller: Optional[Station] = None) -> NavigationEvent:
+        if not location_path or len(location_path) < 2:
+            raise ValueError("Invalid route: Path must contain at least two locations")
+
+        # Compress the path to remove irrelevant transit nodes, keeping only the key locations
+        compressed_path = self._compress_location_path(location_path)
+
+        origin = compressed_path[0]
+        destination = compressed_path[-1]
+        next_location = destination  # For simplicity, default next_location to destination
+        origin_type = origin.get_concrete_instance().get_type_name()
+        dest_type = destination.get_concrete_instance().get_type_name()
+
+        # Initialize events list
+        events = []
+
+        # If the transfer_plan explicitly indicates a direct ascent (i.e. exactly three elements with DIRECT_ASCENT in the middle), handle as a direct neighbor route
+        if len(transfer_plan) == 3 and isinstance(transfer_plan[1], ManeuverType) and transfer_plan[1] == ManeuverType.DIRECT_ASCENT:
+            def make_direct_event(maneuver: ManeuverType) -> NavigationEvent:
+                # For arrival maneuvers, set current to destination
+                current_loc = origin
+                if maneuver in (ManeuverType.DEORBIT, ManeuverType.LANDING, ManeuverType.DOCK, ManeuverType.CIRCULARIZE):
+                    current_loc = destination
+                
+                return NavigationEvent(
+                    maneuver=maneuver,
+                    origin=origin,
+                    current=current_loc,
+                    next=destination,
+                    destination=destination,
+                    description=f"{maneuver.name} from {origin.name} to {destination.name}",
+                    controller=None
+                )
+            # Clear the existing events list for direct ascent
+            events.clear()
+            
+            if origin_type == "Station":
+                events.append(make_direct_event(ManeuverType.UNDOCK))
+            elif origin_type == "Moon":
+                events.append(make_direct_event(ManeuverType.LAUNCH))
+            events.append(make_direct_event(ManeuverType.DIRECT_ASCENT))
+            if dest_type == "Station":
+                events.append(make_direct_event(ManeuverType.DOCK))
+            elif dest_type == "Moon":
+                events.extend([
+                    make_direct_event(ManeuverType.CIRCULARIZE),
+                    make_direct_event(ManeuverType.DEORBIT),
+                    make_direct_event(ManeuverType.LANDING)
+                ])
+            else:
+                events.extend([
+                    make_direct_event(ManeuverType.DEORBIT),
+                    make_direct_event(ManeuverType.LANDING)
+                ])
+            # Direct ascent events are complete, skip to the controller enhancement
+                return self._enhance_with_controllers(events)
+                
+        # Multi-leg journey branch
+
+        def make_departure_event(maneuver: ManeuverType) -> NavigationEvent:
+            """Create a NavigationEvent for the departure phase (current = origin)."""
             return NavigationEvent(
-                maneuver=m_type,
-                target=target_location,
-                description=desc,
+                maneuver=maneuver,
+                origin=origin,
+                current=origin,
+                next=next_location,
+                destination=destination,
+                description=f"{maneuver.name} from {origin.name} to {destination.name}",
+                controller=None
+            )
+            
+        def make_transfer_event(maneuver: ManeuverType) -> NavigationEvent:
+            """Create a NavigationEvent for the transfer phase (current = origin)."""
+            return NavigationEvent(
+                maneuver=maneuver,
+                origin=origin,
+                current=origin,
+                next=next_location,
+                destination=destination,
+                description=f"{maneuver.name} from {origin.name} to {destination.name}",
+                controller=None
+            )
+            
+        def make_transfer_arrival_event(maneuver: ManeuverType) -> NavigationEvent:
+            """Create a NavigationEvent for the arrival sub-phase of transfer (current = destination)."""
+            return NavigationEvent(
+                maneuver=maneuver,
+                origin=origin,
+                current=destination,
+                next=next_location,
+                destination=destination,
+                description=f"{maneuver.name} from {origin.name} to {destination.name}",
+                controller=None
+            )
+
+        # 1. DEPARTURE PHASE - Generate departure events based on origin type
+        if origin_type == "Station":
+            events.append(make_departure_event(ManeuverType.UNDOCK))
+            events.append(make_departure_event(ManeuverType.INSERTION))
+            events.append(make_departure_event(ManeuverType.CIRCULARIZE))
+        elif origin_type in ("Planet", "Moon") or is_planetary(origin):
+            events.append(make_departure_event(ManeuverType.LAUNCH))
+            events.append(make_departure_event(ManeuverType.INSERTION))
+            events.append(make_departure_event(ManeuverType.CIRCULARIZE))
+
+        # 2. TRANSFER PHASE - Handle the transfer logic based on the transfer plan
+        if len(transfer_plan) == 3:
+            # Simple direct transfer: for a direct hop, add one event.
+            if dest_type == "Station":
+                events.append(make_transfer_event(ManeuverType.PLANE_CHANGE))
+            else:
+                events.append(make_transfer_event(ManeuverType.SUBLIGHT))
+        else:
+            is_origin_planetary = origin_type in ("Planet", "Moon") or is_planetary(origin)
+            if is_origin_planetary:
+                if not any(isinstance(x, ManeuverType) and x == ManeuverType.HYPERSPACE for x in transfer_plan):
+                    # Non-hyperspace transfer
+                    if dest_type == "Station":
+                        if len(transfer_plan) == 5:
+                            # Single-leg transfer: produce 4 events
+                            events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                            events.append(make_transfer_event(ManeuverType.SUBLIGHT))
+                            events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
+                            events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                        else:
+                            # Multi-leg transfer: produce standard 6 events
+                            events.append(make_transfer_event(ManeuverType.PLANE_CHANGE))
+                            events.append(make_transfer_event(ManeuverType.SUBLIGHT))
+                            events.append(make_transfer_event(ManeuverType.CIRCULARIZE))
+                            events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
+                            events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
+                            events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                    else:
+                        # For transfers between celestial bodies (Planet/Moon to Planet/Moon), use arrival style events
+                        events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
+                        events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
+                else:
+                    # Hyperspace transfer branch - use arrival events with current set to destination
+                    hyperspace_segments = [ (i, t) for i, t in enumerate(transfer_plan) if isinstance(t, ManeuverType) and t == ManeuverType.HYPERSPACE ]
+                    for i, _ in hyperspace_segments:
+                        # Departure sub-phase
+                        events.append(make_transfer_event(ManeuverType.SUBLIGHT))
+                        events.append(make_transfer_event(ManeuverType.HYPERSPACE))
+                        # Arrival sub-phase: set current to destination
+                        events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
+                        events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
+                    if dest_type == "Station":
+                        events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+            else:
+                # Fallback: simple transfer if origin is not planetary
+                events.append(make_transfer_event(ManeuverType.SUBLIGHT))
+                events.append(make_transfer_event(ManeuverType.CIRCULARIZE))
+
+        # 3. ARRIVAL PHASE - Add arrival maneuvers based on destination type
+        if dest_type == "Station":
+            events.append(make_transfer_arrival_event(ManeuverType.DOCK))
+        elif dest_type in ("Planet", "Moon") or is_planetary(destination):
+            events.append(make_transfer_arrival_event(ManeuverType.DEORBIT))
+            events.append(make_transfer_arrival_event(ManeuverType.LANDING))
+        
+        return self._enhance_with_controllers(events)
+    
+    def _enhance_with_controllers(self, events: List[NavigationEvent]) -> List[NavigationEvent]:
+        """
+        Helper method to enhance all events with proper controller information.
+        
+        Rules for controller assignment:
+        1. For departure maneuvers (LAUNCH, UNDOCK, INSERTION), use the controller of the origin/departure location
+        2. For arrival maneuvers (DOCK, DEORBIT, LANDING), use the controller of the destination
+        3. For transfer maneuvers (SUBLIGHT, HYPERSPACE, etc.), use the controller of the current location
+        """
+        enhanced_events: List[NavigationEvent] = []
+        
+        for event in events:
+            # Determine which location should provide the controller based on maneuver type and context
+            if event.maneuver in [ManeuverType.LAUNCH, ManeuverType.UNDOCK, ManeuverType.INSERTION]:
+                # Departure maneuvers - controlled by the origin/departure location
+                controller_loc = event.origin
+            elif event.maneuver in [ManeuverType.DOCK, ManeuverType.DEORBIT, ManeuverType.LANDING]:
+                # Arrival maneuvers - controlled by the destination
+                controller_loc = event.destination
+            else:
+                # Transfer maneuvers - controlled by the current location
+                controller_loc = event.current
+            
+            # Find the effective controller for this location
+            controller = self.effective_controller(controller_loc)
+            
+            # Update the event with the proper controller information
+            updated_event = NavigationEvent(
+                maneuver=event.maneuver,
+                origin=event.origin,
+                current=event.current,
+                next=event.next,
+                destination=event.destination,
+                description=event.description,
                 controller=controller
             )
+            enhanced_events.append(updated_event)
         
-        # Departure:
-        start_scale = transfer_plan[0]
-        start_location = location_path[0]
-        # Always add departure maneuver based on start location:
-        ctrl = self.effective_controller(start_location)
-        if start_scale == OrderedScale(Scale.STATION):
-            maneuvers.append(nav(ManeuverType.UNDOCK, "Undock from station", start_location, start_location))
-        else:
-            maneuvers.append(nav(ManeuverType.LAUNCH, "Launch from body", start_location, controller=start_location))
-        
-        # Process each transfer segment.
-        # Transfer plan format: [start, TRANSFER_TYPE, scale, ... , final scale]
-        current_location_idx = 0
-        idx = 1
-        while idx < len(transfer_plan) - 1:
-            t_type = transfer_plan[idx]
-            next_scale = transfer_plan[idx+1]
-            
-            # Advance to the next location in our path
-            if current_location_idx < len(location_path) - 1:
-                current_location_idx += 1
-            target_location = location_path[current_location_idx]
+        return enhanced_events
 
-            # Special case: Skip final SUBLIGHT to a station
-            if (t_type == ManeuverType.SUBLIGHT and 
-                next_scale == OrderedScale(Scale.STATION) and
-                idx >= len(transfer_plan) - 3):
-                idx += 2
-                continue
-                
-            if t_type == ManeuverType.INSERTION:
-                ctrl = self.effective_controller(target_location)
-                maneuvers.append(nav(ManeuverType.INSERTION, "Perform insertion burn", target_location, controller=ctrl))
-                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize orbit", target_location, controller=ctrl))
-                idx += 2
-            elif t_type == ManeuverType.DIRECT_ASCENT:
-                ctrl = self.effective_controller(target_location)
-                maneuvers.append(nav(ManeuverType.DIRECT_ASCENT, "Direct ascent maneuver", target_location, controller=ctrl))
-                idx += 2
-            elif t_type == ManeuverType.SUBLIGHT:
-                departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
-                outbound_ctrl = self.effective_controller(departure_location)
-                if next_scale != OrderedScale(Scale.STATION) and next_scale >= OrderedScale(Scale.PLANET):
-                    departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
-                    inbound_ctrl = self.effective_controller(target_location)
-                    maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Perform plane change", target_location, controller=outbound_ctrl))
-                inbound_ctrl = self.effective_controller(target_location)
-                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute inbound sublight transfer burn", target_location, controller=inbound_ctrl))
-                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after sublight transfer", target_location, controller=inbound_ctrl))
-                idx += 2
-            elif t_type == ManeuverType.HYPERSPACE:
-                departure_location = location_path[current_location_idx - 1] if current_location_idx > 0 else location_path[0]
-                outbound_ctrl = self.effective_controller(departure_location)
-                inbound_ctrl = self.effective_controller(target_location)
-                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn to depart local orbit", target_location, controller=outbound_ctrl))
-                destination_location = location_path[-1]
-                maneuvers.append(nav(ManeuverType.HYPERSPACE, "Perform hyperspace jump", destination_location, controller=outbound_ctrl))
-                maneuvers.append(nav(ManeuverType.SUBLIGHT, "Execute sublight burn into destination orbit", destination_location, controller=inbound_ctrl))
-                maneuvers.append(nav(ManeuverType.CIRCULARIZE, "Circularize after hyperdrive arrival", destination_location, controller=inbound_ctrl))
-                current_location_idx = len(location_path) - 1
-                idx += 2
-            else:
-                idx += 1
-        
-        # Arrival:
-        final_scale = transfer_plan[-1]
-        final_location = location_path[-1]
-        ctrl = self.effective_controller(final_location)
-        if final_scale == OrderedScale(Scale.STATION):
-            maneuvers.append(nav(ManeuverType.PLANE_CHANGE, "Align orbit for docking", final_location, controller=final_location))
-            maneuvers.append(nav(ManeuverType.DOCK, "Dock at station", final_location, controller=final_location))
-        else:
-            maneuvers.append(nav(ManeuverType.DEORBIT, "Begin deorbit burn", final_location, controller=ctrl))
-            maneuvers.append(nav(ManeuverType.LANDING, "Perform landing maneuver", final_location, controller=final_location))
-        
-        return maneuvers
-    
     def effective_controller(self, location: Location) -> Location:
         """
         Determines the controlling entity for a given Location.
@@ -363,20 +513,26 @@ class RouteService:
         for i, event in enumerate(events):
             if event.controller is None:
                 if event.maneuver in [ManeuverType.LAUNCH, ManeuverType.UNDOCK, ManeuverType.SUBLIGHT, ManeuverType.HYPERSPACE]:
-                    current_idx = path.index(event.target) if event.target in path else 0
+                    current_idx = path.index(event.destination) if event.destination in path else 0
                     departure_loc = path[max(0, current_idx - 1)]
                     events[i] = NavigationEvent(
                         maneuver=event.maneuver,
-                        target=event.target,
+                        origin=departure_loc,
+                        current=departure_loc,
+                        next=event.next,
+                        destination=event.destination,
                         description=event.description,
                         controller=self.effective_controller(departure_loc)
                     )
                 else:
                     events[i] = NavigationEvent(
                         maneuver=event.maneuver,
-                        target=event.target,
+                        origin=event.origin,
+                        current=event.current,
+                        next=event.next,
+                        destination=event.destination,
                         description=event.description,
-                        controller=self.effective_controller(event.target)
+                        controller=self.effective_controller(event.destination)
                     )
         return events
 
@@ -420,11 +576,11 @@ class RouteService:
                 origins.append("STARTING POINT")
             else:
                 # For subsequent events, the origin is the previous event's target
-                origins.append(events[i-1].target.name if events[i-1].target else "Unknown")
+                origins.append(events[i-1].destination.name if events[i-1].destination else "Unknown")
         
         # Calculate column widths
         origin_width = max(len("Origin"), max(len(str(o)) for o in origins))
-        next_stop_width = max(len("Next Stop"), max(len(str(e.target.name)) if e.target else 0 for e in events))
+        next_stop_width = max(len("Next Stop"), max(len(str(e.destination.name)) if e.destination else 0 for e in events))
         maneuver_width = max(len("Maneuver Type"), max(len(str(e.maneuver.name)) for e in events))
         controller_width = max(len("Effective Controller"), 
                             max(len(str(e.controller.name)) if e.controller else len("None") for e in events))
@@ -443,10 +599,23 @@ class RouteService:
         # Add data rows
         for i, event in enumerate(events):
             origin = origins[i]
-            next_stop = event.target.name if event.target else "Unknown"
+            next_stop = event.destination.name if event.destination else "Unknown"
             maneuver_type = event.maneuver.name
             controller = event.controller.name if event.controller else "None"
             
             result.append(row_template.format(origin, next_stop, maneuver_type, controller))
         
         return "\n".join(result)
+
+    def _compress_location_path(self, location_path: List[Location]) -> List[Location]:
+        """Compress the location path by retaining only essential nodes: the first and last nodes are always kept,
+        and any intermediate node whose concrete type is one of 'Planet', 'Moon', or 'Station'."""
+        if not location_path:
+            return location_path
+        compressed = [location_path[0]]
+        for node in location_path[1:-1]:
+            node_type = node.get_concrete_instance().get_type_name()
+            if node_type in ("Planet", "Moon", "Station"):
+                compressed.append(node)
+        compressed.append(location_path[-1])
+        return compressed

@@ -6,6 +6,7 @@ from .base import Location
 from .station import Station
 from collections import deque
 from .scale import OrderedScale
+from ..models.scale import Scale
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
@@ -266,12 +267,12 @@ class UniverseGraph:
             origin_id = origin.get_concrete_instance().id
             dest_id = destination.get_concrete_instance().id
             path_ids = nx.shortest_path(self._graph, origin_id, dest_id)
-            print(f"Calculated path from {origin.name} to {destination.name}:")
+            # print(f"Calculated path from {origin.name} to {destination.name}:")
             for nid in path_ids:
                 path.append(Location.objects.get(id=nid).get_concrete_instance())
-            for node in path:   
-                print(f" - {node.name} (Scale: {node.scale})")
-            print(f"Total nodes in path: {len(path)}")
+            #for node in path:   
+            #    print(f" - {node.name} (Scale: {node.scale})")
+            #print(f"Total nodes in path: {len(path)}")
             return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
@@ -349,6 +350,46 @@ def get_concrete_type(node):
     """
     return node.__class__.__name__
 
+def is_planetary(location: Location) -> bool:
+    """Return True if the location has a Planet or Moon scale and its parent object is of Star scale."""
+    concrete = location.get_concrete_instance()
+    if concrete.scale not in (Scale.PLANET, Scale.MOON):
+        return False
+
+    # Check for a parent attribute; if absent or None, not planetary
+    if not hasattr(concrete, 'parent') or concrete.parent is None:
+        return False
+
+    parent_concrete = concrete.parent.get_concrete_instance()
+    return parent_concrete.scale == Scale.STAR
+
+def requires_plane_change(event: 'NavigationEvent') -> bool:
+    """
+    Determine if a PLANE_CHANGE maneuver is required based on the orbital alignment.
+
+    This function inspects the NavigationEvent's current, next, and destination locations. If all three locations have a parent attribute,
+    and if the parent's of these locations are not all identical, then a plane change is required.
+
+    Returns:
+        True if a PLANE_CHANGE is needed, otherwise False.
+    """
+    current_concrete = event.current.get_concrete_instance()
+    next_concrete = event.next.get_concrete_instance()
+    destination_concrete = event.destination.get_concrete_instance()
+
+    # Ensure all three locations have a parent attribute
+    if (hasattr(current_concrete, 'parent') and current_concrete.parent is not None and
+        hasattr(next_concrete, 'parent') and next_concrete.parent is not None and
+        hasattr(destination_concrete, 'parent') and destination_concrete.parent is not None):
+        current_parent = current_concrete.parent.get_concrete_instance()
+        next_parent = next_concrete.parent.get_concrete_instance()
+        destination_parent = destination_concrete.parent.get_concrete_instance()
+
+        # If not all parents are the same, a plane change is needed
+        if not (current_parent.id == next_parent.id == destination_parent.id):
+            return True
+
+    return False
 
 def find_nearest_node(start_node, target_check, get_neighbors):
     """
@@ -464,3 +505,4 @@ def print_tree(universe_graph, root_id, level=0, visited=None):
     for neighbor in graph.neighbors(root_id):
         if neighbor not in visited:
             print_tree(universe_graph, neighbor, level + 1, visited)
+
