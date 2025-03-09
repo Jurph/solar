@@ -11,7 +11,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 - Project infrastructure 
     - "Installer" scripts that make deploying straight from Git reliable 
-    - Unit Tests that Always Pass (doo-dah, doo-dah)
+    - Unit Tests that Always Pass (doo-dah, doo-dah) ✓
     - Maybe some kind of CI/CD setup 
     - Figure out how to interact with Django and the sqlite DB for testing ✓
 
@@ -52,15 +52,15 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - More detailed ship mechanics including detailed subsystems and subsystem failures 
 
 - Actors and Missions
-    - Unified Actor model for Pilots and Controllers
-    - Procedurally generated actors with personality traits
+    - Unified Actor model for Pilots and Controllers ✓
+    - Procedurally generated actors with personality traits ✓
     - Mission model for narrative-driven journeys
     - Transport missions with Ship, Pilot, start/end Locations, and Cargo
     - Mission scheduling with time-based maneuvers
 
 - Events and Dialogue
     - Just transit events to start: talking to Control and asking permission to go places ✓
-    - Transform navigation events into time-stamped dialogue events
+    - Transform navigation events into time-stamped dialogue events ✓
     - Anomalies a great place to explore complexity 
         - Asking other ships to stay clear 
         - Asking other ships about their cargo or destination 
@@ -70,9 +70,9 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Scrolling terminal-like display for viewing dialogue events as they unfold
 
 - Simulation and Scheduling
-    - Time-based simulation loop that advances time every ~2 seconds
-    - Scheduler that queues dialogue events with timestamps
-    - Event processing that "pops" events off the queue as their time arrives
+    - Time-based simulation loop that advances time every ~0.1 seconds ✓
+    - Scheduler that queues dialogue events with timestamps 
+    - Event processing that "pops" events off the queue as their time arrives ✓
     - Conflict resolution for overlapping dialogue events
 
 - Comms 
@@ -86,7 +86,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Characters
     - Procedurally generated pilots and dispatchers 
     - Generate a character name, personality sketch, "sloppiness" concept 
-    - Use this to build a prompt for a tiny local LLM 
+    - Use this to build a prompt for a tiny local LLM ✓
     - LLM uses the scripted lines as a guide but reads them "in character", responding to the previous message ✓
     - Ideally each character also gets a fixed voice model configuration that sticks with them 
 
@@ -104,13 +104,13 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Procedurally generate ship names for scripted events ✓
 - Move a ship from one planet to another with a random cargo ✓
 - Script the "arrival" and "departure" event categories ✓
-- Create Actor model for Pilots and Controllers
-- Develop time-based simulation loop (~2 second increments)
-- Build Scheduler for time-stamped dialogue events
+- Create Actor model for Pilots and Controllers ✓
+- Develop time-based simulation loop (~0.1 second increments) ✓
+- Build Scheduler for time-stamped dialogue events ✓
 - Create scrolling terminal-like display for dialogue events
 
 ### Three - Time and Narrative
-- Implement dialogue event generation from navigation events
+- Implement dialogue event generation from navigation events ✓
 - Add timestamps to dialogue events based on maneuver durations
 - Create view layer for displaying dialogue events as they unfold
 - Develop admin controls for spawning missions and anomalies
