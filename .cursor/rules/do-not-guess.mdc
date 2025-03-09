@@ -1,0 +1,19 @@
+---
+description: Good for writing reliable code
+globs: 
+alwaysApply: false
+---
+
+# Your rule content
+
+- [CODING_STANDARDS.md](mdc:docs/CODING_STANDARDS.md)
+- [ARCHITECTURE.md](mdc:docs/ARCHITECTURE.md)
+- [TODO.md](mdc:docs/TODO.md)
+- [spec.md](mdc:docs/spec.md)
+
+This project is pretty big! Sometimes you'll come across an import of a Class you haven't seen in a while, and you might be tempted to call its __init__ or object.create() method with parameters that you **think** will work. But instead of guessing, **STOP** and do one of two things: 
+
+1. Look into the codebase, searching for the Class or Function definition you need, or 
+2. Ask for help from the developer. 
+
+It's **NEVER** okay to guess! In a codebase this big and complex, you guessing about function syntax is such a low-probability longshot that you are basically **guaranteed** to add errors, rather than fix them.  So, don't guess! Stop and think, zoom out, read the code-base, and if you can't determine with high confidence how to call a function, stop generating code and ask for help instead. 

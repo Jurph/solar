@@ -25,8 +25,13 @@ def dialogue_event_listener(sender, event, **kwargs):
 
 @receiver(navigation_event_processed)
 def navigation_event_listener(sender, event, **kwargs):
-    """Handle navigation events by printing to stdout (for now)."""
-    print(f"[{event.timestamp:.2f}s] NAVIGATION: {event.maneuver.name} to {event.target.name}")
+    """Handle navigation events by appending to the global list and printing to stdout."""
+    global DIALOGUE_EVENTS_RECEIVED
+    with DIALOGUE_EVENTS_RECEIVED_LOCK:
+        DIALOGUE_EVENTS_RECEIVED.append(event)
+    maneuver_str = getattr(event.maneuver, 'name', event.maneuver)
+    target_str = getattr(event.target, 'name', event.target)
+    print(f"[{event.timestamp:.2f}s] NAVIGATION: {maneuver_str} to {target_str}")
 
 
 class Command(BaseCommand):

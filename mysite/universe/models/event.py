@@ -4,6 +4,8 @@ from typing import Optional, Dict
 
 # Import the Actor model to associate events with an actor.
 from mysite.universe.models.actor import Actor
+from mysite.universe.models.base import Location
+from mysite.universe.models.navigation import ManeuverType
 
 @dataclass(frozen=True)
 class Event(ABC):
@@ -117,8 +119,8 @@ class NavigationEvent(Event):
         metadata: Additional context for the event.
     """
     timestamp: float
-    maneuver: Actor
-    target: Actor
+    maneuver: ManeuverType
+    target: Location
     duration: float = 0.0
     event_type: str = "navigation"
     metadata: Optional[Dict] = None
