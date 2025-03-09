@@ -4,7 +4,7 @@ from mysite.universe.services.llm_service import LLMService
 @pytest.fixture
 def llm():
     """Fixture to provide a configured LLM service."""
-    return LLMService(model_name="qwen2.5:0.5b")
+    return LLMService()
 
 @pytest.fixture
 def mars_control_prompt():
