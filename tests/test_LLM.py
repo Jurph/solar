@@ -4,7 +4,7 @@ from mysite.universe.services.llm_service import LLMService
 @pytest.fixture
 def llm():
     """Fixture that returns an initialized LLM service."""
-    return LLMService(model_name="qwen2.5:1.5b")
+    return LLMService()
 
 @pytest.fixture
 def yes_no_prompt():

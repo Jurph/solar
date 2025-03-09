@@ -272,7 +272,7 @@ class Satellite(Actor):
         self.role = self.Role.SATELLITE
     
     def get_identity_prompt(self) -> str:
-        return "You are an automated satellite with a simple embedded system."
+        return "You are an automated satellite with a simple embedded communication system."
 
     def get_instruction_prompt(self) -> str:
         return "You respond with 'BEEP BOOP' and nothing else."
