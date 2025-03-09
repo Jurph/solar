@@ -1,84 +1,173 @@
-from django.core.management.base import BaseCommand
+import heapq
+import threading
 import time
 
-# Import our simulation queue and signals
-from mysite.universe.simulation_queue import SimulationQueue
-from mysite.universe.signals import simulation_event
+from django.core.management.base import BaseCommand
+from django.dispatch import receiver
 
-# We'll need these to create dummy events
-from mysite.universe.models.navigation import NavigationEvent, ManeuverType
-from mysite.universe.models.base import Location
-from mysite.universe.models.ship import Ship
+from mysite.universe.signals import dialogue_event_processed, navigation_event_processed
+from mysite.universe.models.actor import Actor
+from mysite.universe.models.event import DialogueEvent, NavigationEvent
 
-def event_listener(sender, **kwargs):
-    """
-    A demonstration receiver for simulation events.
-    This function will be called when a simulation event is published.
-    """
-    item = kwargs.get("item")
-    if item:
-        # For example, the dialogue scroller could convert the actor's identifier to uppercase,
-        # then dispatch the finalized dialogue to the UI or TTS engine.
-        print(f"[Listener] {item.ship.name.upper()} says: (Event: {item.nav_event.maneuver})")
+
+# Global list to store processed dialogue events (used in tests)
+DIALOGUE_EVENTS_RECEIVED = []
+DIALOGUE_EVENTS_RECEIVED_LOCK = threading.Lock()
+
+
+@receiver(dialogue_event_processed)
+def dialogue_event_listener(sender, event, **kwargs):
+    """Handle dialogue events by appending to a global list and printing to stdout."""
+    global DIALOGUE_EVENTS_RECEIVED
+    with DIALOGUE_EVENTS_RECEIVED_LOCK:
+        DIALOGUE_EVENTS_RECEIVED.append(event)
+    print(f"[{event.timestamp:.2f}s] DIALOGUE: {event.actor.name}: {event.text}")
+
+
+@receiver(navigation_event_processed)
+def navigation_event_listener(sender, event, **kwargs):
+    """Handle navigation events by printing to stdout (for now)."""
+    print(f"[{event.timestamp:.2f}s] NAVIGATION: {event.maneuver.name} to {event.target.name}")
+
 
 class Command(BaseCommand):
-    help = "Starts the simulation game loop that processes events based on timestamps and publishes them via Django Signals."
+    """Django management command to run the simulation loop."""
+    help = "Runs the simulation loop"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def dialogue_events_received(self):
+        return DIALOGUE_EVENTS_RECEIVED
 
     def handle(self, *args, **options):
+        """Run the simulation loop."""
+        queue = SimulationQueue()
+        self.load_test_events(queue)
         self.stdout.write("Starting simulation loop...")
+        self.start_simulation_loop(queue)
 
-        # Connect our receiver to the simulation_event signal.
-        simulation_event.connect(event_listener, sender=SimulationQueue)
+    def load_initial_events(self, queue):
+        """Load initial events into the queue (to be implemented)."""
+        pass
 
-        simulation_queue = SimulationQueue()
-
-        # Preload a demo mission for a satellite that beeps every 10 seconds.
-        # Create a dummy location for the satellite (would normally be saved in the DB)
-        dummy_location = Location(name="Orbit")
-        dummy_location.save()
-
-        # Create a dummy satellite ship
-        satellite_ship = Ship(name="Satellite", current_location=dummy_location, cargo="N/A", status="TRAN")
-        satellite_ship.save()
-
-        # Create a series of dummy NavigationEvent objects with timestamps every 10 seconds
-        beep_events = []
-        for i in range(1, 7):  # This will create events at 10s, 20s, …, 60s
-            event = NavigationEvent(
-                origin=dummy_location,
-                current=dummy_location,
-                next=dummy_location,
-                destination=dummy_location,
-                maneuver=ManeuverType.SUBLIGHT,  # Using SUBLIGHT as a placeholder maneuver
-                controller=None,
-                duration=i * 10,
-                description="BEEP BOOP"
-            )
-            beep_events.append(event)
-
-        simulation_queue.load_mission(satellite_ship, beep_events)
-
-        # Capture the simulation start time.
-        simulation_start = time.monotonic()
+    def start_simulation_loop(self, queue, time_fn=None):
+        """Start the main simulation loop."""
+        if time_fn is None:
+            time_fn = time.time
+        start_time = time_fn()
+        queue._start_time = start_time
 
         try:
             while True:
-                # Determine the elapsed simulation time.
-                elapsed = time.monotonic() - simulation_start
+                current_time = time_fn() - start_time
+                queue._current_time = current_time
+                queue.process_due_events(current_time)
 
-                # Check if the next event (if any) is due.
-                if not simulation_queue.is_empty():
-                    next_item = simulation_queue.queue[0]
-                    if next_item.timestamp <= elapsed:
-                        # Process the event by removing it from the queue.
-                        processed_item = simulation_queue.pop_item()
-                        # Notify subscribers via Django Signals.
-                        simulation_queue.notify_subscribers(processed_item)
-                        # Also, log to stdout for debugging.
-                        self.stdout.write(
-                            f"[{elapsed:.2f}s] Processing event for {processed_item.ship.name}: {processed_item.nav_event.maneuver} -- {processed_item.nav_event.description}"
-                        )
-                # Sleep briefly to avoid a tight loop.
-                time.sleep(1)
+                if not queue.peek_next_event():
+                    self.stdout.write("Simulation complete")
+                    break
+
+                next_event = queue.peek_next_event()
+                sleep_time = min(0.1, max(0, next_event.timestamp - current_time))
+                time.sleep(sleep_time)
         except KeyboardInterrupt:
-            self.stdout.write("Simulation loop terminated by user.")
+            self.stdout.write("Simulation stopped")
+
+    def load_test_events(self, queue):
+        """Load some dummy events for testing."""
+        from mysite.universe.models.event import DialogueEvent
+        from mysite.universe.models.actor import Actor
+
+        try:
+            pilot = Actor.objects.get(name="Test Pilot")
+        except Actor.DoesNotExist:
+            pilot = Actor.objects.create(
+                name="Test Pilot",
+                role="pilot",
+                personality="professional"
+            )
+
+        try:
+            controller = Actor.objects.get(name="Test Controller")
+        except Actor.DoesNotExist:
+            controller = Actor.objects.create(
+                name="Test Controller",
+                role="controller",
+                personality="helpful"
+            )
+
+        events = [
+            DialogueEvent(
+                timestamp=5.0,
+                actor=pilot,
+                text="Control, this is Test Ship requesting clearance for departure.",
+                expect_reply=True,
+                duration=2.0,
+                event_type="dialogue",
+            ),
+            DialogueEvent(
+                timestamp=10.0,
+                actor=controller,
+                text="Test Ship, you are cleared for departure. Proceed on heading 270.",
+                expect_reply=True,
+                duration=3.0,
+                event_type="dialogue",
+            ),
+            DialogueEvent(
+                timestamp=15.0,
+                actor=pilot,
+                text="Copy that Control, heading 270. Test Ship out.",
+                expect_reply=False,
+                duration=2.0,
+                event_type="dialogue",
+            ),
+        ]
+        for event in events:
+            queue.add_event(event)
+        self.stdout.write(f"Loaded {len(events)} test events")
+
+
+class SimulationQueue:
+    """A time-ordered queue of simulation events."""
+
+    def __init__(self):
+        self._queue = []  # Priority queue ordered by timestamp
+        self._start_time = None
+        self._current_time = 0
+
+    def add_event(self, event):
+        """Add an event to the queue (using heapq to maintain order by timestamp)."""
+        heapq.heappush(self._queue, (event.timestamp, event))
+
+    def peek_next_event(self):
+        """Return the next event without removing it, or None if empty."""
+        if self._queue:
+            return self._queue[0][1]
+        return None
+
+    def get_next_event(self):
+        """Get and remove the next event, or return None if empty."""
+        if self._queue:
+            return heapq.heappop(self._queue)[1]
+        return None
+
+    def process_due_events(self, current_time):
+        """Process all events whose timestamp is <= current_time."""
+        while self._queue and self._queue[0][0] <= current_time:
+            event = self.get_next_event()
+            self.emit_event(event)
+
+    def emit_event(self, event):
+        """Emit the event using Django signals based on its type."""
+        if isinstance(event, DialogueEvent):
+            dialogue_event_processed.send(sender=SimulationQueue, event=event)
+        elif isinstance(event, NavigationEvent):
+            navigation_event_processed.send(sender=SimulationQueue, event=event)
+        else:
+            print(f"Unknown event type: {type(event)}")
+
+
+# Expose the global dialogue events list as an attribute on the Command class for testing
+Command.dialogue_events_received = DIALOGUE_EVENTS_RECEIVED

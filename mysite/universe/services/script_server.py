@@ -5,6 +5,8 @@ from ..models.ship import Ship
 from ..services.dictionary import DictionaryService
 from mysite.universe.services.llm_service import LLMService
 
+
+# LEGACY script server - the newer script_service.py uses the DialogueEvent and NavigationEvent classes.
 @dataclass
 class DialogLine:
     speaker: str
