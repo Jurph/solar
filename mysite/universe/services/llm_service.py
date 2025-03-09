@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from mysite.universe.models.actor import Actor
 import yaml
-import random
+
 
 class LLMService:
     """

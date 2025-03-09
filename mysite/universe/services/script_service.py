@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import List
 from services.dictionary import DictionaryService
 import random
 
@@ -13,14 +10,6 @@ from mysite.universe.services.llm_service import LLMService
 
 dictionary_service = DictionaryService()
 llm_service = LLMService()
-
-@dataclass(frozen=True)
-class ScriptEvent:
-    """Represents a scripted event for simulation playback."""
-    time_offset: float  # seconds offset from simulation start
-    actor: str          # actor identifier (e.g., 'Ship.Pilot' or controller's name)
-    text: str           # dialogue or message
-
 
 class ScriptService:
     """
@@ -198,43 +187,3 @@ class ScriptService:
                 duration=2.0,
                 event_type="dialogue"
             )
-            
-            
-    def generate_script_events(self, nav_event: NavigationEvent) -> List[ScriptEvent]:
-        """
-        Generate a sequence of ScriptEvents from a given NavigationEvent.
-
-        For a SUBLIGHT maneuver, the following dialogue is generated:
-          1. At t=0s, the pilot announces: "{controller}, this is {pilot_call_sign}, inbound from {origin} carrying {cargo}. I need a vector for an insertion burn for {destination} orbit."
-          2. At t=3s, the controller responds: "{pilot_call_sign}, this is {controller}. Confirmed for insertion. Come left 20 degrees and make your burn."
-          3. At t=6s, the pilot confirms: "Control, {pilot_call_sign}, 20 degrees left, thank you. Burning now."
-        
-        Other maneuver types can be added later.
-        """
-        events: List[ScriptEvent] = []
-
-        # Process only SUBLIGHT maneuvers for now
-        if nav_event.maneuver == ManeuverType.SUBLIGHT:
-            # Retrieve necessary details from the navigation event.
-            origin_name = getattr(nav_event.origin, 'name', 'Unknown Origin')
-            destination_name = getattr(nav_event.destination, 'name', 'Unknown Destination')
-            # Use the controller assigned in the nav event or default to destination + ' Control'
-            controller_name = (getattr(nav_event.controller, 'name', None) or f"{destination_name} Control")
-
-            # Event 1: Pilot speaks at t=0s
-            text1 = (f"{controller_name}, this is {self.pilot_call_sign}, inbound from {origin_name} carrying {self.default_cargo}. "
-                     f"I need a vector for an insertion burn for {destination_name} orbit.")
-            events.append(ScriptEvent(time_offset=0.0, actor="Ship.Pilot", text=text1))
-
-            # Event 2: Controller responds at t=3s
-            text2 = (f"{self.pilot_call_sign}, this is {controller_name}. Confirmed for insertion. "
-                     "Come left 20 degrees and make your burn.")
-            events.append(ScriptEvent(time_offset=3.0, actor=controller_name, text=text2))
-
-            # Event 3: Pilot confirms at t=6s
-            text3 = (f"Control, {self.pilot_call_sign}, 20 degrees left, thank you. Burning now.")
-            events.append(ScriptEvent(time_offset=6.0, actor="Ship.Pilot", text=text3))
-
-        # For other maneuver types, additional dialogue can be implemented.
-
-        return events 

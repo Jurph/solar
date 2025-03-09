@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 # Import the Actor model to associate events with an actor.
 from mysite.universe.models.actor import Actor
@@ -57,3 +57,72 @@ class BroadcastEvent(Event):
         """
         print(f"Broadcast from {self.actor.name.upper()}: {self.text}")
     
+@dataclass(frozen=True)
+class DialogueEvent(Event):
+    """
+    A dialogue event represents a line of dialogue spoken by an actor.
+    
+    This can be a request for clearance, acknowledgment of instructions,
+    or any other communication between actors.
+    
+    Attributes:
+        timestamp: When the event should occur in simulation time
+        actor: The actor speaking the dialogue
+        text: The spoken dialogue text
+        expect_reply: Whether the dialogue expects a response
+        duration: How long the dialogue takes to deliver (for TTS timing)
+        event_type: The type of event ("dialogue")
+        metadata: Additional information about the event
+    """
+    timestamp: float
+    actor: Actor
+    text: str
+    expect_reply: bool = False
+    duration: float = 0.0
+    event_type: str = "dialogue"
+    metadata: Optional[Dict] = None
+    
+    def process(self):
+        """
+        Process the dialogue event.
+        
+        For dialogue, this means displaying or speaking the text.
+        If expect_reply is True, this may also generate a reply event.
+        """
+        if self.expect_reply:
+            return self.expect_reply_action()
+        else:
+            return self.end_conversation_action()
+    
+    def expect_reply_action(self):
+        """Action to take when the dialogue expects a reply."""
+        print(f"{self.actor.name} says: {self.text} [Expecting reply]")
+        # In a real implementation, this might add a reply event to the queue
+    
+    def end_conversation_action(self):
+        """Action to take when the dialogue ends the conversation."""
+        print(f"{self.actor.name} says: {self.text} [End of conversation]")
+
+@dataclass(frozen=True)
+class NavigationEvent(Event):
+    """
+    A navigation event represents a navigation maneuver in the simulation.
+    
+    Attributes:
+        timestamp: When the event should occur in simulation time.
+        maneuver: The actor performing the maneuver.
+        target: The target actor or destination.
+        duration: Optional; time the event takes.
+        event_type: The type of event ("navigation").
+        metadata: Additional context for the event.
+    """
+    timestamp: float
+    maneuver: Actor
+    target: Actor
+    duration: float = 0.0
+    event_type: str = "navigation"
+    metadata: Optional[Dict] = None
+    
+    def process(self):
+        print(f"Navigation: {self.maneuver.name} to {self.target.name}")
+
