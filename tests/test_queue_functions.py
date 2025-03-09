@@ -7,7 +7,7 @@ from collections import namedtuple
 import threading
 
 import pytest
-from django.core.management.base import BaseCommand
+
 
 from mysite.universe.management.commands.start_simulation_loop import (
     SimulationQueue,
