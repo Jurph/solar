@@ -6,7 +6,6 @@ from django.core.management.base import BaseCommand
 from django.dispatch import receiver
 
 from mysite.universe.signals import dialogue_event_processed, navigation_event_processed
-from mysite.universe.models.actor import Actor
 from mysite.universe.models.event import DialogueEvent, NavigationEvent
 
 

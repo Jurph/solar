@@ -1,74 +1,77 @@
 import pytest
-from mysite.universe.services.llm_service import LLMService
+import os
+from django.core.management import call_command
+from django.conf import settings
+
+from mysite.universe.management.commands.start_simulation_loop import SimulationQueue
+from mysite.universe.services.script_server import ScriptService
+from mysite.universe.services.route_server import RouteService
+from mysite.universe.models.actor import Pilot, Controller 
+from mysite.universe.models.ship import Ship
+from mysite.universe.models.base import Location
+from mysite.universe.import_xml import UniverseImporter
+
 
 @pytest.fixture
-def llm():
-    """Fixture to provide a configured LLM service."""
-    return LLMService()
+def simulation_queue(db):
+    """Fixture to provide a simulation queue."""
+    return SimulationQueue()
 
 @pytest.fixture
-def mars_control_prompt():
-    """System prompt that configures the LLM for space traffic control scenarios."""
-    return """
-    You are "MARS CONTROL". You are a business-like space traffic controller handling requests from spacecraft operators. 
-    This week you are working at Mars Control, and while you have a name, on the radio you will
-    always identify yourself as "Mars Control", or "Control" only. 
-    
-    You will almost always respond in the format of: "[shipname], Mars Control, approved for [request]."
-    
-    But NEVER EVER say "[SHIPNAME]"!! Instead, replace it with the name of the ship operator from their last transmission.
-    Similarly, replace [request] with a shorter version of the request. Accidentally saying "[SHIPNAME]" can get you fired!
-    
-    1. When the ship operator indicates the ship is finished speaking with you, it is polite to wish them well with a phrase like
-        "Safe travels," or "Good luck," or "See you next time." Don't feel bound to these phrases, but always be polite. 
-    2. Responses are brief and to the point. 
-    3. Don't ever say "SHIPNAME" in your response - use the ship's name! 
-    4. Don't get confused and say that YOU are the ship! 
-    
-EXAMPLES:
-- "Mars Control, this is LAST TANGO, requesting a vector for sublight departure from Mars." 
-- "LAST TANGO, Mars Control, approved for sublight departure. Safe travels." 
+def script_service():
+    """Fixture to provide a configured ScriptService."""
+    return ScriptService()
 
-- "Mars Control, this is AURORA PINES, requesting a de-orbit burn."
-- "AURORA PINES, Mars Control here. Request approved. De-orbit at your convenience. Take it easy."
-
-- "Mars Control, this is FANTASY ISLAND VII with a load of bulk helium, requesting transfer burn to Phobos." 
-- "FANTASY ISLAND VII, Control, sounds good. Burn to Phobos approved."  
-
-- "Mars Control, this is SHEILA'S BLOKE, requesting direct ascent burn to Deimos."  
-- "SHIPNAME--" 
-- "Mars Control, watch your language! Please call me SHEILA'S BLOKE." 
-- "SHEILA'S BLOKE, Control, sounds good. Burn to Deimos approved." 
-
-The pilots in this system almost never make mistakes. You will be approving nearly all of the requests you receive. Get ready to approve some requests... 
-    
+@pytest.fixture
+def test_universe(db):
     """
+    Loads test universe data from test_universe.xml using UniverseImporter.
 
-class TestSpaceTrafficScenarios:
-    """Test LLM capabilities for space traffic control scenarios."""
+    Expects the following test data:
+    - Two Locations: "Mars" and "Earth".
+    - Generates one random Pilot actor using the production procedural method.
+    - Generates one random Ship using the production procedural method, with its current_location set to Mars.
+    """
+    xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
+    importer = UniverseImporter(xml_file)
+    importer.import_universe()
 
-    @pytest.mark.slow
-    def test_maneuver_clearance(self, llm, mars_control_prompt):
-        """Test that the LLM can appropriately respond to a request for maneuver clearance."""
-        request = "Mars Control, STARLIGHT here, inbound from Jupiter with a load of iron. Requesting clearance for orbital insertion burn around Mars."
-        
-        response = llm.generate_with_system_prompt(
-            user_message=request,
-            system_prompt=mars_control_prompt,
-            temperature=0.55,
-            max_tokens=150
-        )
-        
-        print(f"Request: {request}")
-        print(f"Response: {response}")
-        
-        # Check for key terms in a clearance response - make more forgiving
-        clearance_terms = ["confirm", "clear", "clearance", "approve", "proceed", "permission", "granted", "authorize"]
-        has_clearance_term = any(term in response.lower() for term in clearance_terms)
-        
-        # Check for appropriate space traffic control terminology - make more forgiving
-        control_terms = ["control", "telemetry", "vector", "trajectory", "approach", 
-                        "orbit", "insertion", "confirm", "affirmative", "copy"]
-        has_control_terms = sum(1 for term in control_terms if term in response.lower())
-        
-        assert has_clearance_term or has_control_terms >= 1, "Response doesn't include appropriate clearance or control terminology"
+    mars = Location.objects.get(name="Mars")
+    earth = Location.objects.get(name="Earth")
+    # Generate support data exactly as in your existing tests:
+    ship = Ship.create() 
+    pilot = Pilot.create(ship=ship)       
+    controller = Controller.create()
+    return {"mars": mars, "earth": earth, "pilot": pilot, "ship": ship, "controller": controller}
+
+def test_route_and_script_integration_mars_to_earth(capfd, simulation_queue, script_service, test_universe):
+    """
+    Integration test that:
+    - Uses the route_server to generate a route from Mars to Earth.
+    - Processes the generated NavigationEvents via the ScriptService.
+    - Prints the resulting script events to stdout.
+    - Asserts that the output contains at least one expected keyword.
+    """
+    route_service = RouteService()
+    # Generate a route from Mars (origin) to Earth (destination) using the ship from our test universe.
+    route = route_service.plan_route(origin=test_universe["mars"], destination=test_universe["earth"])
+    
+    # If the route is not already a list of events, assume it's an object with an 'events' attribute.
+    if not isinstance(route, list):
+        route_events = route.events
+    else:
+        route_events = route
+
+    # Process each navigation event with the ScriptService to generate dialogue events.
+    script_events = [script_service.parse_navigation_event(event, test_universe["ship"]) for event in route_events]
+
+    # Print the script events to stdout.
+    for event in script_events:
+        print(event)
+
+    # Capture stdout output.
+    captured = capfd.readouterr().out
+
+    # Check that the output contains expected keywords (e.g., maneuvers "DEORBIT" or "LAND", or the planet names).
+    expected_keywords = ["DEORBIT", "LAND", "Mars", "Earth"]
+    assert any(keyword in captured for keyword in expected_keywords), "Generated script events do not include any expected keywords."
