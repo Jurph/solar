@@ -55,8 +55,8 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Unified Actor model for Pilots and Controllers ✓
     - Procedurally generated actors with personality traits ✓
     - Mission model for narrative-driven journeys
-    - Transport missions with Ship, Pilot, start/end Locations, and Cargo
-    - Mission scheduling with time-based maneuvers
+    - Transport missions with Ship, Pilot, start/end Locations, and Cargo ✓
+    - Mission scheduling with time-based maneuvers ✓
 
 - Events and Dialogue
     - Just transit events to start: talking to Control and asking permission to go places ✓
@@ -71,7 +71,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 - Simulation and Scheduling
     - Time-based simulation loop that advances time every ~0.1 seconds ✓
-    - Scheduler that queues dialogue events with timestamps 
+    - Scheduler that queues dialogue events with timestamps ✓
     - Event processing that "pops" events off the queue as their time arrives ✓
     - Conflict resolution for overlapping dialogue events
 
