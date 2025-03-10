@@ -3,7 +3,7 @@ import os
 from django.core.management import call_command
 from django.conf import settings
 
-from mysite.universe.management.commands.start_simulation_loop import SimulationQueue
+from mysite.universe.management.commands.start_simulation_loop import SimulationQueue, DIALOGUE_EVENTS_RECEIVED, DIALOGUE_EVENTS_RECEIVED_LOCK
 from mysite.universe.services.script_server import ScriptService
 from mysite.universe.services.route_server import RouteService
 from mysite.universe.models.actor import Pilot, Controller 
@@ -62,16 +62,39 @@ def test_route_and_script_integration_mars_to_earth(capfd, simulation_queue, scr
     else:
         route_events = route
 
-    # Process each navigation event with the ScriptService to generate dialogue events.
-    script_events = [script_service.parse_navigation_event(event, test_universe["ship"]) for event in route_events]
+    # Process the navigation events with the ScriptService to generate dialogue events with sequential timestamps.
+    script_events = script_service.parse_navigation_events(route_events, test_universe["ship"])
 
-    # Print the script events to stdout.
-    for event in script_events:
-        print(event)
+    # Assert that script events were generated.
+    assert script_events, "Script events list is empty."
 
-    # Capture stdout output.
-    captured = capfd.readouterr().out
+    # Combine all script events into one string for easier checking.
+    script_output = "\n".join(str(event) for event in script_events)
+    print(script_output)
 
-    # Check that the output contains expected keywords (e.g., maneuvers "DEORBIT" or "LAND", or the planet names).
+    # Check that the combined script output contains at least one expected keyword.
     expected_keywords = ["DEORBIT", "LAND", "Mars", "Earth"]
-    assert any(keyword in captured for keyword in expected_keywords), "Generated script events do not include any expected keywords."
+    assert any(keyword in script_output for keyword in expected_keywords), "Generated script events do not include any expected keywords."
+
+    # New block: Load the dialogue events into a SimulationQueue and process the first one
+    from mysite.universe.management.commands.start_simulation_loop import SimulationQueue, DIALOGUE_EVENTS_RECEIVED, DIALOGUE_EVENTS_RECEIVED_LOCK
+
+    # Clear the global dialogue events list
+    with DIALOGUE_EVENTS_RECEIVED_LOCK:
+        DIALOGUE_EVENTS_RECEIVED.clear()
+
+    sim_queue = SimulationQueue()
+    for event in script_events:
+        sim_queue.add_event(event)
+
+    # Process events up to just after the first event's timestamp
+    sim_queue.process_due_events(script_events[0].timestamp + 360)
+
+    # Verify that one dialogue event was processed
+    with DIALOGUE_EVENTS_RECEIVED_LOCK:
+        assert len(DIALOGUE_EVENTS_RECEIVED) == 6, "Expected one dialogue event to be processed, got {}.".format(len(DIALOGUE_EVENTS_RECEIVED))
+        processed_event = DIALOGUE_EVENTS_RECEIVED[0]
+
+    # Check that the processed event's text matches the first script event's text
+    assert processed_event.text == script_events[0].text, "The processed event text does not match the expected first event text."
+    

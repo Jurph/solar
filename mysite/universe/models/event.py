@@ -75,6 +75,7 @@ class DialogueEvent(Event):
         duration: How long the dialogue takes to deliver (for TTS timing)
         event_type: The type of event ("dialogue")
         metadata: Additional information about the event
+        expected_reply_actor: Optional[Actor] = None
     """
     timestamp: float
     actor: Actor
@@ -83,6 +84,7 @@ class DialogueEvent(Event):
     duration: float = 0.0
     event_type: str = "dialogue"
     metadata: Optional[Dict] = None
+    expected_reply_actor: Optional[Actor] = None
     
     def process(self):
         """
@@ -97,9 +99,49 @@ class DialogueEvent(Event):
             return self.end_conversation_action()
     
     def expect_reply_action(self):
-        """Action to take when the dialogue expects a reply."""
+        """Action to take when the dialogue expects a reply.
+        Determines the replying actor by looking up the 'expected_reply_actor' if provided
+        or using metadata to look up the actor. Returns a new DialogueEvent reply.
+        """
         print(f"{self.actor.name} says: {self.text} [Expecting reply]")
-        # In a real implementation, this might add a reply event to the queue
+
+        # First, try to use the explicitly attached expected_reply_actor
+        if self.expected_reply_actor is not None:
+            reply_actor = self.expected_reply_actor
+        else:
+            # If no actor attached, check metadata for a 'reply_actor_name'
+            reply_name = self.metadata.get("reply_actor_name") if self.metadata and "reply_actor_name" in self.metadata else None
+
+            if reply_name:
+                # Look up the Actor by name; in a real implementation, there should be error handling
+                from mysite.universe.models.actor import Actor
+                qs = Actor.objects.filter(name=reply_name)
+                reply_actor = qs.first() if qs.exists() else None
+            else:
+                reply_actor = None
+
+            # Fallback: if still no reply actor found, default to using a Controller lookup based on control_name
+            if reply_actor is None:
+                control_name = self.metadata.get("control_name") if self.metadata and "control_name" in self.metadata else "CONTROL"
+                from mysite.universe.models.actor import Controller
+                qs = Controller.objects.filter(name=control_name)
+                reply_actor = qs.first() if qs.exists() else None
+
+            # Final fallback: if no actor found, use self.actor as the reply actor
+            if reply_actor is None:
+                reply_actor = self.actor
+
+        reply_text = f"{self.actor.name}, thank you. [Auto-reply from {reply_actor.name}]"
+
+        return DialogueEvent(
+            timestamp=self.timestamp + 3.0,
+            actor=reply_actor,
+            text=reply_text,
+            expect_reply=False,
+            duration=2.0,
+            event_type="dialogue",
+            metadata={}
+        )
     
     def end_conversation_action(self):
         """Action to take when the dialogue ends the conversation."""

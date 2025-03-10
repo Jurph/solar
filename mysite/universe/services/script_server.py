@@ -52,6 +52,7 @@ class ScriptService:
         controller_name = getattr(nav_event.controller, "name", None) or f"{nav_event.destination.name} Control"
         metadata = {"control_name": controller_name}
         expect_reply = True
+        expected_reply_actor = nav_event.controller
         actor = pilot
         
         if nav_event.maneuver == ManeuverType.LAUNCH:
@@ -67,7 +68,7 @@ class ScriptService:
             duration = 90.0
         elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, requesting permission to circularize around {nav_event.next.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}, requesting permission to circularize around {nav_event.current.name}."
             )
             duration = 45.0
         elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
@@ -77,17 +78,17 @@ class ScriptService:
             duration = 10.0
         elif nav_event.maneuver == ManeuverType.DEORBIT:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, we're ready to deorbit. Can you give us a deorbit vector for {nav_event.destination.name}?"
+                f"{controller_name}, this is {self.pilot_call_sign}, we're ready to break orbit and head in to {nav_event.destination.name}. Can you give us a vector?"
             )
             duration = 45.0
         elif nav_event.maneuver == ManeuverType.LANDING:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, on final for {nav_event.destination.name}. Please advise."
+                f"{controller_name}, this is {self.pilot_call_sign}, on final for our landing at {nav_event.destination.name}. Please advise."
             )
             duration = 75.0
         elif nav_event.maneuver == ManeuverType.INSERTION:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, we're ready for our insertion burn. Can you give us a vector for {nav_event.next.name}?"
+                f"{controller_name}, this is {self.pilot_call_sign}, we're ready for our insertion burn. Can you give us a vector for {nav_event.current.name}?"
             )
             duration = 45.0
         elif nav_event.maneuver == ManeuverType.DOCK:
@@ -130,7 +131,8 @@ class ScriptService:
             actor=pilot,
             text=text,
             expect_reply=True,
-            duration=3.0,
+            expected_reply_actor=expected_reply_actor,
+            duration=duration,
             event_type="dialogue",
             metadata=metadata
         )
@@ -232,7 +234,7 @@ class ScriptService:
             if dialogue.metadata.get("direction"):
                 reply_text += f" Adjust {dialogue.metadata.get('direction')} by {dialogue.metadata.get('degrees')} degrees, confirmed, thank you."  
             else:
-                reply_text += f" Beginning my {dialogue.metadata.get('maneuver')} now."  
+                reply_text += f" Beginning my {dialogue.metadata.get('maneuver').lower()} now."  
             
             llm_text = llm_service.get_actor_text(reply_text, pilot_actor)
         
@@ -253,3 +255,19 @@ class ScriptService:
                 duration=2.0,
                 event_type="dialogue"
             )
+
+    def parse_navigation_events(self, nav_events, ship):
+        """Convert a list of navigation events into dialogue events with updated sequential timestamps.
+
+        Each dialogue event's timestamp is set to the accumulated duration from previous events.
+        Uses dataclasses.replace() since DialogueEvent is frozen.
+        """
+        from dataclasses import replace
+        script_events = []
+        current_timestamp = 0.0
+        for nav_event in nav_events:
+            dialogue_event = self.parse_navigation_event(nav_event, ship)
+            dialogue_event = replace(dialogue_event, timestamp=current_timestamp)
+            current_timestamp += dialogue_event.duration
+            script_events.append(dialogue_event)
+        return script_events
