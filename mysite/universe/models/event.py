@@ -7,7 +7,7 @@ from mysite.universe.models.actor import Actor
 from mysite.universe.models.base import Location
 from mysite.universe.models.navigation import ManeuverType
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Event(ABC):
     """
     Base class for all simulation events.
@@ -15,51 +15,39 @@ class Event(ABC):
     Attributes:
         timestamp: float
             The time (in seconds from the simulation start) when the event should trigger.
+        duration: float
+            How long this event takes to complete.
+        event_type: str
+            The type of event (e.g., "dialogue", "navigation")
+        metadata: Optional[Dict]
+            Additional data associated with this event.
     """
+    # Required fields (no defaults) must come first
     timestamp: float
+    
+    # Optional fields with defaults come last
+    duration: float = 5.0
+    event_type: str = "event"
+    metadata: Optional[Dict] = None
 
     @abstractmethod
     def process(self):
         """
         Process this event when it is popped off the simulation queue.
-        Subclasses should implement this method to perform their specific actions.
+        
+        Returns:
+            None, Event, or List[Event]:
+                - None if no follow-up events are needed
+                - A single Event if one follow-up event is needed
+                - A list of Events if multiple follow-up events are needed
+        
+        This method should:
+        1. Perform any state changes required by the event
+        2. Return any follow-up events that should be added to the queue
         """
         pass
 
-@dataclass(frozen=True)
-class BroadcastEvent(Event):
-    """
-    Represents a broadcast event intended for simulation output.
-    
-    In addition to a timestamp, this event includes:
-        actor: Actor
-            The entity (e.g., Satellite, Pilot, Controller) responsible for the broadcast.
-        text: str
-            Finalized dialogue or message to be spoken or displayed.
-        duration: Optional[float]
-            Optional; indicates how long the broadcast should be displayed or how long the TTS playback lasts.
-        event_type: Optional[str]
-            Optional; a category label for the event (e.g., 'dialogue', 'alert', or 'announcement').
-        metadata: Optional[dict]
-            Optional extra metadata for additional context.
-    """
-    actor: Actor
-    text: str
-    duration: Optional[float] = None
-    event_type: Optional[str] = None
-    metadata: Optional[dict] = None
-
-    def process(self):
-        """
-        Process the broadcast event.
-        
-        This is a simple demonstration implementation. In a production setting,
-        this method could send the text to a TTS service or a scrolling dialogue UI.
-        For now, it simply prints the actor's name (in uppercase) along with the message.
-        """
-        print(f"Broadcast from {self.actor.name.upper()}: {self.text}")
-    
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class DialogueEvent(Event):
     """
     A dialogue event represents a line of dialogue spoken by an actor.
@@ -77,9 +65,12 @@ class DialogueEvent(Event):
         metadata: Additional information about the event
         expected_reply_actor: Optional[Actor] = None
     """
+    # Required fields first
     timestamp: float
     actor: Actor
     text: str
+    
+    # Optional fields with defaults last
     expect_reply: bool = False
     duration: float = 0.0
     event_type: str = "dialogue"
@@ -100,8 +91,7 @@ class DialogueEvent(Event):
     
     def expect_reply_action(self):
         """Action to take when the dialogue expects a reply.
-        Determines the replying actor by looking up the 'expected_reply_actor' if provided
-        or using metadata to look up the actor. Returns a new DialogueEvent reply.
+        Determines the replying actor and generates an appropriate reply based on the actor type and metadata.
         """
         print(f"{self.actor.name} says: {self.text} [Expecting reply]")
 
@@ -110,34 +100,37 @@ class DialogueEvent(Event):
             reply_actor = self.expected_reply_actor
         else:
             # If no actor attached, check metadata for a 'reply_actor_name'
-            reply_name = self.metadata.get("reply_actor_name") if self.metadata and "reply_actor_name" in self.metadata else None
+            reply_name = self.metadata.get("reply_actor_name") if self.metadata else None
 
             if reply_name:
-                # Look up the Actor by name; in a real implementation, there should be error handling
+                # Look up the Actor by name
                 from mysite.universe.models.actor import Actor
                 qs = Actor.objects.filter(name=reply_name)
                 reply_actor = qs.first() if qs.exists() else None
             else:
                 reply_actor = None
 
-            # Fallback: if still no reply actor found, default to using a Controller lookup based on control_name
-            if reply_actor is None:
-                control_name = self.metadata.get("control_name") if self.metadata and "control_name" in self.metadata else "CONTROL"
-                from mysite.universe.models.actor import Controller
-                qs = Controller.objects.filter(name=control_name)
-                reply_actor = qs.first() if qs.exists() else None
+        # If we still don't have a reply actor, use the original actor
+        if reply_actor is None:
+            reply_actor = self.actor
 
-            # Final fallback: if no actor found, use self.actor as the reply actor
-            if reply_actor is None:
-                reply_actor = self.actor
+        # Determine the reply text based on actor role and metadata
+        if reply_actor.role == "satellite":
+            reply_text = "BEEP BOOP"
+        else:
+            # Use expected_reply from metadata if provided, otherwise generate a generic reply
+            reply_text = (
+                self.metadata.get("expected_reply")
+                if self.metadata and "expected_reply" in self.metadata
+                else f"Acknowledged, {self.actor.name}."
+            )
 
-        reply_text = f"{self.actor.name}, thank you. [Auto-reply from {reply_actor.name}]"
-
+        # Create the reply event 5 seconds after the original message
         return DialogueEvent(
-            timestamp=self.timestamp + 3.0,
+            timestamp=self.timestamp + 5.0,  # Satellite replies after 5 seconds
             actor=reply_actor,
             text=reply_text,
-            expect_reply=False,
+            expect_reply=False,  # Satellites don't expect replies to their beeps
             duration=2.0,
             event_type="dialogue",
             metadata={}
@@ -147,7 +140,7 @@ class DialogueEvent(Event):
         """Action to take when the dialogue ends the conversation."""
         print(f"{self.actor.name} says: {self.text} [End of conversation]")
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class NavigationEvent(Event):
     """
     A navigation event represents a navigation maneuver in the simulation.

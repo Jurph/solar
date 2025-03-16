@@ -157,20 +157,35 @@ class SimulationQueue:
             return heapq.heappop(self._queue)[1]
         return None
 
-    def process_due_events(self, current_time):
-        """Process all events whose timestamp is <= current_time."""
+    def process_due_events(self, current_time: float) -> None:
+        """
+        Process all events whose timestamp is <= current_time.
+        
+        For each event:
+        1. Remove it from the queue
+        2. Emit appropriate signal based on event type
+        3. Call its process() method
+        4. If process() returns new events, add them to the queue
+        """
         while self._queue and self._queue[0][0] <= current_time:
             event = self.get_next_event()
-            self.emit_event(event)
-
-    def emit_event(self, event):
-        """Emit the event using Django signals based on its type."""
-        if isinstance(event, DialogueEvent):
-            dialogue_event_processed.send(sender=SimulationQueue, event=event)
-        elif isinstance(event, NavigationEvent):
-            navigation_event_processed.send(sender=SimulationQueue, event=event)
-        else:
-            print(f"Unknown event type: {type(event)}")
+            
+            # First emit the appropriate signal for this event
+            if isinstance(event, DialogueEvent):
+                dialogue_event_processed.send(sender=SimulationQueue, event=event)
+            elif isinstance(event, NavigationEvent):
+                navigation_event_processed.send(sender=SimulationQueue, event=event)
+            
+            # Then process the event and handle any returned events
+            result = event.process()
+            if result:
+                # If process() returns a list of events, add them all
+                if isinstance(result, list):
+                    for new_event in result:
+                        self.add_event(new_event)
+                # If process() returns a single event, add it
+                else:
+                    self.add_event(result)
 
 
 # Expose the global dialogue events list as an attribute on the Command class for testing
