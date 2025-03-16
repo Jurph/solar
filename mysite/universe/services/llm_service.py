@@ -2,24 +2,40 @@ from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from mysite.universe.models.actor import Actor
 import yaml
-
+import io
+import sys
+from contextlib import redirect_stdout, redirect_stderr
 
 class LLMService:
     """
     A service for interacting with the Qwen2.5 model via Ollama.
     """
 
-    def __init__(self, config_path: str = "llm.config"):
+    def __init__(self, config_path: str = "llm.config", quiet_mode: bool = True):
         """
         Initialize the LLM service.
         
         The YAML config file should contain:
-          - base_url: The base URL for the API (e.g., "http://localhost:11434/v1/")
-          - api_key: The API key (e.g., "ollama")
-          - model_name: The model name (e.g., "qwen2.5:0.5b")
-          - temperature: Default temperature
-          - max_tokens: Default maximum tokens
+        - base_url: The base URL for the API (e.g., "http://localhost:11434/v1/")
+        - api_key: The API key (e.g., "ollama")
+        - model_name: The model name (e.g., "qwen2.5:0.5b")
+        - temperature: Default temperature
+        - max_tokens: Default maximum tokens
+        
+        Args:
+            config_path: Path to the YAML config file
+            quiet_mode: If True, suppress all stdout/stderr during API calls
         """
+        # Capture stdout and stderr if quiet_mode is enabled
+        if quiet_mode:
+            self.f_stdout = io.StringIO()
+            self.f_stderr = io.StringIO()
+            sys.stdout = redirect_stdout(self.f_stdout)
+            sys.stderr = redirect_stderr(self.f_stderr)
+        else:
+            self.f_stdout = None
+            self.f_stderr = None
+
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         self.client = OpenAI(
@@ -29,6 +45,7 @@ class LLMService:
         self.model_name = config["model_name"]
         self.temperature = config["temperature"]
         self.max_tokens = config["max_tokens"]
+        self.quiet_mode = quiet_mode
 
     def chat(
         self,
@@ -45,7 +62,7 @@ class LLMService:
             temperature: Controls randomness (0-1).
             max_tokens: Maximum tokens in the response.
             system_prompt: Optionally, a system prompt that will override or be added
-                           as the first message.
+                            as the first message.
 
         Returns:
             The LLM's response text.
@@ -60,12 +77,29 @@ class LLMService:
             else:
                 messages = [{'role': 'system', 'content': system_prompt}] + messages
         try:
-            chat_completion = self.client.chat.completions.create(
-                messages=messages,
-                model=self.model_name,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Optionally redirect stdout/stderr during API call
+            if self.quiet_mode:
+                import io
+                import sys
+                from contextlib import redirect_stdout, redirect_stderr
+                
+                f_stdout = io.StringIO()
+                f_stderr = io.StringIO()
+                
+                with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
+                    chat_completion = self.client.chat.completions.create(
+                        messages=messages,
+                        model=self.model_name,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+            else:
+                chat_completion = self.client.chat.completions.create(
+                    messages=messages,
+                    model=self.model_name,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
             return chat_completion.choices[0].message.content
         except Exception as e:
             return f"Error communicating with LLM: {str(e)}"

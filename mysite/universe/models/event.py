@@ -115,7 +115,8 @@ class DialogueEvent(Event):
             reply_actor = self.actor
 
         # Determine the reply text based on actor role and metadata
-        if reply_actor.role == "satellite":
+        # Use getattr to safely get the role attribute; default to None if it doesn't exist
+        if getattr(reply_actor, 'role', None) == "satellite":
             reply_text = "BEEP BOOP"
         else:
             # Use expected_reply from metadata if provided, otherwise generate a generic reply

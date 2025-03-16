@@ -1,10 +1,12 @@
 import pytest
+import io
+from contextlib import redirect_stdout, redirect_stderr
 from mysite.universe.services.llm_service import LLMService
 
 @pytest.fixture
 def llm():
     """Fixture that returns an initialized LLM service."""
-    return LLMService()
+    return LLMService(quiet_mode=True) # We can disable quiet mode for debugging    
 
 @pytest.fixture
 def yes_no_prompt():
@@ -22,12 +24,21 @@ def yes_no_prompt():
 def ask_question(llm, system_prompt, question):
     """Helper function to ask a question and return the response."""
     print(f"Asking: {question}")
-    response = llm.generate_with_system_prompt(
-        user_message=question,
-        system_prompt=system_prompt,
-        temperature=0.35, 
-        max_tokens=10     # We only need a short response
-    )
+    # Redirect stdout/stderr during the LLM call to suppress ollama output
+
+    # Create string IO objects to capture output
+    f_stdout = io.StringIO()
+    f_stderr = io.StringIO()
+    
+    # Redirect both stdout and stderr during the LLM call
+    with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
+        response = llm.generate_with_system_prompt(
+            user_message=question,
+            system_prompt=system_prompt,
+            temperature=0.35, 
+            max_tokens=10     # We only need a short response
+        )
+    
     print(f"Response: {response}")
     return response.strip()
 
@@ -119,7 +130,7 @@ def pytest_configure(config):
 # Keep the main function for manual testing outside of pytest
 def main():
     """Run the tests manually outside of pytest."""
-    llm_instance = LLMService(model_name="qwen2.5:0.5b")
+    llm_instance = LLMService(model_name="qwen2.5:0.5b", quiet_mode=True)
     prompt = """
     You are an AI assistant that has been incorporated into a simple
     software program. You are undergoing functional testing.
