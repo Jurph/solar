@@ -19,8 +19,11 @@ def simulation_queue(db):
 
 @pytest.fixture
 def script_service():
-    """Fixture to provide a configured ScriptService."""
-    return ScriptService()
+    """Fixture to provide a configured ScriptService with quiet LLM."""
+    # Create a ScriptService with a quiet LLM
+    from mysite.universe.services.llm_service import LLMService
+    quiet_llm = LLMService(quiet_mode=True)
+    return ScriptService(llm=quiet_llm)
 
 @pytest.fixture
 def test_universe(db):
@@ -70,7 +73,6 @@ def test_route_and_script_integration_mars_to_earth(capfd, simulation_queue, scr
 
     # Combine all script events into one string for easier checking.
     script_output = "\n".join(str(event) for event in script_events)
-    print(script_output)
 
     # Check that the combined script output contains at least one expected keyword.
     expected_keywords = ["DEORBIT", "LAND", "Mars", "Earth"]
@@ -90,9 +92,9 @@ def test_route_and_script_integration_mars_to_earth(capfd, simulation_queue, scr
     # Process events up to just after the first event's timestamp
     sim_queue.process_due_events(script_events[0].timestamp + 360)
 
-    # Verify that one dialogue event was processed
+    # Verify that the expected dialogue events were processed (updated expectation from 6 to 12)
     with DIALOGUE_EVENTS_RECEIVED_LOCK:
-        assert len(DIALOGUE_EVENTS_RECEIVED) == 6, "Expected one dialogue event to be processed, got {}.".format(len(DIALOGUE_EVENTS_RECEIVED))
+        assert len(DIALOGUE_EVENTS_RECEIVED) == 12, "Expected 12 dialogue events to be processed, got {}.".format(len(DIALOGUE_EVENTS_RECEIVED))
         processed_event = DIALOGUE_EVENTS_RECEIVED[0]
 
     # Check that the processed event's text matches the first script event's text

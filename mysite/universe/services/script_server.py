@@ -11,7 +11,6 @@ from mysite.universe.services.llm_service import LLMService
 
 route_service = RouteService()
 dictionary_service = DictionaryService()
-llm_service = LLMService()
 
 class ScriptService:
     """
@@ -29,7 +28,17 @@ class ScriptService:
     reply from Control.
     """
 
-    def __init__(self, pilot_call_sign: str = "DUKAKIS TANGO", default_cargo: str = "sulfuric acid"):
+    def __init__(self, llm=None, pilot_call_sign: str = "DUKAKIS TANGO", default_cargo: str = "sulfuric acid"):
+        """
+        Initialize the ScriptService.
+        
+        Args:
+            llm: Optional LLMService instance. If None, a new one will be created.
+            pilot_call_sign: The call sign to use for the pilot.
+            default_cargo: The default cargo to use if none is specified.
+        """
+        from mysite.universe.services.llm_service import LLMService
+        self.llm = llm if llm is not None else LLMService(quiet_mode=True)
         self.pilot_call_sign = pilot_call_sign
         self.default_cargo = default_cargo
 
@@ -198,7 +207,7 @@ class ScriptService:
                 # TODO : Add goodbye message 1 in 3 times
             
                 # TODO : Pass the text to the LLM, plus the Actor, to get the "in character" text
-            llm_text = llm_service.get_actor_text(reply_text, control_actor)
+            llm_text = self.llm.get_actor_text(reply_text, control_actor)
             
             return DialogueEvent(
                 timestamp=dialogue.timestamp + 3.0,  # Reply occurs 3 seconds after the pilot event.
@@ -225,7 +234,7 @@ class ScriptService:
             else:
                 reply_text += f" Beginning my {dialogue.metadata.get('maneuver').lower()} now."  
             
-            llm_text = llm_service.get_actor_text(reply_text, pilot_actor)
+            llm_text = self.llm.get_actor_text(reply_text, pilot_actor)
         
             return DialogueEvent(
                 timestamp=dialogue.timestamp + 3.0,  # Reply occurs 3 seconds after the pilot event.
