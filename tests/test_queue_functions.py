@@ -444,3 +444,63 @@ def test_simulation_loop_with_injected_time(dummy_event):
 
     # The event should have been processed
     assert len(command.dialogue_events_received) == 1
+
+@pytest.mark.django_db
+def test_pilot_satellite_dialogue():
+    """
+    Test that a Pilot's dialogue with a Satellite generates the expected reply.
+    The Satellite should respond with 'BEEP BOOP' 5 seconds after the pilot's message.
+    """
+    # Clear any existing dialogue events
+    DIALOGUE_EVENTS_RECEIVED.clear()
+    
+    # Create our test actors
+    from mysite.universe.models.base import Location
+    # Create a dummy location
+    location = Location.objects.create(name="Test Location")
+    
+    # Create the ship with the dummy location
+    ship = Ship.objects.create(name="Test Ship", current_location=location)
+    
+    pilot = Pilot.objects.create(name="Test Pilot", ship=ship)
+    satellite = Actor.objects.create(name="Nav Beacon J5", role="satellite")
+    
+    # Create the queue
+    queue = SimulationQueue()
+    
+    # Create pilot's initial dialogue event
+    pilot_event = DialogueEvent(
+        timestamp=10.0,
+        actor=pilot,
+        text="Nav Beacon J5, requesting status check, over.",
+        expect_reply=True,
+        duration=2.0,
+        event_type="dialogue",
+        metadata={
+            "reply_actor_name": "Nav Beacon J5",  # Specify which actor should reply
+            "expected_reply": "BEEP BOOP"  # What we expect the satellite to say
+        },
+        expected_reply_actor=satellite  # Directly attach the reply actor
+    )
+    
+    # Add the event to the queue
+    queue.add_event(pilot_event)
+    
+    # Process events up to just after the pilot's message
+    queue.process_due_events(10.1)
+    
+    # Verify pilot's message was processed
+    assert len(DIALOGUE_EVENTS_RECEIVED) == 1
+    assert DIALOGUE_EVENTS_RECEIVED[0].actor == pilot
+    assert "requesting status check" in DIALOGUE_EVENTS_RECEIVED[0].text
+    
+    # Process events up to when we expect the satellite's reply (5 seconds later)
+    queue.process_due_events(15.1)
+    
+    # Verify satellite replied
+    assert len(DIALOGUE_EVENTS_RECEIVED) == 2
+    satellite_reply = DIALOGUE_EVENTS_RECEIVED[1]
+    assert satellite_reply.actor == satellite
+    assert satellite_reply.text == "BEEP BOOP"
+    assert satellite_reply.timestamp == pytest.approx(15.0)  # 5 seconds after pilot's message
+    assert not satellite_reply.expect_reply  # Satellite doesn't expect a reply

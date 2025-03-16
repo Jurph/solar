@@ -619,3 +619,15 @@ class RouteService:
                 compressed.append(node)
         compressed.append(location_path[-1])
         return compressed
+
+    def get_event_duration(self, event: NavigationEvent) -> float:
+        """
+        Returns the duration of a navigation event based on its maneuver type.
+        
+        Args:
+            event: NavigationEvent object
+        Returns the duration of a navigation event based on its maneuver type.
+        """
+        # TODO: vary this based on maneuver type, distance between locations, planetary radius/gravity, etc. 
+        # TODO: add some randomness as well 
+        return 30.0

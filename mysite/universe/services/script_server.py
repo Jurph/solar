@@ -6,8 +6,10 @@ from mysite.universe.models.navigation import NavigationEvent, ManeuverType
 from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.actor import Pilot, Controller
+from mysite.universe.services.route_server import RouteService
 from mysite.universe.services.llm_service import LLMService
 
+route_service = RouteService()
 dictionary_service = DictionaryService()
 llm_service = LLMService()
 
@@ -60,68 +62,55 @@ class ScriptService:
                 f"{controller_name}, this is {self.pilot_call_sign}, requesting clearance for takeoff from {nav_event.origin.name}."
             )
             metadata = {"control_name": controller_name}
-            duration = 90.0
         elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, requesting a direct ascent burn for {nav_event.destination.name}."
             )
-            duration = 90.0
         elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, requesting permission to circularize around {nav_event.current.name}."
             )
-            duration = 45.0
         elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, we're ready for our plane change maneuver."
             )
-            duration = 10.0
         elif nav_event.maneuver == ManeuverType.DEORBIT:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, we're ready to break orbit and head in to {nav_event.destination.name}. Can you give us a vector?"
             )
-            duration = 45.0
         elif nav_event.maneuver == ManeuverType.LANDING:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, on final for our landing at {nav_event.destination.name}. Please advise."
             )
-            duration = 75.0
         elif nav_event.maneuver == ManeuverType.INSERTION:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, we're ready for our insertion burn. Can you give us a vector for {nav_event.current.name}?"
             )
-            duration = 45.0
         elif nav_event.maneuver == ManeuverType.DOCK:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, requesting docking clearance for {nav_event.destination.name}."
             )
-            duration = 10.0
         elif nav_event.maneuver == ManeuverType.UNDOCK:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}, ready for departure. Request permission to undock from {nav_event.origin.name}."
             )
-            duration = 10.0
         elif nav_event.maneuver == ManeuverType.SUBLIGHT:
             if controller_name == nav_event.next.name:
                 text = (
                     f"{controller_name}, this is {self.pilot_call_sign}, we're inbound from {nav_event.origin.name}, request a vector for {nav_event.destination.name}."
                 )
-                duration = 20.0
             elif controller_name == nav_event.current.name:
                 text = (
                     f"{controller_name}, this is {self.pilot_call_sign}, heading for {nav_event.destination.name} and ready for our outbound sublight burn."
                 )
-                duration = 20.0
             else:
                 text = (
                     f"{controller_name}, this is {self.pilot_call_sign}, requesting sublight burn on our way to {nav_event.destination.name}."
                 )
-                duration = 20.0
         elif nav_event.maneuver == ManeuverType.HYPERSPACE:
             text = (
                 f"{controller_name}, this is {self.pilot_call_sign}. Gravity well shows clear; requesting hyperspace jump to {nav_event.next.name}."
             )
-            duration = 10.0
         else:
             raise NotImplementedError("Navigation parsing for this maneuver type is not implemented.")
 
@@ -132,7 +121,7 @@ class ScriptService:
             text=text,
             expect_reply=True,
             expected_reply_actor=expected_reply_actor,
-            duration=duration,
+            duration=route_service.get_event_duration(nav_event),
             event_type="dialogue",
             metadata=metadata
         )
