@@ -16,22 +16,18 @@ DIALOGUE_EVENTS_RECEIVED_LOCK = threading.Lock()
 
 @receiver(dialogue_event_processed)
 def dialogue_event_listener(sender, event, **kwargs):
-    """Handle dialogue events by appending to a global list and printing to stdout."""
+    """Handle dialogue events by appending to a global list."""
     global DIALOGUE_EVENTS_RECEIVED
     with DIALOGUE_EVENTS_RECEIVED_LOCK:
         DIALOGUE_EVENTS_RECEIVED.append(event)
-    print(f"[{event.timestamp:.2f}s] DIALOGUE: {event.actor.name}: {event.text}")
 
 
 @receiver(navigation_event_processed)
 def navigation_event_listener(sender, event, **kwargs):
-    """Handle navigation events by appending to the global list and printing to stdout."""
+    """Handle navigation events by appending to the global list."""
     global DIALOGUE_EVENTS_RECEIVED
     with DIALOGUE_EVENTS_RECEIVED_LOCK:
         DIALOGUE_EVENTS_RECEIVED.append(event)
-    maneuver_str = getattr(event.maneuver, 'name', event.maneuver)
-    target_str = getattr(event.target, 'name', event.target)
-    print(f"[{event.timestamp:.2f}s] NAVIGATION: {maneuver_str} to {target_str}")
 
 
 class Command(BaseCommand):
@@ -163,29 +159,34 @@ class SimulationQueue:
         
         For each event:
         1. Remove it from the queue
-        2. Emit appropriate signal based on event type
-        3. Call its process() method
-        4. If process() returns new events, add them to the queue
+        2. Call its process() method
+        3. If process() returns new events, add them to the queue
+        4. Emit appropriate signal based on event type
         """
         while self._queue and self._queue[0][0] <= current_time:
             event = self.get_next_event()
             
-            # First emit the appropriate signal for this event
-            if isinstance(event, DialogueEvent):
-                dialogue_event_processed.send(sender=SimulationQueue, event=event)
-            elif isinstance(event, NavigationEvent):
-                navigation_event_processed.send(sender=SimulationQueue, event=event)
-            
-            # Then process the event and handle any returned events
-            result = event.process()
-            if result:
-                # If process() returns a list of events, add them all
-                if isinstance(result, list):
-                    for new_event in result:
-                        self.add_event(new_event)
-                # If process() returns a single event, add it
-                else:
-                    self.add_event(result)
+            # First process the event and handle any returned events
+            try:
+                result = event.process()
+                if result:
+                    # If process() returns a list of events, add them all
+                    if isinstance(result, list):
+                        for new_event in result:
+                            self.add_event(new_event)
+                    # If process() returns a single event, add it
+                    else:
+                        self.add_event(result)
+                
+                # Then emit the appropriate signal for this event
+                if isinstance(event, DialogueEvent):
+                    dialogue_event_processed.send(sender=SimulationQueue, event=event)
+                elif isinstance(event, NavigationEvent):
+                    navigation_event_processed.send(sender=SimulationQueue, event=event)
+                    
+            except Exception as e:
+                print(f"Error processing event: {e}")
+                # Continue processing other events even if one fails
 
 
 # Expose the global dialogue events list as an attribute on the Command class for testing

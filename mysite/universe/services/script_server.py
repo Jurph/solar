@@ -5,7 +5,7 @@ import random
 from mysite.universe.models.navigation import NavigationEvent, ManeuverType
 from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.ship import Ship
-from mysite.universe.models.actor import Pilot, Controller
+from mysite.universe.models.actor import Pilot, Controller, Actor
 from mysite.universe.services.route_server import RouteService
 from mysite.universe.services.llm_service import LLMService
 
@@ -37,7 +37,6 @@ class ScriptService:
             pilot_call_sign: The call sign to use for the pilot.
             default_cargo: The default cargo to use if none is specified.
         """
-        from mysite.universe.services.llm_service import LLMService
         self.llm = llm if llm is not None else LLMService(quiet_mode=True)
         self.pilot_call_sign = pilot_call_sign
         self.default_cargo = default_cargo
@@ -59,25 +58,58 @@ class ScriptService:
         Returns:
             A DialogueEvent representing the pilot's broadcast.
         """
+        if not ship or not hasattr(ship, 'pilot') or not ship.pilot:
+            raise ValueError("Ship must have a pilot to generate dialogue")
+
         pilot = ship.pilot
-        controller_name = getattr(nav_event.controller, "name", None) or f"{nav_event.destination.name} Control"
-        metadata = {"control_name": controller_name}
-        expect_reply = True
-        expected_reply_actor = nav_event.controller
-        actor = pilot
         
+        # Get the controller name and actor
+        if hasattr(nav_event, 'controller') and nav_event.controller:
+            if hasattr(nav_event.controller, 'role') and nav_event.controller.role == 'CONTROLLER':
+                # Controller is already a Controller actor
+                controller_name = nav_event.controller.name
+                expected_reply_actor = nav_event.controller
+            else:
+                # Controller is a Location, get or create the Controller actor
+                controller_name = getattr(nav_event.controller, "name", None)
+                if not controller_name and hasattr(nav_event, 'destination') and nav_event.destination:
+                    controller_name = f"{nav_event.destination.name} Control"
+                else:
+                    controller_name = "Control"
+                    
+                from mysite.universe.models.actor import Controller
+                expected_reply_actor = Controller.objects.filter(name=controller_name).first()
+                if not expected_reply_actor:
+                    expected_reply_actor = Controller.create(name=controller_name, location=nav_event.controller)
+        else:
+            controller_name = "Control"
+            expected_reply_actor = None
+        
+        metadata = {"control_name": controller_name}
+        
+        # Helper function to safely get location name
+        def get_location_name(location) -> str:
+            if location and hasattr(location, 'name'):
+                return location.name
+            return "unknown location"
+            
+        # Helper function to safely get next location name
+        def get_next_name(nav_event) -> str:
+            if hasattr(nav_event, 'next') and nav_event.next:
+                return get_location_name(nav_event.next)
+            return get_location_name(nav_event.destination)
+
         if nav_event.maneuver == ManeuverType.LAUNCH:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, requesting clearance for takeoff from {nav_event.origin.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}."
             )
-            metadata = {"control_name": controller_name}
         elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, requesting a direct ascent burn for {nav_event.destination.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}."
             )
         elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, requesting permission to circularize around {nav_event.current.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}, requesting permission to circularize around {get_location_name(nav_event.current)}."
             )
         elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
             text = (
@@ -85,45 +117,45 @@ class ScriptService:
             )
         elif nav_event.maneuver == ManeuverType.DEORBIT:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, we're ready to break orbit and head in to {nav_event.destination.name}. Can you give us a vector?"
+                f"{controller_name}, this is {self.pilot_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?"
             )
         elif nav_event.maneuver == ManeuverType.LANDING:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, on final for our landing at {nav_event.destination.name}. Please advise."
+                f"{controller_name}, this is {self.pilot_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise."
             )
         elif nav_event.maneuver == ManeuverType.INSERTION:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, we're ready for our insertion burn. Can you give us a vector for {nav_event.current.name}?"
+                f"{controller_name}, this is {self.pilot_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?"
             )
         elif nav_event.maneuver == ManeuverType.DOCK:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, requesting docking clearance for {nav_event.destination.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}."
             )
         elif nav_event.maneuver == ManeuverType.UNDOCK:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}, ready for departure. Request permission to undock from {nav_event.origin.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}."
             )
         elif nav_event.maneuver == ManeuverType.SUBLIGHT:
-            if controller_name == nav_event.next.name:
+            if controller_name == get_next_name(nav_event):
                 text = (
-                    f"{controller_name}, this is {self.pilot_call_sign}, we're inbound from {nav_event.origin.name}, request a vector for {nav_event.destination.name}."
+                    f"{controller_name}, this is {self.pilot_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}."
                 )
-            elif controller_name == nav_event.current.name:
+            elif controller_name == get_location_name(nav_event.current):
                 text = (
-                    f"{controller_name}, this is {self.pilot_call_sign}, heading for {nav_event.destination.name} and ready for our outbound sublight burn."
+                    f"{controller_name}, this is {self.pilot_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn."
                 )
             else:
                 text = (
-                    f"{controller_name}, this is {self.pilot_call_sign}, requesting sublight burn on our way to {nav_event.destination.name}."
+                    f"{controller_name}, this is {self.pilot_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}."
                 )
         elif nav_event.maneuver == ManeuverType.HYPERSPACE:
             text = (
-                f"{controller_name}, this is {self.pilot_call_sign}. Gravity well shows clear; requesting hyperspace jump to {nav_event.next.name}."
+                f"{controller_name}, this is {self.pilot_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}."
             )
         else:
             raise NotImplementedError("Navigation parsing for this maneuver type is not implemented.")
 
-            # Bundle control_name in metadata for later reply generation.
+        # Bundle control_name in metadata for later reply generation.
         return DialogueEvent(
             timestamp=nav_event.duration,  # Using the nav event's duration as the trigger time.
             actor=pilot,
@@ -152,19 +184,27 @@ class ScriptService:
             A DialogueEvent representing the reply from Control.
         """
         # If a pilot is expecting a reply from Control, the reply event is fairly simple! 
-        if dialogue.actor.type == "Pilot":
+        if getattr(dialogue.actor, 'role', None) == Actor.Role.PILOT:
             # Retrieve control name from the pilot dialogue's metadata.
             control_name = dialogue.metadata.get("control_name") if dialogue.metadata else "CONTROL"
             # Get more context from the dialogue event
             maneuver = dialogue.metadata.get("maneuver") if dialogue.metadata else "your maneuver"
             destination = dialogue.metadata.get("destination") if dialogue.metadata else "wherever you're bound"
             
+            # Look up the existing controller or create one if it doesn't exist
+            control_actor = Controller.objects.filter(name=control_name).first()
+            if not control_actor:
+                # Try to find the station with this name
+                from mysite.universe.models.base import Location
+                station = Location.objects.filter(name=control_name).first()
+                if station:
+                    control_actor = Controller.create(name=control_name, location=station)
+                else:
+                    control_actor = Controller.create(name=control_name)
             
-            # Create a Control actor; in a full implementation, you may look it up instead.
-            control_actor = Controller.create(name=control_name)
-            reply_text = (
-                f"{dialogue.actor.name}, this is {control_name}."
-            )
+            # Start with the basic reply format
+            ship_name = dialogue.actor.ship.name if hasattr(dialogue.actor, 'ship') and dialogue.actor.ship else "Unknown Ship"
+            reply_text = f"{ship_name}, this is {control_name}."
             
             # Randomly decide if a course correction is needed (1 in 6 chance)
             # Roll a die (1-6)
@@ -172,6 +212,7 @@ class ScriptService:
             
             # Initialize direction metadata
             direction = {}
+            degree_value = None
             
             # On a roll of 1, generate a course correction
             if roll == 1:
@@ -198,16 +239,31 @@ class ScriptService:
                 # Store direction information in metadata for potential follow-up responses
                 direction = {
                     "direction": chosen_direction,
-                    "degrees": degree_value
+                    "degrees": degree_value,
+                    "maneuver": dialogue.metadata.get("maneuver") if dialogue.metadata else None,
+                    "ship": ship_name
                 }
             else:
                 # Standard confirmation without course correction
                 reply_text += f" Confirmed for {maneuver} to {destination}."
                 
-                # TODO : Add goodbye message 1 in 3 times
+                # Store basic metadata
+                direction = {
+                    "maneuver": maneuver,  # Pass through the maneuver we got earlier
+                    "ship": ship_name,
+                    "destination": destination  # Also pass through destination for context
+                }
             
-                # TODO : Pass the text to the LLM, plus the Actor, to get the "in character" text
-            llm_text = self.llm.get_actor_text(reply_text, control_actor)
+            # Pass the text to the LLM to get the "in character" text
+            llm_text = self.llm.get_actor_text(
+                line=reply_text,
+                actor=control_actor,
+                context=[dialogue.text]  # Include the pilot's message for context
+            )
+            
+            # If LLM failed, use the original text
+            if llm_text.startswith("Error communicating with LLM:"):
+                llm_text = reply_text
             
             return DialogueEvent(
                 timestamp=dialogue.timestamp + 3.0,  # Reply occurs 3 seconds after the pilot event.
@@ -216,33 +272,50 @@ class ScriptService:
                 expect_reply=True,
                 duration=3.0,
                 event_type="dialogue",
-                metadata=direction, degrees=degree_value, maneuver=ManeuverType, 
+                metadata=direction
             )
-        elif dialogue.actor.type == "Control":
+        elif getattr(dialogue.actor, 'role', None) == Actor.Role.CONTROLLER:
             # Retrieve pilot name from the pilot dialogue's metadata.
-            ship_name = dialogue.metadata.get("ship_name") if dialogue.metadata else "Unidentified vessel"
-            # Get the pilot actor from the ship they're talking to
-            pilot_actor = dialogue.metadata.get("ship").pilot if dialogue.metadata and dialogue.metadata.get("ship") else Pilot.create(name=ship_name)
+            ship_name = dialogue.metadata.get("ship") if dialogue.metadata else "Unidentified vessel"
+            
+            # Look up the ship and its pilot, or create a new pilot if not found
+            from mysite.universe.models.ship import Ship
+            ship = Ship.objects.filter(name=ship_name).first()
+            if ship and ship.pilot:
+                pilot_actor = ship.pilot
+            else:
+                pilot_actor = Pilot.create(name=ship_name)
+                
             # Construct the reply text
             reply_text = (
                 f"{dialogue.actor.name}, this is {ship_name}."
             )
             
             # If the pilot has been instructed to change course, add that to the reply
-            if dialogue.metadata.get("direction"):
-                reply_text += f" Adjust {dialogue.metadata.get('direction')} by {dialogue.metadata.get('degrees')} degrees, confirmed, thank you."  
+            if dialogue.metadata and dialogue.metadata.get("direction"):
+                direction_text = dialogue.metadata.get("direction", "")
+                degrees_text = str(dialogue.metadata.get("degrees", "0"))
+                reply_text += f" Adjust {direction_text} by {degrees_text} degrees, confirmed, thank you."  
             else:
-                reply_text += f" Beginning my {dialogue.metadata.get('maneuver').lower()} now."  
+                # Get maneuver text safely - handle None values properly
+                maneuver = dialogue.metadata.get("maneuver") if dialogue.metadata else None
+                maneuver_text = maneuver.lower() if isinstance(maneuver, str) else "maneuver"
+                reply_text += f" Beginning my {maneuver_text} now."  
             
             llm_text = self.llm.get_actor_text(reply_text, pilot_actor)
-        
+            
+            # If LLM failed, use the original text
+            if llm_text.startswith("Error communicating with LLM:"):
+                llm_text = reply_text
+            
             return DialogueEvent(
                 timestamp=dialogue.timestamp + 3.0,  # Reply occurs 3 seconds after the pilot event.
                 actor=pilot_actor,
                 text=llm_text,
                 expect_reply=False,
-                duration=2.0,
-                event_type="dialogue"
+                duration=3.0,
+                event_type="dialogue",
+                metadata=dialogue.metadata
             )   
         else:
             return DialogueEvent(

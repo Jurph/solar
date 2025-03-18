@@ -93,8 +93,8 @@ class DialogueEvent(Event):
         """Action to take when the dialogue expects a reply.
         Determines the replying actor and generates an appropriate reply based on the actor type and metadata.
         """
-        print(f"{self.actor.name} says: {self.text} [Expecting reply]")
-
+        from mysite.universe.models.actor import Actor
+        
         # First, try to use the explicitly attached expected_reply_actor
         if self.expected_reply_actor is not None:
             reply_actor = self.expected_reply_actor
@@ -104,20 +104,35 @@ class DialogueEvent(Event):
 
             if reply_name:
                 # Look up the Actor by name
-                from mysite.universe.models.actor import Actor
                 qs = Actor.objects.filter(name=reply_name)
                 reply_actor = qs.first() if qs.exists() else None
             else:
-                reply_actor = None
+                # If no specific reply actor is found, check if this is a pilot-controller dialogue
+                if getattr(self.actor, 'role', None) == Actor.Role.PILOT:
+                    # Get the controller name from metadata
+                    control_name = self.metadata.get("control_name") if self.metadata else None
+                    if control_name:
+                        from mysite.universe.models.actor import Controller
+                        reply_actor = Controller.create(name=control_name)
+                    else:
+                        reply_actor = None
+                else:
+                    reply_actor = None
 
         # If we still don't have a reply actor, use the original actor
         if reply_actor is None:
             reply_actor = self.actor
 
-        # Determine the reply text based on actor role and metadata
-        # Use getattr to safely get the role attribute; default to None if it doesn't exist
-        if getattr(reply_actor, 'role', None) == "satellite":
+        # Determine the reply text based on actor role
+        if getattr(reply_actor, 'role', None) == Actor.Role.SATELLITE:
             reply_text = "BEEP BOOP"
+            expect_reply = False
+        elif getattr(reply_actor, 'role', None) == Actor.Role.CONTROLLER:
+            # Use the ScriptService to generate a proper controller reply
+            from mysite.universe.services.script_server import ScriptService
+            script_service = ScriptService()
+            reply_event = script_service.parse_dialogue_event(self)
+            return reply_event
         else:
             # Use expected_reply from metadata if provided, otherwise generate a generic reply
             reply_text = (
@@ -125,21 +140,23 @@ class DialogueEvent(Event):
                 if self.metadata and "expected_reply" in self.metadata
                 else f"Acknowledged, {self.actor.name}."
             )
+            expect_reply = False
 
         # Create the reply event 5 seconds after the original message
         return DialogueEvent(
-            timestamp=self.timestamp + 5.0,  # Satellite replies after 5 seconds
+            timestamp=self.timestamp + 5.0,  # Reply after 5 seconds
             actor=reply_actor,
             text=reply_text,
-            expect_reply=False,  # Satellites don't expect replies to their beeps
+            expect_reply=expect_reply,
             duration=2.0,
             event_type="dialogue",
-            metadata={}
+            metadata=self.metadata
         )
     
     def end_conversation_action(self):
         """Action to take when the dialogue ends the conversation."""
-        print(f"{self.actor.name} says: {self.text} [End of conversation]")
+        # No follow-up events needed
+        return None
 
 @dataclass(frozen=True, kw_only=True)
 class NavigationEvent(Event):
@@ -162,5 +179,7 @@ class NavigationEvent(Event):
     metadata: Optional[Dict] = None
     
     def process(self):
-        print(f"Navigation: {self.maneuver.name} to {self.target.name}")
+        """Process the navigation event. Returns None as navigation events don't generate follow-ups."""
+        # Navigation events don't generate follow-up events
+        return None
 

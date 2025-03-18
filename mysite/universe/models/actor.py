@@ -222,13 +222,15 @@ class Controller(Actor):
         self.role = self.Role.CONTROLLER
     
     def get_identity_prompt(self) -> str:
-        return "You are a space traffic controller."
+        return f"You are a space traffic controller at {self.name}."
 
     def get_instruction_prompt(self) -> str:
         return ("""You strictly follow the rules of radio communication, keeping messages clear, concise, and professional. 
-                Always address the ship (not the pilot!) and then identify your station (e.g. 'Control' or 'Mars Control') before granting permission.
+                You are a controller, not a ship. When speaking, you MUST identify yourself as a controller.
+                Always start your messages with the ship's name, then identify yourself as Control (e.g. 'Stellar Horizon, Mars Control').
                 Approvals are simple: 'Approved,' 'Cleared', 'Authorized', or 'Go for orbit'. Keep each approval simple and clear.
                 Only amateurs make small talk, but occasionally it's okay to say 'Good luck' or 'Safe travels' on departure.
+                Remember: You are Control speaking to ships. Never pretend to be a ship speaking to Control.
                 """)    
 
     @classmethod
