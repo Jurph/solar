@@ -1,9 +1,9 @@
 import xml.etree.ElementTree as ET
 from django.db import transaction
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from decimal import Decimal
 from mysite.universe.models import (
-    Location, Galaxy, StarSystem,
+    Galaxy, StarSystem,
     Star, Planet, Moon, Station
 )
 
@@ -33,8 +33,9 @@ class UniverseImporter:
     def import_stations(self, element: ET.Element, parent) -> None:
         """Import all station elements that are children of the given element."""
         for station_elem in element.findall("./station"):
+            name = station_elem.findtext("name")
             station = Station(
-                name=station_elem.findtext("name"),
+                name=name,
                 orbits=parent,
                 scale="SS",
                 large_berths=int(station_elem.findtext("large_berths") or 0),
@@ -43,12 +44,31 @@ class UniverseImporter:
             )
             station.save()
             self.object_cache[station.name] = station
+
+            # Create a Controller actor for control stations
+            if "Control" in name:
+                from mysite.universe.models.actor import Controller
+                controller = Controller.create(name=name, location=station)
+                self.object_cache[f"{name}_controller"] = controller
     
     @transaction.atomic
     def import_universe(self) -> None:
         """Import the entire universe; all changes are wrapped in an atomic transaction."""
-        for galaxy_elem in self.root.findall("./galaxy"):
-            self.import_galaxy(galaxy_elem)
+        with transaction.atomic():
+            for galaxy_elem in self.root.findall("./galaxy"):
+                self.import_galaxy(galaxy_elem)
+            
+            # After importing the universe structure, deploy controllers
+            from mysite.universe.services.actor_server import ActorService
+            controllers = ActorService.deploy_controllers()
+            
+            # Log the deployment results
+            print("\nController Deployment Results:")
+            print(f"- {len(controllers['control_stations'])} dedicated control/dispatch stations")
+            print(f"- {len(controllers['regular_stations'])} regular station controllers")
+            print(f"- {len(controllers['planets'])} planetary controllers")
+            print(f"- {len(controllers['moons'])} moon controllers")
+            print(f"Total: {sum(len(v) for v in controllers.values())} controllers deployed")
     
     def import_galaxy(self, element: ET.Element) -> Galaxy:
         """Import a galaxy and all its children."""

@@ -26,15 +26,7 @@ class LLMService:
             config_path: Path to the YAML config file
             quiet_mode: If True, suppress all stdout/stderr during API calls
         """
-        # Capture stdout and stderr if quiet_mode is enabled
-        if quiet_mode:
-            self.f_stdout = io.StringIO()
-            self.f_stderr = io.StringIO()
-            sys.stdout = redirect_stdout(self.f_stdout)
-            sys.stderr = redirect_stderr(self.f_stderr)
-        else:
-            self.f_stdout = None
-            self.f_stderr = None
+        self.quiet_mode = quiet_mode
 
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
@@ -45,7 +37,6 @@ class LLMService:
         self.model_name = config["model_name"]
         self.temperature = config["temperature"]
         self.max_tokens = config["max_tokens"]
-        self.quiet_mode = quiet_mode
 
     def chat(
         self,
@@ -131,19 +122,19 @@ class LLMService:
 
     def get_actor_text(
         self,
-        actor: Actor,
         line: str,
+        actor: Actor,
         context: Optional[List[str]] = None,
-        temperature: float = 0.5,
+        temperature: Optional[float] = None,
     ) -> str:
         """
         Generate a version of the provided dialogue line "in character" for the given actor.
 
         Args:
+            line: The dialogue line to convert.
             actor: The Actor instance for which to generate dialogue.
-            line: The dialogue line.
             context: Optional list of previous dialogue lines.
-            temperature: Controls randomness (0-1).
+            temperature: Controls randomness (0-1). If None, uses the service's default temperature.
 
         Returns:
             A string representing the line spoken in character.
@@ -162,4 +153,8 @@ class LLMService:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
-        return self.chat(messages, temperature=temperature, max_tokens=self.max_tokens) 
+        return self.chat(
+            messages, 
+            temperature=temperature if temperature is not None else self.temperature,
+            max_tokens=self.max_tokens
+        ) 

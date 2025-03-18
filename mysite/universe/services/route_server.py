@@ -13,6 +13,7 @@ from ..models.scale import Scale, OrderedScale
 from ..models.navigation import ManeuverType, UniverseGraph, NavigationEvent, is_planetary
 from dataclasses import dataclass
 import random
+from mysite.universe.models.actor import Controller
 
 @dataclass(frozen=True)
 class TransferSegment:
@@ -413,7 +414,7 @@ class RouteService:
         
         return enhanced_events
 
-    def effective_controller(self, location: Location) -> Location:
+    def effective_controller(self, location: Location) -> Union[Controller, Location]:
         """
         Determines the controlling entity for a given Location.
         
@@ -422,6 +423,9 @@ class RouteService:
         2. If none, select the nearest local Location of type Station.
         3. If still none, select the nearest local Location of type Planet or Moon.
         4. Otherwise, return the location itself.
+        
+        For any control station found, return its associated Controller actor.
+        If no Controller actor exists for a control station, create one.
         """
         universe = UniverseGraph.get_instance()
         concrete_location = location.get_concrete_instance()
@@ -447,7 +451,12 @@ class RouteService:
                 control_stations.append(node)
                 
         if control_stations:
-            return min(control_stations, key=distance)
+            station = min(control_stations, key=distance)
+            # Look up or create the Controller actor for this station
+            controller = Controller.objects.filter(name=station.name).first()
+            if not controller:
+                controller = Controller.create(name=station.name, location=station)
+            return controller
             
         # 2. Find nearest Station
         stations = []
@@ -456,7 +465,9 @@ class RouteService:
                 stations.append(node)
                 
         if stations:
-            return min(stations, key=distance)
+            station = min(stations, key=distance)
+            # For non-control stations, return the station itself
+            return station
             
         # 3. Find nearest Planet or Moon
         celestials = []
