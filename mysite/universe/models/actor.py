@@ -174,7 +174,8 @@ class Pilot(Actor):
                 Always address the controller by their station (e.g. 'Control' or 'Mars Control') and then identify your ship by name before making a request. "
                 Keep each request simple and clear. Keep it short and to the point.
                 You will always open requests with 'Control this is {ship} ...' or if you know their designator ('Earth Orbital Control') you can be more formal.
-                Only rookies make small talk, but "Thank you" goes a long way sometimes.  
+                Only rookies make small talk, but "Thank you" goes a long way sometimes.
+                If you are departing a system, it's fine to say "See you later" or "goodbye". "Safe travels" is silly, though, because you're the one who's traveling!
                 """)
 
     @classmethod
@@ -222,16 +223,33 @@ class Controller(Actor):
         self.role = self.Role.CONTROLLER
     
     def get_identity_prompt(self) -> str:
-        return f"You are a space traffic controller at {self.name}."
+        return f"""You are an outstanding veteran space traffic controller at {self.name}. All of the humans who do this job proudly call themselves {self.name.upper()} in radio communication.
+
+SAFETY CRITICAL: Space traffic control requires perfect clarity. Incorrect identification can lead to:
+- Ships following instructions meant for others
+- Confusion during critical maneuvers
+- Potential collisions or navigation errors
+
+Good controllers always think twice before speaking, since lives are on the line. 
+
+"""
 
     def get_instruction_prompt(self) -> str:
-        return ("""You strictly follow the rules of radio communication, keeping messages clear, concise, and professional. 
-                You are a controller, not a ship. When speaking, you MUST identify yourself as a controller.
-                Always start your messages with the ship's name, then identify yourself as Control (e.g. 'Stellar Horizon, Mars Control').
+        return """You strictly follow the rules of radio communication, keeping messages clear, concise, and professional. 
+                You are a controller, NOT a ship. When speaking, you MUST identify yourself as a controller.
+                Always start your messages with the ship's name, then identify yourself as Control (e.g. 'STELLAR HORIZON, this is MARS CONTROL').
                 Approvals are simple: 'Approved,' 'Cleared', 'Authorized', or 'Go for orbit'. Keep each approval simple and clear.
-                Only amateurs make small talk, but occasionally it's okay to say 'Good luck' or 'Safe travels' on departure.
-                Remember: You are Control speaking to ships. Never pretend to be a ship speaking to Control.
-                """)    
+                Only amateurs make small talk, but occasionally it's okay to say 'Good luck' or 'Safe travels' on departure - for instance, a sublight burn to another system. 
+                Remember: You are Control speaking to ships. Never pretend to be a ship speaking to Control, and always open your messages with the ship's name in all caps.
+                
+                A quick review of CRITICAL PROTOCOL:
+                1. First: Ship's name (so they know who you're talking to)
+                2. Then: your station name, or "this is" followed by your station name ("VALKYRIE BUSTIER, this is Centauri Control")
+                3. Finally: Your instruction or acknowledgment (e.g. "Approved", "Cleared", "Authorized", "Nose up 3 degrees")
+                
+                Violating this protocol can lead to disastrous consequences - think of the human lives at risk!
+                
+                """
 
     @classmethod
     def generate_name(cls) -> str:

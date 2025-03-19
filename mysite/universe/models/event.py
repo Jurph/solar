@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from typing import Optional, Dict
 
 # Import the Actor model to associate events with an actor.
-from mysite.universe.models.actor import Actor
+from mysite.universe.models.actor import Actor, Controller
 from mysite.universe.models.base import Location
 from mysite.universe.models.navigation import ManeuverType
+from mysite.universe.services.actor_server import ActorService
 
 @dataclass(frozen=True, kw_only=True)
 class Event(ABC):
@@ -90,20 +91,13 @@ class DialogueEvent(Event):
             return self.end_conversation_action()
     
     def expect_reply_action(self):
-        """Action to take when the dialogue expects a reply.
-        Determines the replying actor and generates an appropriate reply based on the actor type and metadata.
-        """
-        from mysite.universe.models.actor import Actor
-        
-        # First, try to use the explicitly attached expected_reply_actor
+        """Action to take when the dialogue expects a reply."""
         if self.expected_reply_actor is not None:
             reply_actor = self.expected_reply_actor
         else:
-            # If no actor attached, check metadata for a 'reply_actor_name'
+            # Try to get the reply actor from metadata
             reply_name = self.metadata.get("reply_actor_name") if self.metadata else None
-
             if reply_name:
-                # Look up the Actor by name
                 qs = Actor.objects.filter(name=reply_name)
                 reply_actor = qs.first() if qs.exists() else None
             else:
@@ -112,8 +106,8 @@ class DialogueEvent(Event):
                     # Get the controller name from metadata
                     control_name = self.metadata.get("control_name") if self.metadata else None
                     if control_name:
-                        from mysite.universe.models.actor import Controller
-                        reply_actor = Controller.create(name=control_name)
+                        # Just look up the controller - it should exist
+                        reply_actor = Controller.objects.filter(name=control_name).first()
                     else:
                         reply_actor = None
                 else:
@@ -128,15 +122,14 @@ class DialogueEvent(Event):
             reply_text = "BEEP BOOP"
             expect_reply = False
         elif getattr(reply_actor, 'role', None) == Actor.Role.CONTROLLER:
-            # Use the ScriptService to generate a proper controller reply
+            # Use the singleton ScriptService instance
             from mysite.universe.services.script_server import ScriptService
-            script_service = ScriptService()
-            reply_event = script_service.parse_dialogue_event(self)
+            reply_event = ScriptService.get_instance().parse_dialogue_event(self)
             return reply_event
         else:
             # Use expected_reply from metadata if provided, otherwise generate a generic reply
             reply_text = (
-                self.metadata.get("expected_reply")
+                self.metadata["expected_reply"]
                 if self.metadata and "expected_reply" in self.metadata
                 else f"Acknowledged, {self.actor.name}."
             )
@@ -144,7 +137,7 @@ class DialogueEvent(Event):
 
         # Create the reply event 5 seconds after the original message
         return DialogueEvent(
-            timestamp=self.timestamp + 5.0,  # Reply after 5 seconds
+            timestamp=self.timestamp + 5.0,
             actor=reply_actor,
             text=reply_text,
             expect_reply=expect_reply,

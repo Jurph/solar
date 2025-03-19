@@ -17,6 +17,7 @@ import threading
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.conf import settings
+from typing import Optional, Dict
 
 from mysite.universe.models.actor import Pilot, Controller, Satellite
 from mysite.universe.models.ship import Ship
@@ -40,6 +41,11 @@ class Command(BaseCommand):
             default=0.7,
             help='Temperature setting for the LLM (0.0-1.0, default: 0.7)',
         )
+        parser.add_argument(
+            '--debug',
+            action='store_true',
+            help='Print LLM prompts for debugging',
+        )
 
     def ensure_controllers_exist(self):
         """Ensure that all control stations have associated Controller actors."""
@@ -54,6 +60,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Get the temperature setting
         temperature = options['temperature']
+        debug_mode = options['debug']
         self.stdout.write(self.style.SUCCESS(f"Running dialogue demo with temperature {temperature}"))
         
         # Initialize the universe if needed
@@ -68,14 +75,10 @@ class Command(BaseCommand):
             UniverseGraph.get_instance().rebuild_graph()
             self.stdout.write(self.style.SUCCESS("Universe initialized successfully"))
 
-        # Create LLM service with the specified temperature
-        try:
-            llm = LLMService(quiet_mode=True)
-            llm.temperature = temperature  # Set the temperature for the LLM
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Failed to initialize LLM service: {e}"))
-            self.stdout.write(self.style.WARNING("Is Ollama running? Try starting it with 'ollama serve'"))
-            return
+        # Create LLM service with debug mode
+        llm = LLMService(quiet_mode=not debug_mode)
+        llm.temperature = temperature
+        ScriptService.get_instance(llm=llm)
         
         # Ensure all control stations have controllers
         self.ensure_controllers_exist()
@@ -117,14 +120,8 @@ class Command(BaseCommand):
             
             self.stdout.write(self.style.SUCCESS(f"Generated route with {len(route_events)} navigation events"))
             
-            # Create a script service with our LLM
-            script_service = ScriptService(
-                llm=llm,
-                pilot_call_sign=ship.name.upper()  # Use ship's name as call sign
-            )
-            
             # Process the navigation events to generate dialogue events
-            script_events = script_service.parse_navigation_events(route_events, ship)
+            script_events = ScriptService.get_instance().parse_navigation_events(route_events, ship)
             
             # Insert a comms check with the satellite after the first few events
             comms_check_position = min(3, len(script_events) - 1)
@@ -197,7 +194,11 @@ class Command(BaseCommand):
                         for i in range(last_event_count, current_count):
                             event = DIALOGUE_EVENTS_RECEIVED[i]
                             if isinstance(event, DialogueEvent):
-                                self._print_message(event.actor.name, event.text)
+                                debug_info = {
+                                    'system': event.metadata.get('llm_system_prompt'),
+                                    'user': event.metadata.get('llm_user_prompt')
+                                } if debug_mode else None
+                                self._print_message(event.actor.name, event.text, debug_info)
                             elif isinstance(event, NavigationEvent):
                                 self._print_message(
                                     "NAVIGATION",
@@ -225,13 +226,28 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error: {e}"))
             
-    def _print_message(self, speaker, message):
+    def _print_message(self, speaker, message, debug_info: Optional[Dict] = None):
         """
         Print a message with formatting and simulated typing.
         Handles both regular stdout and redirected stdout cases.
+        
+        Args:
+            speaker: Name of the speaker
+            message: The message content
+            debug_info: Optional dictionary containing debug info like prompts
         """
         try:
-            # First try to write with full formatting
+            # If in debug mode and we have debug info, print it first in gray
+            if debug_info:
+                debug_text = "\n\033[90m=== LLM Prompt ===\n"  # Light gray
+                if 'system' in debug_info:
+                    debug_text += f"System: {debug_info['system']}\n"
+                if 'user' in debug_info:
+                    debug_text += f"User: {debug_info['user']}\n"
+                debug_text += "================\033[0m\n"  # Reset color
+                self.stdout.write(debug_text)
+                
+            # Regular message printing
             formatted_message = f"\n{self.style.WARNING(speaker)}:\n{message}\n"
             
             # Try to write character by character if possible
@@ -248,5 +264,12 @@ class Command(BaseCommand):
             
         except (AttributeError, TypeError):
             # If all formatting fails, fall back to simple print
+            if debug_info:
+                print("\n=== LLM Prompt ===")
+                if 'system' in debug_info:
+                    print("System:", debug_info['system'])
+                if 'user' in debug_info:
+                    print("User:", debug_info['user'])
+                print("================\n")
             print(f"\n{speaker}:\n{message}\n")
             time.sleep(0.5)  # Still pause between messages
