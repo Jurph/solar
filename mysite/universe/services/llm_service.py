@@ -127,27 +127,22 @@ class LLMService:
         context: Optional[List[str]] = None,
         temperature: Optional[float] = None,
     ) -> str:
-        """
-        Generate a version of the provided dialogue line "in character" for the given actor.
-
-        Args:
-            line: The dialogue line to convert.
-            actor: The Actor instance for which to generate dialogue.
-            context: Optional list of previous dialogue lines.
-            temperature: Controls randomness (0-1). If None, uses the service's default temperature.
-
-        Returns:
-            A string representing the line spoken in character.
-        """
         context = context or []
-        actor_prompt = actor.get_identity_prompt()
-        instruction_prompt = actor.get_instruction_prompt()
         
-        system_prompt = f"{actor_prompt} {instruction_prompt}"
-        user_message = f"Your line should be something very similar to: '{line}'."
-        if context:
-            user_message = f"The last thing said to you was: {context[-1]}. {user_message}"
-        user_message += " Given the situation, say your line in character."
+        # 1. System prompt (identity + instructions)
+        system_prompt = f"{actor.get_identity_prompt()} {actor.get_instruction_prompt()}"
+        
+        # 2. Build user message starting with recent dialogue (if any)
+        user_message = ""
+        last_dialogue = next((msg for msg in reversed(context) if not msg.startswith("Examples")), None)
+        if last_dialogue:
+            user_message = f"Last message: {last_dialogue}\n\n"
+        
+        # 3. What their line should be like
+        user_message += f"<YOUR LINE> should be something like: '{line}'\n"
+        
+        # 4. Final instruction
+        user_message += "Given the situation, say <YOUR LINE> in character."
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -157,4 +152,4 @@ class LLMService:
             messages, 
             temperature=temperature if temperature is not None else self.temperature,
             max_tokens=self.max_tokens
-        ) 
+        )
