@@ -41,8 +41,8 @@ class DialogueMessage(BaseModel):
         """
         Validates the critical safety requirements of messages:
         1. Message must not be empty
-        2. Both parties must be identified in the message
-        3. Recipient must be addressed before speaker identifies themselves
+        2. Both parties must be identified in the message (allowing shortened forms)
+        3. For INITIAL_CONTACT only: recipient must be addressed before speaker
         """
         values = info.data
         if not v.strip():
@@ -52,24 +52,34 @@ class DialogueMessage(BaseModel):
         speaker = values['speaker_callsign'].replace('_', ' ')
         recipient = values['recipient_callsign'].replace('_', ' ')
         
-        # Find the earliest mention of each party
+        # Get all possible parts of callsigns for matching
         speaker_parts = speaker.upper().split()
         recipient_parts = recipient.upper().split()
         
+        # For controllers, also allow generic "Control" or "Control here"
+        if values['role'] == Role.CONTROLLER:
+            speaker_parts.extend(["CONTROL", "CONTROL HERE"])
+            
         # Find earliest position where any part of each callsign appears
         v_upper = v.upper()
         speaker_pos = min((v_upper.find(part) for part in speaker_parts if part in v_upper), default=-1)
         recipient_pos = min((v_upper.find(part) for part in recipient_parts if part in v_upper), default=-1)
         
-        # Validate both parties are mentioned
+        # For ongoing dialogue, allow shortened forms (first word of multi-word callsigns)
+        if speaker_pos == -1 and len(speaker_parts) > 1:
+            speaker_pos = v_upper.find(speaker_parts[0])
+        if recipient_pos == -1 and len(recipient_parts) > 1:
+            recipient_pos = v_upper.find(recipient_parts[0])
+        
+        # Validate both parties are mentioned (in some form)
         if speaker_pos == -1:
-            raise ValueError(f"Message must include speaker identification ({speaker})")
+            raise ValueError(f"Message must include speaker identification (any part of {speaker})")
         if recipient_pos == -1:
-            raise ValueError(f"Message must include recipient identification ({recipient})")
+            raise ValueError(f"Message must include recipient identification (any part of {recipient})")
             
-        # Validate recipient is addressed before speaker identifies themselves
-        if speaker_pos < recipient_pos:
-            raise ValueError(f"Message must address {recipient} before {speaker} identifies themselves")
+        # Only enforce recipient-before-speaker order for initial contact
+        if values['format'] == DialogueFormat.INITIAL_CONTACT and speaker_pos < recipient_pos:
+            raise ValueError(f"Initial contact must address {recipient} before {speaker} identifies themselves")
             
         return v
 
@@ -95,7 +105,6 @@ class DialoguePrompt(BaseModel):
             "example": {
                 "role": "CONTROLLER",
                 "context": {
-                    "maneuver_type": "SUBLIGHT",
                     "current_location": "Mars Orbit",
                     "destination": "Phobos Station",
                     "cargo": "Medical Supplies",
