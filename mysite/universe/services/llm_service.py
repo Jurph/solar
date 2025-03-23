@@ -46,7 +46,7 @@ class LLMService:
         system_prompt: Optional[str] = None,
     ) -> str:
         """
-        Send a chat message to the LLM and get a response.
+        Send a message to the LLM and get a response using the generate endpoint.
 
         Args:
             messages: List of message dictionaries with keys "role" and "content".
@@ -67,31 +67,48 @@ class LLMService:
                 ]
             else:
                 messages = [{'role': 'system', 'content': system_prompt}] + messages
+
+        # Extract system and user messages
+        system_msg = next((msg['content'] for msg in messages if msg.get('role') == 'system'), None)
+        user_msg = next((msg['content'] for msg in messages if msg.get('role') == 'user'), None)
+
+        # Combine messages into a single prompt
+        prompt = ""
+        if system_msg:
+            prompt += f"{system_msg}\n\n"
+        if user_msg:
+            prompt += user_msg
+
         try:
+            # Debug output right before API call
+            if not self.quiet_mode:
+                print("\n=== FINAL PROMPT TO LLM ===")
+                print("=== SYSTEM MESSAGE ===")
+                print(system_msg)
+                print("\n=== USER MESSAGE ===")
+                print(user_msg)
+                print("\n=== END PROMPT ===\n")
+
             # Optionally redirect stdout/stderr during API call
             if self.quiet_mode:
-                import io
-                import sys
-                from contextlib import redirect_stdout, redirect_stderr
-                
                 f_stdout = io.StringIO()
                 f_stderr = io.StringIO()
                 
                 with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
-                    chat_completion = self.client.chat.completions.create(
-                        messages=messages,
+                    completion = self.client.completions.create(
                         model=self.model_name,
+                        prompt=prompt,
                         temperature=temperature,
                         max_tokens=max_tokens,
                     )
             else:
-                chat_completion = self.client.chat.completions.create(
-                    messages=messages,
+                completion = self.client.completions.create(
                     model=self.model_name,
+                    prompt=prompt,
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-            return chat_completion.choices[0].message.content
+            return completion.choices[0].text.strip()
         except Exception as e:
             return f"Error communicating with LLM: {str(e)}"
 

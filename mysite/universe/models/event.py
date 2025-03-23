@@ -6,7 +6,6 @@ from typing import Optional, Dict
 from mysite.universe.models.actor import Actor, Controller
 from mysite.universe.models.base import Location
 from mysite.universe.models.navigation import ManeuverType
-from mysite.universe.services.actor_server import ActorService
 
 @dataclass(frozen=True, kw_only=True)
 class Event(ABC):

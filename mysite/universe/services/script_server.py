@@ -1,5 +1,4 @@
 from mysite.universe.services.dictionary import DictionaryService
-import random
 from typing import Optional, List
 
 # Import our navigation models
@@ -8,7 +7,6 @@ from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.actor import Pilot, Controller, Actor
 from mysite.universe.services.route_server import RouteService
-from mysite.universe.services.llm_service import LLMService
 
 route_service = RouteService()
 dictionary_service = DictionaryService()
@@ -75,14 +73,6 @@ class ScriptService:
             controller_name = "Control"
             expected_reply_actor = None
 
-        # Build metadata: note that we now include ship_name and pilot_name here uniformly.
-        metadata = {
-            "control_name": controller_name,
-            "ship_name": ship.name,
-            "pilot_name": pilot.name,
-            "maneuver": nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver,
-        }
-
         def get_location_name(location) -> str:
             return location.name if location and hasattr(location, 'name') else "unknown location"
 
@@ -91,67 +81,77 @@ class ScriptService:
                 return get_location_name(nav_event.next)
             return get_location_name(nav_event.destination)
 
-        # Use ship_call_sign everywhere instead of any stored state.
+        # Generate the line first based on maneuver type
         if nav_event.maneuver == ManeuverType.LAUNCH:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}."
             )
         elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}."
             )
         elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, requesting permission to circularize around {get_location_name(nav_event.current)}."
             )
         elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, we're ready for our plane change maneuver."
             )
         elif nav_event.maneuver == ManeuverType.DEORBIT:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?"
             )
         elif nav_event.maneuver == ManeuverType.LANDING:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise."
             )
         elif nav_event.maneuver == ManeuverType.INSERTION:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?"
             )
         elif nav_event.maneuver == ManeuverType.DOCK:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}."
             )
         elif nav_event.maneuver == ManeuverType.UNDOCK:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}."
             )
         elif nav_event.maneuver == ManeuverType.SUBLIGHT:
             if controller_name == get_next_name(nav_event):
-                text = (
+                line = (
                     f"{controller_name}, this is {ship_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}."
                 )
             elif controller_name == get_location_name(nav_event.current):
-                text = (
+                line = (
                     f"{controller_name}, this is {ship_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn."
                 )
             else:
-                text = (
+                line = (
                     f"{controller_name}, this is {ship_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}."
                 )
         elif nav_event.maneuver == ManeuverType.HYPERSPACE:
-            text = (
+            line = (
                 f"{controller_name}, this is {ship_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}."
             )
         else:
             raise NotImplementedError("Navigation parsing for this maneuver type is not implemented.")
 
+        # Build metadata: note that we now include ship_name and pilot_name here uniformly.
+        metadata = {
+            "control_name": controller_name,
+            "ship_name": ship.name,
+            "pilot_name": pilot.name,
+            "maneuver": nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver,
+            "llm_system_prompt": f"{pilot.get_identity_prompt()} {pilot.get_instruction_prompt()}",
+            "llm_user_prompt": f"<YOUR LINE> should be something like: '{line}'\nGiven the situation, say <YOUR LINE> in character."
+        }
+
         return DialogueEvent(
             timestamp=nav_event.duration,
             actor=pilot,
-            text=text,
+            text=line,  # Use line here too for consistency
             expect_reply=True,
             expected_reply_actor=expected_reply_actor,
             duration=RouteService().get_event_duration(nav_event),
@@ -185,8 +185,8 @@ class ScriptService:
 
             metadata = dialogue.metadata.copy() if dialogue.metadata else {}
             metadata.update({
-                'llm_system_prompt': control_actor.get_identity_prompt(),
-                'llm_user_prompt': f"Last message: {dialogue.text}\nYour line should be something like: '{reply_text}'",
+                'llm_system_prompt': f"{control_actor.get_identity_prompt()} {control_actor.get_instruction_prompt()}",
+                'llm_user_prompt': f"Last message: {dialogue.text}\n<YOUR LINE> should be something like: '{reply_text}'\nGiven the situation, say <YOUR LINE> in character.",
                 'ship_name': ship_name,
                 'control_name': control_name,
             })
@@ -222,8 +222,8 @@ class ScriptService:
 
             metadata = dialogue.metadata.copy() if dialogue.metadata else {}
             metadata.update({
-                'llm_system_prompt': pilot_actor.get_identity_prompt(),
-                'llm_user_prompt': f"Last message: {dialogue.text}\nYour line should be something like: '{reply_text}'"
+                'llm_system_prompt': f"{pilot_actor.get_identity_prompt()} {pilot_actor.get_instruction_prompt()}",
+                'llm_user_prompt': f"Last message: {dialogue.text}\n<YOUR LINE> should be something like: '{reply_text}'\nGiven the situation, say <YOUR LINE> in character."
             })
 
             return DialogueEvent(
