@@ -331,7 +331,7 @@ class TestControllerAssignment(TestCase):
             
         # Now run the actual controller function and check the result
         controller = self.route_service.effective_controller(earth)
-        print(f"\nEffective controller for Earth: {controller.name} (Type: {controller.get_concrete_instance().get_type_name()})")
+        print(f"\nEffective controller for Earth: {controller.name}")
         
         # The test itself - will fail, but we need the diagnostic output
         self.assertEqual(controller.name, "Earth Orbital Control", "Controller should be Earth Orbital Control")

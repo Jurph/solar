@@ -125,7 +125,8 @@ def test_create_dialogue_prompt():
 
 def test_dialogue_prompt_example():
     """Test that the example in schema_extra is valid."""
-    example = DialoguePrompt.Config.schema_extra["example"]
+    schema = DialoguePrompt.model_json_schema()
+    example = schema["examples"][0]  # Access first example from list
     prompt = DialoguePrompt(**example)
     assert prompt.role == Role.CONTROLLER
     assert len(prompt.context.previous_exchanges) == 1

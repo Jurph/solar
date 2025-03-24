@@ -7,7 +7,7 @@ pilots and controllers, ensuring consistent format and role adherence.
 
 from enum import Enum
 from typing import Dict, List, Optional, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import json
 
 
@@ -36,6 +36,8 @@ class DialogueMessage(BaseModel):
     message: str
     requires_readback: bool = Field(default=False, description="Whether this message requires verbal confirmation")
     
+    model_config = ConfigDict(validate_assignment=True)
+    
     @field_validator('message')
     @classmethod
     def validate_message_format(cls, v: str, info) -> str:
@@ -45,20 +47,21 @@ class DialogueMessage(BaseModel):
         2. Both parties must be identified in the message (allowing shortened forms)
         3. For INITIAL_CONTACT only: recipient must be addressed before speaker
         """
-        values = info.data
         if not v.strip():
             raise ValueError("Message cannot be empty")
             
-        # Convert callsigns to possible spoken variations
-        speaker = values['speaker_callsign'].replace('_', ' ')
-        recipient = values['recipient_callsign'].replace('_', ' ')
+        # Change from info.data to info.context
+        speaker = info.context.get('speaker_callsign', '').replace('_', ' ')
+        recipient = info.context.get('recipient_callsign', '').replace('_', ' ')
+        msg_format = info.context.get('format')
+        msg_role = info.context.get('role')
         
         # Get all possible parts of callsigns for matching
         speaker_parts = speaker.upper().split()
         recipient_parts = recipient.upper().split()
         
         # For controllers, also allow generic "Control" or "Control here"
-        if values['role'] == Role.CONTROLLER:
+        if msg_role == Role.CONTROLLER:
             speaker_parts.extend(["CONTROL", "CONTROL HERE"])
             
         # Find earliest position where any part of each callsign appears
@@ -79,7 +82,7 @@ class DialogueMessage(BaseModel):
             raise ValueError(f"Message must include recipient identification (any part of {recipient})")
             
         # Only enforce recipient-before-speaker order for initial contact
-        if values['format'] == DialogueFormat.INITIAL_CONTACT and speaker_pos < recipient_pos:
+        if msg_format == DialogueFormat.INITIAL_CONTACT and speaker_pos < recipient_pos:
             raise ValueError(f"Initial contact must address {recipient} before {speaker} identifies themselves")
             
         return v
@@ -93,6 +96,8 @@ class DialogueContext(BaseModel):
     cargo: Optional[str] = Field(None, description="Cargo being carried, if any")
     previous_exchanges: List[DialogueMessage] = Field(default_factory=list, description="Recent message history")
 
+    model_config = ConfigDict(validate_assignment=True)
+
 
 class DialoguePrompt(BaseModel):
     """The complete dialogue prompt structure."""
@@ -101,9 +106,10 @@ class DialoguePrompt(BaseModel):
     expected_format: DialogueFormat
     example_exchange: Optional[List[DialogueMessage]] = None
     
-    model_config = {
-        "json_schema_extra": {
-            "example": {
+    model_config = ConfigDict(
+        validate_assignment=True,
+        json_schema_extra={
+            "examples": [{
                 "role": "CONTROLLER",
                 "context": {
                     "current_location": "Mars Orbit",
@@ -139,9 +145,9 @@ class DialoguePrompt(BaseModel):
                         "requires_readback": False
                     }
                 ]
-            }
+            }]
         }
-    }
+    )
 
 
 def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
@@ -161,10 +167,16 @@ def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
         return True
         
     for i, msg in enumerate(messages):
-        # Validate individual message
-        msg.validate_message_format(msg.message, {"format": msg.format, 
-                                                "recipient_callsign": msg.recipient_callsign,
-                                                "speaker_callsign": msg.speaker_callsign})
+        # Create validation context
+        validation_context = {
+            "format": msg.format,
+            "recipient_callsign": msg.recipient_callsign,
+            "speaker_callsign": msg.speaker_callsign,
+            "role": msg.role
+        }
+        
+        # Validate individual message using Pydantic v2 context
+        msg.validate_message_format(msg.message, validation_context)
         
         # Check for proper response sequence
         if i > 0:
