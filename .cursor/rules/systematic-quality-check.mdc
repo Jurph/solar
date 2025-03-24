@@ -1,0 +1,71 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Avoid calls that break existing code 
+globs: 
+alwaysApply: true
+---
+
+## Systematic Method Verification Process
+
+1. First, list out ALL method calls in the file you're working with. Create a checklist.
+
+2. For each method call, systematically:
+   - Read the actual class/method definition from the source
+   - Verify the constructor signature
+   - Verify any class methods being called
+   - Check if the method requires parameters that aren't obvious (e.g., from parent classes)
+   - Document what you found (parameters, types, requirements)
+
+3. Compare your findings against the current usage:
+   - Mark which calls are correct
+   - Mark which calls need fixes
+   - Note any missing required parameters
+   - Note any parameters that shouldn't be there
+
+4. Only after verifying ALL method calls, make the necessary fixes:
+   - Fix one method call at a time
+   - Don't add "improvements" or "artistic changes"
+   - Stick to fixing incorrect signatures
+   - If you need to add a parameter, check if it's available in the current scope
+
+Example of this process:
+```python
+# 1. List all methods
+- LLMJSONService(quiet_mode=...)
+- ScriptService.get_instance(llm)
+- UniverseImporter().import_universe()
+- Location.objects.get(name=...)
+- Ship.create(name=..., cargo=...)
+- Pilot.create(name=..., ship=...)
+
+# 2. Verify each one
+- Found: UniverseImporter needs xml_path in constructor
+- Found: Ship.create needs location parameter
+- Found: All other signatures match
+
+# 3. Compare & Document
+✓ LLMJSONService - correct
+✓ ScriptService.get_instance - correct
+✗ UniverseImporter - missing xml_path
+✓ Location.objects.get - correct (Django ORM)
+✗ Ship.create - missing location
+✓ Pilot.create - correct
+
+# 4. Fix systematically
+- Add xml_path to UniverseImporter
+- Add location to Ship.create
+```
+
+Remember:
+- NEVER guess about method signatures
+- NEVER add "improvements" while fixing signatures
+- ALWAYS verify before changing
+- If you can't verify a method, STOP and ask for help
+- Keep a checklist of what you've verified
+- Fix ONLY what's wrong, nothing more
+
+When in doubt, it's better to stop and ask than to guess and introduce bugs. This systematic process helps prevent errors and maintains code quality.

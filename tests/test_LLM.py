@@ -156,3 +156,53 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def test_json_dialogue_generation(self):
+    """Test that the JSON dialogue path works correctly."""
+    from mysite.universe.services.llm_service import LLMJSONService
+    from mysite.universe.models.actor import Pilot, Controller, Role
+    from mysite.universe.schemas.dialogue_schema import DialogueMessage, DialogueFormat
+    import json
+
+    # Create test actors
+    pilot = Pilot.create(name="TEST PILOT")
+    controller = Controller.create(name="TEST CONTROL")
+
+    # Initialize service
+    service = LLMJSONService(quiet_mode=True)
+
+    # Test pilot -> controller dialogue
+    context = ["TEST PILOT: TEST CONTROL, requesting clearance for plane change maneuver."]
+    nav_ctx = {
+        "maneuver": "PLANE_CHANGE",
+        "current_location": "EARTH ORBIT",
+        "destination": "MARS",
+        "recipient": "TEST CONTROL"
+    }
+
+    # Generate response
+    response = service.get_actor_text(
+        line="",
+        actor=controller,
+        context=context,
+        navigation_context=nav_ctx
+    )
+
+    # Verify response is valid JSON and matches schema
+    self.assertTrue(isinstance(response, str))
+    self.assertTrue(response.strip().startswith('{'))
+    
+    # Should parse without error
+    msg_obj = None
+    try:
+        msg_obj = DialogueMessage(**json.loads(response))
+    except Exception as e:
+        self.fail(f"Failed to parse JSON response: {e}")
+
+    # Verify required fields
+    self.assertEqual(msg_obj.role, Role.CONTROLLER.value)
+    self.assertEqual(msg_obj.speaker_callsign, controller.name)
+    self.assertEqual(msg_obj.recipient_callsign, pilot.name)
+    self.assertTrue(isinstance(msg_obj.format, DialogueFormat))
+    self.assertTrue(isinstance(msg_obj.message, str))
+    self.assertTrue(isinstance(msg_obj.requires_readback, bool))

@@ -9,7 +9,7 @@ This command uses the actual Django models and services to:
 5. Include a comms check with a satellite
 
 Usage:
-    python manage.py character_dialogue_demo [--temperature TEMP]
+    python manage.py character_dialogue_demo [--temperature TEMP] [--use-json]
 """
 import os
 import time
@@ -22,13 +22,17 @@ from typing import Optional, Dict
 from mysite.universe.models.actor import Pilot, Controller, Satellite
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.base import Location
-from mysite.universe.models.event import DialogueEvent, NavigationEvent
-from mysite.universe.models.navigation import UniverseGraph
+from mysite.universe.models.event import DialogueEvent
+from mysite.universe.models.navigation import NavigationEvent, UniverseGraph
 from mysite.universe.services.route_server import RouteService
 from mysite.universe.services.script_server import ScriptService
-from mysite.universe.services.llm_service import LLMService
+from mysite.universe.services.llm_service import LLMService, LLMJSONService
 from mysite.universe.import_xml import UniverseImporter
-from mysite.universe.management.commands.start_simulation_loop import SimulationQueue, DIALOGUE_EVENTS_RECEIVED, DIALOGUE_EVENTS_RECEIVED_LOCK
+from mysite.universe.management.commands.start_simulation_loop import (
+    SimulationQueue,
+    DIALOGUE_EVENTS_RECEIVED,
+    DIALOGUE_EVENTS_RECEIVED_LOCK
+)
 
 
 class Command(BaseCommand):
@@ -46,22 +50,30 @@ class Command(BaseCommand):
             action='store_true',
             help='Print LLM prompts for debugging',
         )
+        parser.add_argument(
+            '--use-json',
+            action='store_true',
+            help='Use JSON-structured dialogue format',
+        )
 
     def ensure_controllers_exist(self):
         """Ensure that all control stations have associated Controller actors."""
         control_stations = Location.objects.filter(name__icontains="Control")
         for station in control_stations:
+            # Only check for controller by name, don't try to use location field
             controller = Controller.objects.filter(name=station.name).first()
             if not controller:
                 self.stdout.write(self.style.WARNING(f"{station.name} controller not found, creating it..."))
-                controller = Controller.create(name=station.name, location=station)
+                # Create controller with just the name, don't try to set location
+                controller = Controller.create(name=station.name)
                 self.stdout.write(self.style.SUCCESS(f"Created controller: {controller.name}"))
 
     def handle(self, *args, **options):
         # Get the temperature setting
         temperature = options['temperature']
         debug_mode = options['debug']
-        self.stdout.write(self.style.SUCCESS(f"Running dialogue demo with temperature {temperature}"))
+        use_json = options['use_json']
+        self.stdout.write(self.style.SUCCESS(f"Running dialogue demo with temperature {temperature} and {'JSON' if use_json else 'text'} mode"))
         
         # Initialize the universe if needed
         try:
@@ -76,7 +88,17 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Universe initialized successfully"))
 
         # Create LLM service with debug mode
-        llm = LLMService(quiet_mode=not debug_mode)
+        try:
+            if use_json:
+                llm = LLMJSONService(quiet_mode=not debug_mode)
+            else:
+                llm = LLMService(quiet_mode=not debug_mode)
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Failed to initialize LLM service: {e}"))
+            self.stdout.write(self.style.WARNING("Falling back to text mode"))
+            llm = LLMService(quiet_mode=not debug_mode)
+            use_json = False
+
         llm.temperature = temperature
         ScriptService.get_instance(llm=llm)
         
@@ -218,6 +240,7 @@ class Command(BaseCommand):
                 # Stop the simulation thread
                 stop_event.set()
                 thread.join(timeout=1.0)
+            
             # Print summary
             self.stdout.write("\n" + "="*80)
             self.stdout.write(self.style.SUCCESS("Simulation complete"))
@@ -233,10 +256,21 @@ class Command(BaseCommand):
         
         Args:
             speaker: Name of the speaker
-            message: The message content
+            message: The message content (raw text or JSON)
             debug_info: Optional dictionary containing debug info like prompts
         """
         try:
+            # If message is JSON, extract the actual message text
+            if isinstance(message, str) and message.strip().startswith('{'):
+                try:
+                    from mysite.universe.schemas.dialogue_schema import DialogueMessage
+                    import json
+                    msg_obj = DialogueMessage(**json.loads(message))
+                    message = msg_obj.message
+                except (json.JSONDecodeError, ValueError):
+                    # If JSON parsing fails, use the raw message
+                    pass
+
             # If in debug mode and we have debug info, print it first in gray
             if debug_info:
                 debug_text = "\n\033[90m=== LLM Prompt ===\n"  # Light gray
