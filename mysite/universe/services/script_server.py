@@ -1,6 +1,5 @@
 from mysite.universe.services.dictionary import DictionaryService
 from typing import Optional, List
-import json
 
 # Import our navigation models
 from mysite.universe.models.navigation import NavigationEvent, ManeuverType
@@ -8,8 +7,6 @@ from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.actor import Pilot, Controller, Actor
 from mysite.universe.services.route_server import RouteService
-from mysite.universe.services.llm_service import LLMService
-from mysite.universe.services.llm_service import LLMJSONService
 
 route_service = RouteService()
 dictionary_service = DictionaryService()
@@ -85,128 +82,61 @@ class ScriptService:
             return get_location_name(nav_event.destination)
 
         # Generate the line first based on maneuver type
-        if isinstance(self.llm, LLMJSONService):
-            # Get the exemplar line from our pre-written dialogue
-            exemplar = ""
-            if nav_event.maneuver == ManeuverType.LAUNCH:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}."
-            elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}."
-            elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, requesting permission to circularize around {get_location_name(nav_event.current)}."
-            elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, we're ready for our plane change maneuver."
-            elif nav_event.maneuver == ManeuverType.DEORBIT:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?"
-            elif nav_event.maneuver == ManeuverType.LANDING:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise."
-            elif nav_event.maneuver == ManeuverType.INSERTION:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?"
-            elif nav_event.maneuver == ManeuverType.DOCK:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}."
-            elif nav_event.maneuver == ManeuverType.UNDOCK:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}."
-            elif nav_event.maneuver == ManeuverType.SUBLIGHT:
-                if controller_name == get_next_name(nav_event):
-                    exemplar = f"{controller_name}, this is {ship_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}."
-                elif controller_name == get_location_name(nav_event.current):
-                    exemplar = f"{controller_name}, this is {ship_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn."
-                else:
-                    exemplar = f"{controller_name}, this is {ship_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}."
-            elif nav_event.maneuver == ManeuverType.HYPERSPACE:
-                exemplar = f"{controller_name}, this is {ship_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}."
-            else:
-                exemplar = f"{controller_name}, this is {ship_call_sign}, requesting clearance for {nav_event.maneuver.value} maneuver."
-
-            # For JSON mode, let the LLM generate the line with exemplar
-            context = {
-                "maneuver_type": nav_event.maneuver.value,
-                "current_location": get_location_name(nav_event.current),
-                "destination": get_location_name(nav_event.destination),
-                "cargo": ship.cargo,
-                "previous_exchanges": []
-            }
-            
-            dialogue_context = {
-                "role": pilot.role.value,
-                "speaker_callsign": ship_call_sign,
-                "recipient_callsign": controller_name,
-                "format": "INITIAL_CONTACT",
-                "message": exemplar,
-                "requires_readback": False
-            }
-
-            line = self.llm.get_actor_text(
-                line=exemplar,
-                actor=pilot,
-                context=[],  # No previous context for initial contact
-                temperature=0.2,  # Lower temperature for more consistent output
-                navigation_context=context
+        if nav_event.maneuver == ManeuverType.LAUNCH:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}."
             )
-            # Extract message from JSON response
-            if isinstance(line, str) and line.strip().startswith('{'):
-                try:
-                    json_response = json.loads(line)
-                    line = json_response.get("message", line)
-                except json.JSONDecodeError:
-                    print(f"Warning: Invalid JSON response from LLM: {line}")
-        else:
-            # Original text-based format with specific lines per maneuver
-            if nav_event.maneuver == ManeuverType.LAUNCH:
+        elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}."
+            )
+        elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, requesting permission to circularize around {get_location_name(nav_event.current)}."
+            )
+        elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, we're ready for our plane change maneuver."
+            )
+        elif nav_event.maneuver == ManeuverType.DEORBIT:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?"
+            )
+        elif nav_event.maneuver == ManeuverType.LANDING:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise."
+            )
+        elif nav_event.maneuver == ManeuverType.INSERTION:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?"
+            )
+        elif nav_event.maneuver == ManeuverType.DOCK:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}."
+            )
+        elif nav_event.maneuver == ManeuverType.UNDOCK:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}."
+            )
+        elif nav_event.maneuver == ManeuverType.SUBLIGHT:
+            if controller_name == get_next_name(nav_event):
                 line = (
-                    f"{controller_name}, this is {ship_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}."
+                    f"{controller_name}, this is {ship_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}."
                 )
-            elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
+            elif controller_name == get_location_name(nav_event.current):
                 line = (
-                    f"{controller_name}, this is {ship_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}."
-                )
-            elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, requesting permission to circularize around {get_location_name(nav_event.current)}."
-                )
-            elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, we're ready for our plane change maneuver."
-                )
-            elif nav_event.maneuver == ManeuverType.DEORBIT:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?"
-                )
-            elif nav_event.maneuver == ManeuverType.LANDING:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise."
-                )
-            elif nav_event.maneuver == ManeuverType.INSERTION:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?"
-                )
-            elif nav_event.maneuver == ManeuverType.DOCK:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}."
-                )
-            elif nav_event.maneuver == ManeuverType.UNDOCK:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}."
-                )
-            elif nav_event.maneuver == ManeuverType.SUBLIGHT:
-                if controller_name == get_next_name(nav_event):
-                    line = (
-                        f"{controller_name}, this is {ship_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}."
-                    )
-                elif controller_name == get_location_name(nav_event.current):
-                    line = (
-                        f"{controller_name}, this is {ship_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn."
-                    )
-                else:
-                    line = (
-                        f"{controller_name}, this is {ship_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}."
-                    )
-            elif nav_event.maneuver == ManeuverType.HYPERSPACE:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}."
+                    f"{controller_name}, this is {ship_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn."
                 )
             else:
-                raise NotImplementedError("Navigation parsing for this maneuver type is not implemented.")
+                line = (
+                    f"{controller_name}, this is {ship_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}."
+                )
+        elif nav_event.maneuver == ManeuverType.HYPERSPACE:
+            line = (
+                f"{controller_name}, this is {ship_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}."
+            )
+        else:
+            raise NotImplementedError("Navigation parsing for this maneuver type is not implemented.")
 
         # Build metadata: preserve existing fields and add rich context for the LLM
         metadata = {
@@ -214,23 +144,16 @@ class ScriptService:
             "ship_name": ship_call_sign,
             "pilot_name": pilot.name,
             "maneuver": nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver,
-            "llm_system_prompt": pilot.get_identity_prompt(),
-            "llm_user_prompt": {
-                "role": "PILOT",
-                "context": {
-                    "maneuver_type": nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver,
-                    "current_location": get_location_name(nav_event.current),
-                    "destination": get_location_name(nav_event.destination),
-                    "previous_exchanges": []
-                },
-                "expected_format": "INITIAL_CONTACT"
-            } if isinstance(self.llm, LLMJSONService) else {
-                "Current situation": f"{ship_call_sign} is performing a {nav_event.maneuver.value} maneuver "
+            "llm_system_prompt": f"{pilot.get_identity_prompt()} {pilot.get_instruction_prompt()}",
+            # Build a more specific example using the actual context
+            "llm_user_prompt": (
+                f"Current situation: {ship_call_sign} is performing a {nav_event.maneuver.value} maneuver "
                 f"from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}. "
                 f"Currently at {get_location_name(nav_event.current)}, next stop is {get_next_name(nav_event)}.\n\n"
                 f"<YOUR LINE> should be something like: '{line}'\n"
                 "Given the situation, say <YOUR LINE> in character, incorporating specific details about your location and maneuver."
-            },
+            ),
+            # Add new context without breaking existing functionality
             "context": {
                 "mission": {
                     "origin": get_location_name(nav_event.origin),
@@ -246,7 +169,6 @@ class ScriptService:
             }
         }
 
-        # Create the dialogue event
         return DialogueEvent(
             timestamp=nav_event.duration,
             actor=pilot,
@@ -259,100 +181,104 @@ class ScriptService:
         )
             
     
-    def parse_dialogue_event(self, event: DialogueEvent) -> Optional[DialogueEvent]:
-        """
-        Process a dialogue event and generate a response if needed.
-        
-        Args:
-            event: The dialogue event to process
-            
-        Returns:
-            A new dialogue event containing the response, or None if no response needed
-        """
-        if not event.expect_reply:
+    def parse_dialogue_event(self, dialogue: DialogueEvent) -> Optional[DialogueEvent]:
+        if not dialogue.expect_reply:
             return None
-            
-        # Get the actor who should respond
-        reply_actor_name = event.metadata.get("reply_actor_name")
-        if not reply_actor_name:
-            return None
-            
-        reply_actor = None
-        try:
-            # Try to get the actor by name
-            if "Control" in reply_actor_name:
-                reply_actor = Controller.objects.get(name=reply_actor_name)
-            elif "Satellite" in reply_actor_name:
-                reply_actor = Satellite.objects.get(name=reply_actor_name)
-            else:
-                reply_actor = Pilot.objects.get(name=reply_actor_name)
-        except (Controller.DoesNotExist, Pilot.DoesNotExist, Satellite.DoesNotExist):
-            print(f"Warning: Could not find actor {reply_actor_name}")
-            return None
-            
-        # Build context from previous messages
-        context = []
-        if event.metadata.get("previous_messages"):
-            context.extend(event.metadata["previous_messages"])
-        context.append(f"{event.actor.name}: {event.text}")
-        
-        # Get navigation context if available
-        nav_ctx = {
-            "maneuver": event.metadata.get("maneuver"),
-            "current_location": event.metadata.get("current_location"),
-            "destination": event.metadata.get("destination"),
-            "recipient": event.actor.name  # Add the original speaker as recipient
-        }
-        
-        # Generate response using LLM
-        try:
+
+        if getattr(dialogue.actor, 'role', None) == Actor.Role.PILOT:
+            # Pilot -> Controller: Controller should reply, expecting acknowledgment
+            control_name = dialogue.metadata.get("control_name", "CONTROL").upper()
+            ship_name = dialogue.metadata.get("ship_name", "UNKNOWN SHIP").upper()
+
+            control_actor = dialogue.expected_reply_actor
+            if not control_actor:
+                control_actor = Controller.objects.filter(name=control_name).first()
+                if not control_actor:
+                    control_actor = Controller.create(name=control_name)
+
+            reply_text = f"{ship_name}, this is {control_name}."
+
             llm_text = self.llm.get_actor_text(
-                line=self.build_controller_examples(event.actor.name, reply_actor.name),
-                actor=reply_actor,
-                context={
-                    "role": reply_actor.role,
-                    "context": {
-                        "maneuver_type": nav_ctx.get("maneuver"),
-                        "current_location": nav_ctx.get("current_location"),
-                        "destination": nav_ctx.get("destination"),
-                        "previous_exchanges": context
-                    },
-                    "expected_format": event.metadata.get("expected_format", "RESPONSE")
-                },
-                navigation_context=nav_ctx
+                line=reply_text,
+                actor=control_actor,
+                context=[dialogue.text]
             )
+
+            metadata = dialogue.metadata.copy() if dialogue.metadata else {}
+            metadata.update({
+                'llm_system_prompt': f"{control_actor.get_identity_prompt()} {control_actor.get_instruction_prompt()}",
+                # Build a more specific example using the actual context
+                'llm_user_prompt': (
+                    f"Current situation: {ship_name} is performing a {metadata.get('maneuver', 'unknown')} maneuver. "
+                    f"They are currently at {metadata.get('context', {}).get('current_situation', {}).get('location', 'unknown')}.\n\n"
+                    f"Last message from {metadata.get('pilot_name', 'pilot')}: {dialogue.text}\n\n"
+                    f"<YOUR LINE> should be something like: '{reply_text}'\n"
+                    "Given the situation, say <YOUR LINE> in character, incorporating specific details about their location and maneuver."
+                ),
+                'ship_name': ship_name,
+                'control_name': control_name,
+                # Preserve all existing metadata while ensuring context is maintained
+                'context': metadata.get('context', {}),
+                'maneuver': metadata.get('maneuver'),
+                'pilot_name': metadata.get('pilot_name')
+            })
+
+            return DialogueEvent(
+                timestamp=dialogue.timestamp + 3.0,
+                actor=control_actor,
+                text=llm_text,
+                expect_reply=True,  # Controller expects pilot to acknowledge
+                duration=3.0,
+                event_type="dialogue",
+                metadata=metadata
+            )
+
+        elif getattr(dialogue.actor, 'role', None) == Actor.Role.CONTROLLER:
+            # Controller -> Pilot: Pilot acknowledges, ending the exchange
+            ship_name = dialogue.metadata.get("ship_name", "UNKNOWN SHIP").upper()
             
-            # Handle JSON responses
-            message_text = llm_text
-            if isinstance(llm_text, str) and llm_text.strip().startswith('{'):
-                try:
-                    json_response = json.loads(llm_text)
-                    message_text = json_response.get("message", llm_text)
-                except json.JSONDecodeError:
-                    print(f"Warning: Invalid JSON response from LLM: {llm_text}")
-                    message_text = llm_text
-            
-            # Create response event
-            response_event = DialogueEvent(
-                timestamp=event.timestamp + event.duration + 0.5,
-                actor=reply_actor,
-                text=message_text,
-                expect_reply=False,  # Default to no reply expected
+            from mysite.universe.models.ship import Ship
+            ship = Ship.objects.filter(name=ship_name).first()
+            if ship and ship.pilot:
+                pilot_actor = ship.pilot
+            else:
+                pilot_actor = Pilot.create(name=ship_name)
+
+            reply_text = f"{dialogue.actor.name}, this is {ship_name}."
+
+            llm_text = self.llm.get_actor_text(
+                line=reply_text,
+                actor=pilot_actor,
+                context=[dialogue.text]
+            )
+
+            metadata = dialogue.metadata.copy() if dialogue.metadata else {}
+            metadata.update({
+                'llm_system_prompt': f"{pilot_actor.get_identity_prompt()} {pilot_actor.get_instruction_prompt()}",
+                'llm_user_prompt': f"Last message: {dialogue.text}\n<YOUR LINE> should be something like: '{reply_text}'\nGiven the situation, say <YOUR LINE> in character."
+            })
+
+            return DialogueEvent(
+                timestamp=dialogue.timestamp + 3.0,
+                actor=pilot_actor,
+                text=llm_text,
+                expect_reply=False,  # Pilot acknowledgment ends the exchange
+                duration=3.0,
+                event_type="dialogue",
+                metadata=metadata
+            )
+
+        else:
+            # Fall back to a generic reply
+            return DialogueEvent(
+                timestamp=dialogue.timestamp + 5.0,
+                actor=dialogue.actor,
+                text="Did you say something?",
+                expect_reply=False,
                 duration=2.0,
                 event_type="dialogue",
-                metadata={
-                    "previous_messages": context,
-                    "llm_system_prompt": event.metadata.get("llm_system_prompt"),
-                    "llm_user_prompt": event.metadata.get("llm_user_prompt"),
-                    **nav_ctx
-                }
+                metadata=dialogue.metadata
             )
-            
-            return response_event
-            
-        except Exception as e:
-            print(f"Error generating response: {e}")
-            return None
 
     def parse_navigation_events(self, nav_events, ship):
         """Convert a list of navigation events into dialogue events with updated sequential timestamps.
