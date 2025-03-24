@@ -1,5 +1,5 @@
 ---
-description: Avoiding obvious mistakes 
+description: Avoiding obvious mistakes
 globs: 
 alwaysApply: false
 ---
@@ -17,3 +17,10 @@ This project is pretty big! Sometimes you'll come across an import of a Class yo
 2. Ask for help from the developer. 
 
 It's **NEVER** okay to guess! In a codebase this big and complex, you guessing about function syntax is such a low-probability longshot that you are basically **guaranteed** to add errors, rather than fix them.  So, don't guess! Stop and think, zoom out, read the code-base, and if you can't determine with high confidence how to call a function, stop generating code and ask for help instead. 
+
+Whenever you write a big chunk of code, always go back and check the constructors for the functions and methods you've called, and double-check their signatures. If you don't know where the functions and methods are, try this: 
+
+1. Search the codebase for each function or method you've called   
+2. Check its constructor against the code you wrote  
+3. Reassure yourself that the new code matches the existing convention, OR stop and ask the human if they are okay with a change.  
+

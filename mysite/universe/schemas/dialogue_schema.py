@@ -8,6 +8,7 @@ pilots and controllers, ensuring consistent format and role adherence.
 from enum import Enum
 from typing import Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator
+import json
 
 
 class Role(str, Enum):
@@ -100,8 +101,8 @@ class DialoguePrompt(BaseModel):
     expected_format: DialogueFormat
     example_exchange: Optional[List[DialogueMessage]] = None
     
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "role": "CONTROLLER",
                 "context": {
@@ -111,10 +112,10 @@ class DialoguePrompt(BaseModel):
                     "previous_exchanges": [
                         {
                             "role": "PILOT",
-                            "speaker_callsign": "STELLAR_HORIZON",
-                            "recipient_callsign": "PHOBOS_CONTROL",
+                            "speaker_callsign": "WICKER BASKET",
+                            "recipient_callsign": "PHOBOS CONTROL",
                             "format": "INITIAL_CONTACT",
-                            "message": "Phobos Control, this is Stellar Horizon, requesting approach vector for docking.",
+                            "message": "Phobos Control, this is Wicker Basket, <contextually appropriate request for a maneuver>.",
                             "requires_readback": False
                         }
                     ]
@@ -123,23 +124,24 @@ class DialoguePrompt(BaseModel):
                 "example_exchange": [
                     {
                         "role": "CONTROLLER",
-                        "speaker_callsign": "PHOBOS_CONTROL",
-                        "recipient_callsign": "STELLAR_HORIZON",
+                        "speaker_callsign": "PHOBOS CONTROL",
+                        "recipient_callsign": "WICKER BASKET",
                         "format": "RESPONSE",
-                        "message": "Stellar Horizon, Phobos Control. Cleared for approach on vector 120. Maintain current velocity.",
+                        "message": "Wicker Basket, Phobos Control here. <OPTIONAL course correction>, <contextually appropriate approval for maneuver>.",
                         "requires_readback": True
                     },
                     {
                         "role": "PILOT",
-                        "speaker_callsign": "STELLAR_HORIZON",
-                        "recipient_callsign": "PHOBOS_CONTROL",
+                        "speaker_callsign": "WICKER BASKET",
+                        "recipient_callsign": "PHOBOS CONTROL",
                         "format": "READBACK",
-                        "message": "Phobos Control, Stellar Horizon. Vector 120, maintaining velocity. Wilco.",
+                        "message": "Phobos Control, Wicker Basket, thank you. <Acknowledgement of instructions>. <OPTIONAL confirmation of course correction>. <OPTIONAL small talk>",
                         "requires_readback": False
                     }
                 ]
             }
         }
+    }
 
 
 def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
@@ -206,3 +208,22 @@ def create_dialogue_prompt(role: Role, context: Dict, expected_format: DialogueF
     )
     
     return prompt 
+
+
+def get_schema_and_rules() -> str:
+    """Returns a formatted string containing the schema and critical rules."""
+    return f"""DIALOGUE SCHEMA AND RULES:
+{json.dumps(DialogueMessage.model_json_schema(), indent=2)}
+
+CRITICAL SAFETY RULES:
+1. Your message MUST include both speaker and recipient identification
+2. For initial contact, you MUST address recipient before identifying yourself
+3. Keep messages clear, concise, and professional
+4. Include readback requirements for any vectors, headings, or critical instructions
+
+COMMUNICATION FORMATS:
+- INITIAL_CONTACT: First message in an exchange
+- RESPONSE: Reply to a message
+- ACKNOWLEDGMENT: Confirm receipt
+- READBACK: Repeat instructions back
+- HANDOFF: Transfer to another controller""" 

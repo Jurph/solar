@@ -1,7 +1,6 @@
 """Tests for the dialogue schema implementation."""
-
 import pytest
-from ..schemas.dialogue_schema import (
+from mysite.universe.schemas.dialogue_schema import (
     Role,
     DialogueFormat,
     DialogueMessage,
