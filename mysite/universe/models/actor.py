@@ -1,4 +1,3 @@
-
 """
 Actor model for Pilots and Controllers.
 
@@ -123,12 +122,23 @@ CRITICAL SAFETY RULES:
     @classmethod
     def generate_name(cls) -> str:
         """Generate a random pilot name."""
-        given = dictionary.get_random('GIVEN_NAME')
+        given = dictionary.get_random('GIVEN')
         surname = dictionary.get_random('SURNAME')
         return f"{given} {surname}"
 
 class Controller(Actor):
     """A space traffic controller at a specific location."""
+    
+    # Standard suffixes for control stations
+    CONTROL_SUFFIXES = [
+        "Control",
+        "Dispatch",
+        "Customs",
+        "Harbormaster",
+        "Port Services",
+        "Traffic Control",
+        "Operations"
+    ]
     
     location = models.OneToOneField(
         'Location',
@@ -148,6 +158,16 @@ CRITICAL SAFETY RULES:
 4. Prioritize safety over efficiency
 5. Verify readback of critical instructions"""
 
+    def get_concrete_instance(self):
+        """
+        Return the most specific instance of this controller.
+        Used for polymorphic behavior in route planning.
+        
+        Returns:
+            self: This controller is already the most concrete instance
+        """
+        return self
+
     @classmethod
     def create(cls, name: str = None, location: 'Location' = None) -> 'Controller':
         """
@@ -160,9 +180,11 @@ CRITICAL SAFETY RULES:
         Returns:
             A new Controller instance
         """
-        # Generate name if not provided
-        if name is None:
-            name = cls.generate_name()
+        # Generate name if not provided and we have a location
+        if name is None and location is not None:
+            name = cls.generate_name(location)
+        elif name is None:
+            name = "Space Traffic Control"  # Default fallback for tests
             
         # Create and save the controller
         controller = cls(name=name, role=Actor.Role.CONTROLLER, location=location)
@@ -171,9 +193,22 @@ CRITICAL SAFETY RULES:
         return controller
 
     @classmethod
-    def generate_name(cls) -> str:
-        """Generate a random controller name."""
-        return f"{dictionary.get_random('LOCATION')} Control"
+    def generate_name(cls, location: 'Location') -> str:
+        """
+        Generate an appropriate controller name based on the location.
+        
+        Args:
+            location: The Location this controller is responsible for
+            
+        Returns:
+            A string representing the controller name
+        """
+        # If it's already a control station, use its name
+        if any(suffix in location.name for suffix in cls.CONTROL_SUFFIXES):
+            return location.name
+            
+        # For other locations, append a suitable suffix
+        return f"{location.name} {cls.CONTROL_SUFFIXES[0]}"
 
 class Satellite(Actor):
     """An automated satellite that can relay messages."""

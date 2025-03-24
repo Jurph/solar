@@ -82,8 +82,7 @@ class ActorService:
                 if not controller:
                     controller = Controller.create(
                         name=controller_name,
-                        location=station,
-                        role="CONTROLLER"
+                        location=station
                     )
                 
                 # Categorize based on whether it's a control station
@@ -103,8 +102,7 @@ class ActorService:
                 if not controller:
                     controller = Controller.create(
                         name=controller_name,
-                        location=planet,
-                        role="CONTROLLER"
+                        location=planet
                     )
                 results['planets'].append(controller)
             
@@ -119,8 +117,7 @@ class ActorService:
                 if not controller:
                     controller = Controller.create(
                         name=controller_name,
-                        location=moon,
-                        role="CONTROLLER"
+                        location=moon
                     )
                 results['moons'].append(controller)
         

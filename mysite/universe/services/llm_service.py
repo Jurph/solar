@@ -531,7 +531,7 @@ DO NOT include any text before or after the JSON object. The response must be ON
                 "destination": nav_ctx.get("destination", "UNKNOWN"),
                 "cargo": nav_ctx.get("cargo", None)
             },
-            "previous_exchanges": [msg.dict() for msg in previous_exchanges],
+            "previous_exchanges": [msg.model_dump() for msg in previous_exchanges],
             "example_line": line
         }
 
@@ -552,7 +552,7 @@ DO NOT include any text before or after the JSON object. The response must be ON
                 if start >= 0 and end > start:
                     json_str = response[start:end]
                     msg_obj = DialogueMessage(**json.loads(json_str))
-                    return json.dumps(msg_obj.dict())
+                    return json.dumps(msg_obj.model_dump())
                 else:
                     raise ValueError("No JSON object found in response")
             except Exception as e:
