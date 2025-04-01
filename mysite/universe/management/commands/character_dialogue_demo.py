@@ -112,7 +112,6 @@ class Command(BaseCommand):
                 try:
                     mars = Location.objects.get(name="Mars")
                     earth = Location.objects.get(name="Earth")
-                    earth_control = Location.objects.get(name="Earth Orbital Control")
                 except Location.DoesNotExist:
                     self.stdout.write(self.style.ERROR("Required locations not found in the database. Have you imported the universe data?"))
                     return

@@ -2,6 +2,7 @@ import pytest
 import io
 from contextlib import redirect_stdout, redirect_stderr
 from mysite.universe.services.llm_service import LLMService
+import json
 
 @pytest.fixture
 def llm():
@@ -157,24 +158,35 @@ def main():
 if __name__ == "__main__":
     main()
 
-def test_json_dialogue_generation(self):
+@pytest.mark.slow
+@pytest.mark.django_db
+def test_json_dialogue_generation():
     """Test that the JSON dialogue path works correctly."""
     from mysite.universe.services.llm_service import LLMJSONService
-    from mysite.universe.models.actor import Pilot, Controller, Role
-    from mysite.universe.schemas.dialogue_schema import DialogueMessage, DialogueFormat
-    import json
+    from mysite.universe.models.actor import Pilot, Controller
+    from mysite.universe.schemas.dialogue_schema import DialogueMessage, DialogueFormat, Role
 
     # Create test actors
     pilot = Pilot.create(name="TEST PILOT")
     controller = Controller.create(name="TEST CONTROL")
 
-    # Initialize service
-    service = LLMJSONService(quiet_mode=True)
+    # Initialize service with absolute path to config
+    service = LLMJSONService(config_path="c:/Users/Jurph/Documents/Python Scripts/solar/llm.config", quiet_mode=True)
+
+    # Create a proper DialogueMessage for the context
+    initial_message = DialogueMessage(
+        role=Role.PILOT,
+        speaker_callsign="TEST PILOT",
+        recipient_callsign="TEST CONTROL",
+        format=DialogueFormat.INITIAL_CONTACT,
+        message="TEST CONTROL, this is TEST PILOT, requesting clearance for plane change maneuver.",
+        requires_readback=False
+    )
 
     # Test pilot -> controller dialogue
-    context = ["TEST PILOT: TEST CONTROL, requesting clearance for plane change maneuver."]
+    context = [f"TEST PILOT: {initial_message.message}"]  # Format as expected by get_actor_text
     nav_ctx = {
-        "maneuver": "PLANE_CHANGE",
+        "maneuver_type": "PLANE_CHANGE",  # Fix key name to match what the code expects
         "current_location": "EARTH ORBIT",
         "destination": "MARS",
         "recipient": "TEST CONTROL"
@@ -189,20 +201,20 @@ def test_json_dialogue_generation(self):
     )
 
     # Verify response is valid JSON and matches schema
-    self.assertTrue(isinstance(response, str))
-    self.assertTrue(response.strip().startswith('{'))
+    assert isinstance(response, str)
+    assert response.strip().startswith('{')
     
     # Should parse without error
     msg_obj = None
     try:
         msg_obj = DialogueMessage(**json.loads(response))
     except Exception as e:
-        self.fail(f"Failed to parse JSON response: {e}")
+        pytest.fail(f"Failed to parse JSON response: {e}")
 
     # Verify required fields
-    self.assertEqual(msg_obj.role, Role.CONTROLLER.value)
-    self.assertEqual(msg_obj.speaker_callsign, controller.name)
-    self.assertEqual(msg_obj.recipient_callsign, pilot.name)
-    self.assertTrue(isinstance(msg_obj.format, DialogueFormat))
-    self.assertTrue(isinstance(msg_obj.message, str))
-    self.assertTrue(isinstance(msg_obj.requires_readback, bool))
+    assert msg_obj.role == Role.CONTROLLER.value
+    assert msg_obj.speaker_callsign == controller.name
+    assert msg_obj.recipient_callsign == pilot.name
+    assert isinstance(msg_obj.format, DialogueFormat)
+    assert isinstance(msg_obj.message, str)
+    assert isinstance(msg_obj.requires_readback, bool)

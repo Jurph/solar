@@ -179,12 +179,19 @@ class LLMService:
                     # Determine roles and callsigns from message content
                     is_control = any(control in speaker.upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])
                     role = Role.CONTROLLER if is_control else Role.PILOT
-                    other_party = text.split(",")[0].strip() if "," in text else ""
+                    
+                    # For each message, the recipient should be the OTHER party
+                    # If speaker is control, recipient is pilot and vice versa
+                    recipient = nav_ctx.get("recipient", "UNKNOWN")
+                    if is_control:
+                        recipient = next((msg.split(": ")[0].strip() for msg in context if not any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
+                    else:
+                        recipient = next((msg.split(": ")[0].strip() for msg in context if any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
                     
                     previous_exchanges.append(DialogueMessage(
                         role=role,
                         speaker_callsign=speaker.strip(),
-                        recipient_callsign=other_party or "UNKNOWN",
+                        recipient_callsign=recipient,  # Set recipient to the other party
                         format=DialogueFormat.RESPONSE,  # Default to RESPONSE for existing messages
                         message=text.strip(),
                         requires_readback="vector" in text.lower() or "heading" in text.lower()
@@ -462,12 +469,19 @@ The JSON must match this exact schema:
                     # Determine roles and callsigns from message content
                     is_control = any(control in speaker.upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])
                     role = Role.CONTROLLER if is_control else Role.PILOT
-                    other_party = text.split(",")[0].strip() if "," in text else ""
+                    
+                    # For each message, the recipient should be the OTHER party
+                    # If speaker is control, recipient is pilot and vice versa
+                    recipient = nav_ctx.get("recipient", "UNKNOWN")
+                    if is_control:
+                        recipient = next((msg.split(": ")[0].strip() for msg in context if not any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
+                    else:
+                        recipient = next((msg.split(": ")[0].strip() for msg in context if any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
                     
                     previous_exchanges.append(DialogueMessage(
                         role=role,
                         speaker_callsign=speaker.strip(),
-                        recipient_callsign=other_party or "UNKNOWN",
+                        recipient_callsign=recipient,  # Set recipient to the other party
                         format=DialogueFormat.RESPONSE,  # Default to RESPONSE for existing messages
                         message=text.strip(),
                         requires_readback="vector" in text.lower() or "heading" in text.lower()
@@ -564,9 +578,9 @@ DO NOT include any text before or after the JSON object. The response must be ON
                 return json.dumps({
                     "role": actor.role.value,
                     "speaker_callsign": actor.name,
-                    "recipient_callsign": "CONTROL",
-                    "format": "INITIAL_CONTACT",
-                    "message": response.strip(),
+                    "recipient_callsign": nav_ctx.get("recipient", "CONTROL"),
+                    "format": "RESPONSE",
+                    "message": f"{nav_ctx.get('recipient', 'CONTROL')}, {actor.name} here. {response.strip()}",
                     "requires_readback": False
                 })
         except Exception as e:
@@ -575,8 +589,8 @@ DO NOT include any text before or after the JSON object. The response must be ON
             return json.dumps({
                 "role": actor.role.value,
                 "speaker_callsign": actor.name,
-                "recipient_callsign": "CONTROL",
-                "format": "INITIAL_CONTACT",
-                "message": f"Error generating response: {str(e)}",
+                "recipient_callsign": nav_ctx.get("recipient", "CONTROL"),
+                "format": "RESPONSE",
+                "message": f"{nav_ctx.get('recipient', 'CONTROL')}, {actor.name} here. Error in communications.",
                 "requires_readback": False
             })
