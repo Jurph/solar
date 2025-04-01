@@ -78,23 +78,25 @@ def test_route_and_script_integration_mars_to_earth(capfd, simulation_queue, scr
     expected_keywords = ["DEORBIT", "LAND", "Mars", "Earth"]
     assert any(keyword in script_output for keyword in expected_keywords), "Generated script events do not include any expected keywords."
 
-    # New block: Load the dialogue events into a SimulationQueue and process the first one
-    from mysite.universe.management.commands.start_simulation_loop import SimulationQueue, DIALOGUE_EVENTS_RECEIVED, DIALOGUE_EVENTS_RECEIVED_LOCK
-
     # Clear the global dialogue events list
     with DIALOGUE_EVENTS_RECEIVED_LOCK:
         DIALOGUE_EVENTS_RECEIVED.clear()
 
-    sim_queue = SimulationQueue()
+    # Add each script event to the queue
     for event in script_events:
-        sim_queue.add_event(event)
+        simulation_queue.add_event(event)
 
     # Process events up to just after the first event's timestamp
-    sim_queue.process_due_events(script_events[0].timestamp + 360)
+    simulation_queue.process_due_events(script_events[0].timestamp + 360)
 
-    # Verify that the expected dialogue events were processed (updated expectation from 6 to 12)
+    # Verify that the expected dialogue events were processed
+    # Each navigation event generates 3 dialogue events:
+    # 1. Pilot request
+    # 2. Controller response
+    # 3. Pilot acknowledgment
+    # So for 6 navigation events, we expect 18 dialogue events
     with DIALOGUE_EVENTS_RECEIVED_LOCK:
-        assert len(DIALOGUE_EVENTS_RECEIVED) == 12, "Expected 12 dialogue events to be processed, got {}.".format(len(DIALOGUE_EVENTS_RECEIVED))
+        assert len(DIALOGUE_EVENTS_RECEIVED) == 18, f"Expected 18 dialogue events to be processed, got {len(DIALOGUE_EVENTS_RECEIVED)}."
         processed_event = DIALOGUE_EVENTS_RECEIVED[0]
 
     # Check that the processed event's text matches the first script event's text

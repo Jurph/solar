@@ -50,11 +50,13 @@ class DialogueMessage(BaseModel):
         if not v.strip():
             raise ValueError("Message cannot be empty")
             
-        # Change from info.data to info.context
-        speaker = info.context.get('speaker_callsign', '').replace('_', ' ')
-        recipient = info.context.get('recipient_callsign', '').replace('_', ' ')
-        msg_format = info.context.get('format')
-        msg_role = info.context.get('role')
+        # Get values from the validation context
+        # Handle both dict and ValidationInfo contexts
+        data = info if isinstance(info, dict) else info.data
+        speaker = data.get('speaker_callsign', '').replace('_', ' ')
+        recipient = data.get('recipient_callsign', '').replace('_', ' ')
+        msg_format = data.get('format')
+        msg_role = data.get('role')
         
         # Get all possible parts of callsigns for matching
         speaker_parts = speaker.upper().split()
@@ -112,6 +114,7 @@ class DialoguePrompt(BaseModel):
             "examples": [{
                 "role": "CONTROLLER",
                 "context": {
+                    "maneuver_type": "ORBITAL_INSERTION",
                     "current_location": "Mars Orbit",
                     "destination": "Phobos Station",
                     "cargo": "Medical Supplies",
@@ -121,7 +124,7 @@ class DialoguePrompt(BaseModel):
                             "speaker_callsign": "WICKER BASKET",
                             "recipient_callsign": "PHOBOS CONTROL",
                             "format": "INITIAL_CONTACT",
-                            "message": "Phobos Control, this is Wicker Basket, <contextually appropriate request for a maneuver>.",
+                            "message": "PHOBOS CONTROL, this is WICKER BASKET, requesting clearance for orbital insertion.",
                             "requires_readback": False
                         }
                     ]
@@ -133,7 +136,7 @@ class DialoguePrompt(BaseModel):
                         "speaker_callsign": "PHOBOS CONTROL",
                         "recipient_callsign": "WICKER BASKET",
                         "format": "RESPONSE",
-                        "message": "Wicker Basket, Phobos Control here. <OPTIONAL course correction>, <contextually appropriate approval for maneuver>.",
+                        "message": "WICKER BASKET, PHOBOS CONTROL here. Cleared for orbital insertion, maintain current vector.",
                         "requires_readback": True
                     },
                     {
@@ -141,7 +144,7 @@ class DialoguePrompt(BaseModel):
                         "speaker_callsign": "WICKER BASKET",
                         "recipient_callsign": "PHOBOS CONTROL",
                         "format": "READBACK",
-                        "message": "Phobos Control, Wicker Basket, thank you. <Acknowledgement of instructions>. <OPTIONAL confirmation of course correction>. <OPTIONAL small talk>",
+                        "message": "PHOBOS CONTROL, WICKER BASKET. Cleared for orbital insertion, maintaining current vector.",
                         "requires_readback": False
                     }
                 ]
@@ -158,10 +161,10 @@ def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
         messages: List of DialogueMessage objects to validate
         
     Returns:
-        bool: True if the sequence is valid, False otherwise
+        bool: True if the sequence is valid
         
     Raises:
-        ValueError: If any message fails validation
+        ValueError: If any message fails validation or protocol is violated
     """
     if not messages:
         return True
@@ -184,7 +187,9 @@ def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
             
             # Validate readback requirements
             if prev_msg.requires_readback:
-                if msg.format != DialogueFormat.READBACK:
+                if i == len(messages) - 1 and msg.format != DialogueFormat.READBACK:
+                    raise ValueError("Final message must be a readback when previous message requires it")
+                elif msg.format != DialogueFormat.READBACK:
                     raise ValueError(f"Message {i} should be a readback of previous instructions")
                     
             # Validate speaker/recipient alternation
@@ -193,6 +198,10 @@ def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
                 
             if msg.recipient_callsign != prev_msg.speaker_callsign:
                 raise ValueError(f"Message {i} recipient should be previous message's speaker")
+    
+    # Check if the last message requires readback but there isn't one
+    if len(messages) > 0 and messages[-1].requires_readback:
+        raise ValueError("Sequence ends with a message requiring readback, but no readback was provided")
     
     return True
 
