@@ -183,10 +183,10 @@ def test_json_dialogue_generation():
         requires_readback=False
     )
 
-    # Test pilot -> controller dialogue
-    context = [f"TEST PILOT: {initial_message.message}"]  # Format as expected by get_actor_text
+    # Test pilot -> controller dialogue with structured context
+    context = [initial_message]  # Pass the DialogueMessage object directly
     nav_ctx = {
-        "maneuver_type": "PLANE_CHANGE",  # Fix key name to match what the code expects
+        "maneuver_type": "PLANE_CHANGE",
         "current_location": "EARTH ORBIT",
         "destination": "MARS",
         "recipient": "TEST CONTROL"
