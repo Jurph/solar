@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from openai import OpenAI
 from mysite.universe.models.actor import Actor
 import yaml
@@ -149,7 +149,7 @@ class LLMService:
         self,
         line: str,
         actor: Actor,
-        context: Optional[List[str]] = None,
+        context: Optional[List[Union[str, DialogueMessage]]] = None,
         temperature: Optional[float] = None,
         navigation_context: Optional[Dict] = None
     ) -> str:
@@ -157,14 +157,14 @@ class LLMService:
         Generate dialogue for an actor using JSON-structured prompts.
         
         Args:
-            line: Template or example line for the response (deprecated)
+            line: Example line for the response
             actor: The actor speaking
-            context: Previous messages in the conversation
+            context: Previous messages in the conversation, can be strings or DialogueMessage objects
             temperature: Optional temperature override
             navigation_context: Optional dict with navigation event details
             
         Returns:
-            Generated dialogue text
+            Generated dialogue text as a JSON string
         """
         context = context or []
         nav_ctx = navigation_context or {}
@@ -173,29 +173,41 @@ class LLMService:
         previous_exchanges = []
         for msg in context:
             try:
-                # Try to parse as "Speaker: Message" format
-                if ": " in msg:
+                if isinstance(msg, DialogueMessage):
+                    # If it's already a DialogueMessage, use it directly
+                    previous_exchanges.append(msg)
+                elif isinstance(msg, str) and ": " in msg:
+                    # Legacy string format parsing
                     speaker, text = msg.split(": ", 1)
                     # Determine roles and callsigns from message content
                     is_control = any(control in speaker.upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])
                     role = Role.CONTROLLER if is_control else Role.PILOT
                     
-                    # For each message, the recipient should be the OTHER party
-                    # If speaker is control, recipient is pilot and vice versa
-                    recipient = nav_ctx.get("recipient", "UNKNOWN")
-                    if is_control:
-                        recipient = next((msg.split(": ")[0].strip() for msg in context if not any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
-                    else:
-                        recipient = next((msg.split(": ")[0].strip() for msg in context if any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
+                    # Extract recipient from the message content itself
+                    first_part = text.split(",")[0].strip().upper()
+                    recipient = None
                     
-                    previous_exchanges.append(DialogueMessage(
+                    # If speaker is pilot and message starts with a control-like word, that's our recipient
+                    if not is_control and any(control in first_part for control in ["CONTROL", "ORBITAL", "TRAFFIC"]):
+                        recipient = first_part
+                    # If speaker is control and message starts with a non-control word, that's our recipient
+                    elif is_control and not any(control in first_part for control in ["CONTROL", "ORBITAL", "TRAFFIC"]):
+                        recipient = first_part
+                    # Fallback to navigation context
+                    else:
+                        recipient = nav_ctx.get("recipient", "UNKNOWN")
+                    
+                    # Create the message object
+                    msg_obj = DialogueMessage(
                         role=role,
                         speaker_callsign=speaker.strip(),
-                        recipient_callsign=recipient,  # Set recipient to the other party
-                        format=DialogueFormat.RESPONSE,  # Default to RESPONSE for existing messages
+                        recipient_callsign=recipient,
+                        format=DialogueFormat.INITIAL_CONTACT if "this is" in text.lower() else DialogueFormat.RESPONSE,
                         message=text.strip(),
                         requires_readback="vector" in text.lower() or "heading" in text.lower()
-                    ))
+                    )
+                    
+                    previous_exchanges.append(msg_obj)
             except Exception as e:
                 if not self.quiet_mode:
                     print(f"Warning: Could not parse message into DialogueMessage: {e}")
@@ -439,7 +451,7 @@ The JSON must match this exact schema:
         self,
         line: str,
         actor: Actor,
-        context: Optional[List[str]] = None,
+        context: Optional[List[Union[str, DialogueMessage]]] = None,
         temperature: Optional[float] = None,
         navigation_context: Optional[Dict] = None
     ) -> str:
@@ -449,7 +461,7 @@ The JSON must match this exact schema:
         Args:
             line: Example line for the response
             actor: The actor speaking
-            context: Previous messages in the conversation
+            context: Previous messages in the conversation, can be strings or DialogueMessage objects
             temperature: Optional temperature override
             navigation_context: Optional dict with navigation event details
             
@@ -463,35 +475,56 @@ The JSON must match this exact schema:
         previous_exchanges = []
         for msg in context:
             try:
-                # Try to parse as "Speaker: Message" format
-                if ": " in msg:
+                if isinstance(msg, DialogueMessage):
+                    # If it's already a DialogueMessage, use it directly
+                    previous_exchanges.append(msg)
+                elif isinstance(msg, str) and ": " in msg:
+                    # Legacy string format parsing
                     speaker, text = msg.split(": ", 1)
                     # Determine roles and callsigns from message content
                     is_control = any(control in speaker.upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])
                     role = Role.CONTROLLER if is_control else Role.PILOT
                     
-                    # For each message, the recipient should be the OTHER party
-                    # If speaker is control, recipient is pilot and vice versa
-                    recipient = nav_ctx.get("recipient", "UNKNOWN")
-                    if is_control:
-                        recipient = next((msg.split(": ")[0].strip() for msg in context if not any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
-                    else:
-                        recipient = next((msg.split(": ")[0].strip() for msg in context if any(control in msg.split(": ")[0].upper() for control in ["CONTROL", "ORBITAL", "TRAFFIC"])), recipient)
+                    # Extract recipient from the message content itself
+                    first_part = text.split(",")[0].strip().upper()
+                    recipient = None
                     
-                    previous_exchanges.append(DialogueMessage(
+                    # If speaker is pilot and message starts with a control-like word, that's our recipient
+                    if not is_control and any(control in first_part for control in ["CONTROL", "ORBITAL", "TRAFFIC"]):
+                        recipient = first_part
+                    # If speaker is control and message starts with a non-control word, that's our recipient
+                    elif is_control and not any(control in first_part for control in ["CONTROL", "ORBITAL", "TRAFFIC"]):
+                        recipient = first_part
+                    # Fallback to navigation context
+                    else:
+                        recipient = nav_ctx.get("recipient", "UNKNOWN")
+                    
+                    # Create the message object
+                    msg_obj = DialogueMessage(
                         role=role,
                         speaker_callsign=speaker.strip(),
-                        recipient_callsign=recipient,  # Set recipient to the other party
-                        format=DialogueFormat.RESPONSE,  # Default to RESPONSE for existing messages
+                        recipient_callsign=recipient,
+                        format=DialogueFormat.INITIAL_CONTACT if "this is" in text.lower() else DialogueFormat.RESPONSE,
                         message=text.strip(),
                         requires_readback="vector" in text.lower() or "heading" in text.lower()
-                    ))
+                    )
+                    
+                    previous_exchanges.append(msg_obj)
             except Exception as e:
                 if not self.quiet_mode:
                     print(f"Warning: Could not parse message into DialogueMessage: {e}")
                 continue
 
         # Build system prompt with actor identity, rules, and JSON schema
+        # Determine recipient from context or navigation context
+        recipient_callsign = None
+        if previous_exchanges:
+            # If there are previous messages, use the speaker of the last message as recipient
+            recipient_callsign = previous_exchanges[-1].speaker_callsign
+        else:
+            # Otherwise use from navigation context
+            recipient_callsign = nav_ctx.get("recipient", "UNKNOWN")
+
         system_prompt = f"""You are {actor.name}, a {actor.role} in a space traffic control simulation.
 
 {actor.get_identity_prompt()}
@@ -500,7 +533,7 @@ IMPORTANT: You must respond with ONLY a valid JSON object in the following forma
 {{
     "role": "{actor.role.value}",
     "speaker_callsign": "{actor.name}",
-    "recipient_callsign": "RECIPIENT_CALLSIGN",
+    "recipient_callsign": "{recipient_callsign}",  # Use determined recipient
     "format": "INITIAL_CONTACT",
     "message": "Your actual message text here",
     "requires_readback": false
@@ -514,21 +547,21 @@ The message field must follow these rules:
 
 Example response for initial contact:
 {{
-    "role": "PILOT",
-    "speaker_callsign": "STELLAR_HORIZON",
-    "recipient_callsign": "MARS_CONTROL",
+    "role": "{actor.role.value}",
+    "speaker_callsign": "{actor.name}",
+    "recipient_callsign": "{recipient_callsign}",  # Use determined recipient
     "format": "INITIAL_CONTACT",
-    "message": "Mars Control, this is Stellar Horizon, requesting clearance for takeoff.",
+    "message": "{recipient_callsign}, this is {actor.name}, requesting clearance.",
     "requires_readback": false
 }}
 
 Example response for readback:
 {{
-    "role": "PILOT",
-    "speaker_callsign": "STELLAR_HORIZON",
-    "recipient_callsign": "MARS_CONTROL",
+    "role": "{actor.role.value}",
+    "speaker_callsign": "{actor.name}",
+    "recipient_callsign": "{recipient_callsign}",  # Use determined recipient
     "format": "READBACK",
-    "message": "Mars Control, Stellar Horizon copies. Cleared for takeoff, runway 27.",
+    "message": "{recipient_callsign}, {actor.name} copies. Message received.",
     "requires_readback": false
 }}
 
