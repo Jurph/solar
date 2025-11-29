@@ -139,3 +139,132 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 ### Seven - Let's Get Real 
 - J.R. probably won't finish this game on his own 
 - Persistent ships? Letting players follow ships to different places to hear more of the story? Who knows? 
+
+### Current Backlog 
+
+#### Problem 1: Complete Pydantic v1 to v2 Migration
+
+**Big Picture:** The dialogue schema system was partially migrated from Pydantic v1 to v2, but some syntax and validation patterns may still be using deprecated v1 patterns. This needs to be fully completed to ensure compatibility with current Pydantic versions and avoid future breaking changes.
+
+**Overall Intent:** Ensure all Pydantic models use v2 syntax consistently throughout the codebase, with proper validation context handling and model configuration.
+
+**Path Forward:**
+1. Audit all Pydantic models in `mysite/universe/schemas/dialogue_schema.py` for v1 syntax
+   - Verify `ConfigDict` is used instead of nested `Config` class
+   - Check that `field_validator` uses `ValidationInfo` correctly
+   - Ensure `model_json_schema()` is used instead of `Config.schema_extra`
+2. Update `DialogueMessage.validate_message_format()` to handle Pydantic v2 validation context properly
+   - Test that both dict and `ValidationInfo` contexts work correctly
+   - Verify validation errors are raised with clear messages
+3. Update `DialoguePrompt` model configuration
+   - Convert `Config.schema_extra` to `model_config` with `json_schema_extra`
+   - Update example structure to use "examples" instead of "example" if needed
+4. Search codebase for any remaining Pydantic v1 patterns
+   - Look for `.dict()` calls (should be `.model_dump()`)
+   - Look for `Config` classes (should be `ConfigDict`)
+   - Look for `@validator` decorators (should be `@field_validator`)
+5. Run all dialogue schema tests to verify migration success
+   - Ensure `test_dialogue_schema.py` passes completely
+   - Verify validation still works as expected
+6. Update any documentation that references Pydantic v1 patterns
+
+#### Problem 2: Integrate LLMJSONService into ScriptService Workflow
+
+**Big Picture:** A new `LLMJSONService` class was created for structured JSON dialogue generation, but `ScriptService` still primarily uses the older `LLMService`. The JSON service provides better structure and validation, but needs to be properly integrated into the dialogue generation pipeline.
+
+**Overall Intent:** Make `ScriptService` use `LLMJSONService` by default for all dialogue generation, ensuring structured JSON responses are properly parsed and used throughout the system.
+
+**Path Forward:**
+1. Update `ScriptService.get_instance()` to use `LLMJSONService` by default
+   - Modify the default LLM initialization to create `LLMJSONService` instead of `LLMService`
+   - Keep `LLMService` as a fallback option for backward compatibility
+2. Update `ScriptService.parse_navigation_event()` to handle JSON responses
+   - Extract message text from JSON responses returned by `LLMJSONService`
+   - Parse JSON using `DialogueMessage` schema for validation
+   - Handle cases where LLM returns invalid JSON gracefully
+3. Update `ScriptService.parse_dialogue_event()` to use structured context
+   - Pass `DialogueMessage` objects in context instead of plain strings where possible
+   - Ensure recipient identification works correctly with structured messages
+   - Update metadata to include structured dialogue information
+4. Add error handling for JSON parsing failures
+   - Log warnings when JSON parsing fails
+   - Fall back to extracting plain text from response
+   - Consider retry logic for malformed JSON responses
+5. Update dialogue event metadata to store structured dialogue data
+   - Store full `DialogueMessage` objects in metadata when available
+   - Preserve format, role, and readback requirements in metadata
+6. Test the integration with existing navigation event flows
+   - Verify pilot requests generate correctly
+   - Verify controller responses generate correctly
+   - Verify readback acknowledgments generate correctly
+7. Update any management commands that use ScriptService
+   - Check `character_dialogue_demo.py` and other commands
+   - Ensure they work with the new JSON-based service
+
+#### Problem 3: Fix Dialogue Context Parsing and Recipient Identification
+
+**Big Picture:** The `get_actor_text()` method in `LLMJSONService` needs to correctly parse dialogue context (both string and `DialogueMessage` formats) and identify the correct recipient for responses. Currently, there are edge cases where recipient identification fails or is incorrect.
+
+**Overall Intent:** Ensure that when generating dialogue responses, the system correctly identifies who is speaking to whom, maintains conversation context, and properly alternates between pilot and controller in multi-turn exchanges.
+
+**Path Forward:**
+1. Audit current context parsing logic in `LLMJSONService.get_actor_text()`
+   - Review how string format messages are parsed ("Speaker: Message")
+   - Review how `DialogueMessage` objects are handled
+   - Identify edge cases where recipient identification fails
+2. Improve recipient identification from message content
+   - For string format: Extract recipient from message text more reliably
+   - For `DialogueMessage` format: Use the structured recipient_callsign directly
+   - Handle cases where recipient isn't explicitly mentioned in message text
+3. Fix recipient determination in system prompt generation
+   - When previous messages exist, use the last message's speaker as recipient
+   - When no previous messages, use navigation context recipient
+   - Ensure recipient is correctly passed to LLM in system prompt examples
+4. Add validation for dialogue flow consistency
+   - Verify speaker/recipient alternation in multi-turn exchanges
+   - Ensure controller responses address the pilot who made the request
+   - Ensure pilot readbacks address the controller who gave instructions
+5. Update test cases to cover edge cases
+   - Test with missing recipient information
+   - Test with malformed context messages
+   - Test with multiple message exchanges
+6. Add logging for recipient identification decisions
+   - Log when recipient is determined from context vs navigation context
+   - Log warnings when recipient identification is ambiguous
+   - Help debug dialogue flow issues
+
+#### Problem 4: Update and Verify Test Suite for Dialogue System
+
+**Big Picture:** The test suite needs to be updated to work with the new structured dialogue system (`LLMJSONService`, `DialogueMessage` objects, etc.) and verified to catch regressions. Some tests may be using outdated patterns or may not adequately test the new JSON-based flow.
+
+**Overall Intent:** Ensure all tests pass reliably, properly test the structured dialogue system, and provide good coverage for dialogue generation, parsing, and validation.
+
+**Path Forward:**
+1. Review and update `test_json_dialogue_generation()` in `tests/test_LLM.py`
+   - Verify it uses `DialogueMessage` objects correctly in context
+   - Ensure it tests both pilot-to-controller and controller-to-pilot flows
+   - Add assertions for all required `DialogueMessage` fields
+2. Update `test_dialogue_schema.py` for Pydantic v2 compatibility
+   - Fix any tests using v1 validation patterns
+   - Update schema access patterns (`model_json_schema()` instead of `Config.schema_extra`)
+   - Verify validation context handling works correctly
+3. Add integration tests for ScriptService with LLMJSONService
+   - Test `parse_navigation_event()` generates valid dialogue events
+   - Test `parse_dialogue_event()` generates proper responses
+   - Test multi-turn dialogue exchanges (request → response → readback)
+4. Add tests for edge cases in context parsing
+   - Test with empty context
+   - Test with mixed string and `DialogueMessage` context
+   - Test with malformed context messages
+5. Verify all existing dialogue-related tests still pass
+   - Run full test suite and identify any failures
+   - Fix broken tests without changing their intent
+   - Document any tests that need to be removed or significantly changed
+6. Add performance tests if needed
+   - Ensure JSON parsing doesn't add significant overhead
+   - Verify LLM response times are acceptable
+7. Update test documentation
+   - Document how to run dialogue system tests
+   - Explain test fixtures and setup requirements
+   - Note any tests that require LLM API access (mark as slow tests)
+
