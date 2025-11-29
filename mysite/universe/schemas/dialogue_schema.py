@@ -7,7 +7,7 @@ pilots and controllers, ensuring consistent format and role adherence.
 
 from enum import Enum
 from typing import Dict, List, Optional, Union
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationInfo
 import json
 
 
@@ -40,7 +40,7 @@ class DialogueMessage(BaseModel):
     
     @field_validator('message')
     @classmethod
-    def validate_message_format(cls, v: str, info) -> str:
+    def validate_message_format(cls, v: str, info: ValidationInfo) -> str:
         """
         Validates the critical safety requirements of messages:
         1. Message must not be empty
@@ -51,8 +51,8 @@ class DialogueMessage(BaseModel):
             raise ValueError("Message cannot be empty")
             
         # Get values from the validation context
-        # Handle both dict and ValidationInfo contexts
-        data = info if isinstance(info, dict) else info.data
+        # Pydantic v2 passes ValidationInfo, but we also support dict for manual validation
+        data = info.data if hasattr(info, 'data') else info
         speaker = data.get('speaker_callsign', '').replace('_', ' ')
         recipient = data.get('recipient_callsign', '').replace('_', ' ')
         msg_format = data.get('format')

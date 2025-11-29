@@ -525,13 +525,16 @@ The JSON must match this exact schema:
             # Otherwise use from navigation context
             recipient_callsign = nav_ctx.get("recipient", "UNKNOWN")
 
+        # Get role value safely (handle both enum and string)
+        role_value = actor.role.value if hasattr(actor.role, 'value') else str(actor.role)
+        
         system_prompt = f"""You are {actor.name}, a {actor.role} in a space traffic control simulation.
 
 {actor.get_identity_prompt()}
 
 IMPORTANT: You must respond with ONLY a valid JSON object in the following format:
 {{
-    "role": "{actor.role.value}",
+    "role": "{role_value}",
     "speaker_callsign": "{actor.name}",
     "recipient_callsign": "{recipient_callsign}",  # Use determined recipient
     "format": "INITIAL_CONTACT",
@@ -547,7 +550,7 @@ The message field must follow these rules:
 
 Example response for initial contact:
 {{
-    "role": "{actor.role.value}",
+    "role": "{role_value}",
     "speaker_callsign": "{actor.name}",
     "recipient_callsign": "{recipient_callsign}",  # Use determined recipient
     "format": "INITIAL_CONTACT",
@@ -557,7 +560,7 @@ Example response for initial contact:
 
 Example response for readback:
 {{
-    "role": "{actor.role.value}",
+    "role": "{role_value}",
     "speaker_callsign": "{actor.name}",
     "recipient_callsign": "{recipient_callsign}",  # Use determined recipient
     "format": "READBACK",
@@ -608,8 +611,9 @@ DO NOT include any text before or after the JSON object. The response must be ON
                     print(f"Raw response: {response}")
                 
                 # If JSON parsing fails, try to construct a valid response
+                role_value = actor.role.value if hasattr(actor.role, 'value') else str(actor.role)
                 return json.dumps({
-                    "role": actor.role.value,
+                    "role": role_value,
                     "speaker_callsign": actor.name,
                     "recipient_callsign": nav_ctx.get("recipient", "CONTROL"),
                     "format": "RESPONSE",
@@ -619,8 +623,9 @@ DO NOT include any text before or after the JSON object. The response must be ON
         except Exception as e:
             if not self.quiet_mode:
                 print(f"Error generating response: {e}")
+            role_value = actor.role.value if hasattr(actor.role, 'value') else str(actor.role)
             return json.dumps({
-                "role": actor.role.value,
+                "role": role_value,
                 "speaker_callsign": actor.name,
                 "recipient_callsign": nav_ctx.get("recipient", "CONTROL"),
                 "format": "RESPONSE",

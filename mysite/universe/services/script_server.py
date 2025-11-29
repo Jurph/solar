@@ -1,5 +1,6 @@
 from mysite.universe.services.dictionary import DictionaryService
-from typing import Optional, List
+from typing import Optional, List, Union
+import json
 
 # Import our navigation models
 from mysite.universe.models.navigation import NavigationEvent, ManeuverType
@@ -7,6 +8,7 @@ from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.actor import Pilot, Controller, Actor
 from mysite.universe.services.route_server import RouteService
+from mysite.universe.schemas.dialogue_schema import DialogueMessage, DialogueFormat, Role
 
 route_service = RouteService()
 dictionary_service = DictionaryService()
@@ -34,14 +36,57 @@ class ScriptService:
         """Get or create the ScriptService instance with optional LLM configuration."""
         if cls._instance is None:
             if llm is None:
-                from mysite.universe.services.llm_service import LLMService
-                llm = LLMService(quiet_mode=True)
+                # Default to LLMJSONService for structured JSON dialogue generation
+                from mysite.universe.services.llm_service import LLMJSONService
+                try:
+                    llm = LLMJSONService(quiet_mode=True)
+                except Exception:
+                    # Fallback to LLMService if LLMJSONService fails to initialize
+                    from mysite.universe.services.llm_service import LLMService
+                    llm = LLMService(quiet_mode=True)
             cls._instance = cls(llm)
         return cls._instance
 
     def __init__(self, llm):
         self.llm = llm
         self.pilot_call_sign = None
+    
+    def _extract_message_from_response(self, response: str) -> tuple[str, Optional[DialogueMessage]]:
+        """
+        Extract message text from LLM response, handling both JSON and plain text.
+        
+        Args:
+            response: The response from the LLM (may be JSON or plain text)
+            
+        Returns:
+            Tuple of (message_text, dialogue_message_obj)
+            - message_text: The actual message text to display
+            - dialogue_message_obj: The DialogueMessage object if response was JSON, None otherwise
+        """
+        # Check if response is JSON
+        if isinstance(response, str) and response.strip().startswith('{'):
+            try:
+                # Try to parse as JSON
+                json_data = json.loads(response)
+                msg_obj = DialogueMessage(**json_data)
+                return msg_obj.message, msg_obj
+            except (json.JSONDecodeError, ValueError) as e:
+                # If JSON parsing fails, try to extract JSON from response
+                start = response.find('{')
+                end = response.rfind('}') + 1
+                if start >= 0 and end > start:
+                    try:
+                        json_str = response[start:end]
+                        json_data = json.loads(json_str)
+                        msg_obj = DialogueMessage(**json_data)
+                        return msg_obj.message, msg_obj
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                # If all JSON parsing fails, return the raw response
+                return response.strip(), None
+        
+        # Plain text response
+        return response.strip(), None
 
     def parse_navigation_event(self, nav_event: NavigationEvent, ship: Ship) -> DialogueEvent:
         """
@@ -147,7 +192,7 @@ class ScriptService:
             "llm_system_prompt": f"{pilot.get_identity_prompt()} {pilot.get_instruction_prompt()}",
             # Build a more specific example using the actual context
             "llm_user_prompt": (
-                f"Current situation: {ship_call_sign} is performing a {nav_event.maneuver.value} maneuver "
+                f"Current situation: {ship_call_sign} is performing a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver "
                 f"from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}. "
                 f"Currently at {get_location_name(nav_event.current)}, next stop is {get_next_name(nav_event)}.\n\n"
                 f"<YOUR LINE> should be something like: '{line}'\n"
@@ -185,6 +230,19 @@ class ScriptService:
         if not dialogue.expect_reply:
             return None
 
+        # Check if we're using LLMJSONService
+        from mysite.universe.services.llm_service import LLMJSONService
+        is_json_service = isinstance(self.llm, LLMJSONService)
+
+        # Convert dialogue.text to DialogueMessage if it's JSON
+        previous_message = None
+        if is_json_service and dialogue.text.strip().startswith('{'):
+            try:
+                previous_message = DialogueMessage(**json.loads(dialogue.text))
+            except (json.JSONDecodeError, ValueError):
+                # If parsing fails, treat as plain text
+                pass
+
         if getattr(dialogue.actor, 'role', None) == Actor.Role.PILOT:
             # Pilot -> Controller: Controller should reply, expecting acknowledgment
             control_name = dialogue.metadata.get("control_name", "CONTROL").upper()
@@ -198,11 +256,26 @@ class ScriptService:
 
             reply_text = f"{ship_name}, this is {control_name}."
 
-            llm_text = self.llm.get_actor_text(
+            # Build context - use DialogueMessage if available, otherwise use string
+            context = [previous_message] if previous_message else [dialogue.text]
+            
+            # Build navigation context for LLM
+            nav_context = {
+                "maneuver_type": dialogue.metadata.get("maneuver", "UNKNOWN"),
+                "current_location": dialogue.metadata.get("context", {}).get("current_situation", {}).get("location", "UNKNOWN"),
+                "destination": dialogue.metadata.get("context", {}).get("mission", {}).get("destination", "UNKNOWN"),
+                "recipient": ship_name  # Controller is responding to the pilot
+            }
+
+            llm_response = self.llm.get_actor_text(
                 line=reply_text,
                 actor=control_actor,
-                context=[dialogue.text]
+                context=context,
+                navigation_context=nav_context
             )
+            
+            # Extract message text from response (handles both JSON and plain text)
+            llm_text, dialogue_msg = self._extract_message_from_response(llm_response)
 
             metadata = dialogue.metadata.copy() if dialogue.metadata else {}
             metadata.update({
@@ -222,6 +295,14 @@ class ScriptService:
                 'maneuver': metadata.get('maneuver'),
                 'pilot_name': metadata.get('pilot_name')
             })
+            
+            # Store structured dialogue message in metadata if available
+            if dialogue_msg:
+                metadata['dialogue_message'] = dialogue_msg.model_dump()
+                # Handle both enum and string formats
+                format_value = dialogue_msg.format.value if hasattr(dialogue_msg.format, 'value') else str(dialogue_msg.format)
+                metadata['dialogue_format'] = format_value
+                metadata['requires_readback'] = dialogue_msg.requires_readback
 
             return DialogueEvent(
                 timestamp=dialogue.timestamp + 3.0,
@@ -246,17 +327,40 @@ class ScriptService:
 
             reply_text = f"{dialogue.actor.name}, this is {ship_name}."
 
-            llm_text = self.llm.get_actor_text(
+            # Build context - use DialogueMessage if available, otherwise use string
+            context = [previous_message] if previous_message else [dialogue.text]
+            
+            # Build navigation context for LLM
+            nav_context = {
+                "maneuver_type": dialogue.metadata.get("maneuver", "UNKNOWN"),
+                "current_location": dialogue.metadata.get("context", {}).get("current_situation", {}).get("location", "UNKNOWN"),
+                "destination": dialogue.metadata.get("context", {}).get("mission", {}).get("destination", "UNKNOWN"),
+                "recipient": dialogue.actor.name  # Pilot is responding to the controller
+            }
+
+            llm_response = self.llm.get_actor_text(
                 line=reply_text,
                 actor=pilot_actor,
-                context=[dialogue.text]
+                context=context,
+                navigation_context=nav_context
             )
+            
+            # Extract message text from response (handles both JSON and plain text)
+            llm_text, dialogue_msg = self._extract_message_from_response(llm_response)
 
             metadata = dialogue.metadata.copy() if dialogue.metadata else {}
             metadata.update({
                 'llm_system_prompt': f"{pilot_actor.get_identity_prompt()} {pilot_actor.get_instruction_prompt()}",
                 'llm_user_prompt': f"Last message: {dialogue.text}\n<YOUR LINE> should be something like: '{reply_text}'\nGiven the situation, say <YOUR LINE> in character."
             })
+            
+            # Store structured dialogue message in metadata if available
+            if dialogue_msg:
+                metadata['dialogue_message'] = dialogue_msg.model_dump()
+                # Handle both enum and string formats
+                format_value = dialogue_msg.format.value if hasattr(dialogue_msg.format, 'value') else str(dialogue_msg.format)
+                metadata['dialogue_format'] = format_value
+                metadata['requires_readback'] = dialogue_msg.requires_readback
 
             return DialogueEvent(
                 timestamp=dialogue.timestamp + 3.0,
@@ -300,7 +404,7 @@ class ScriptService:
         return f"""Current Situation:
 - Ship {ship.name.upper()} is on a journey from {nav_event.origin} to {nav_event.destination}
 - Currently at {nav_event.current}, next stop is {nav_event.next}
-- Performing a {nav_event.maneuver.value} maneuver
+- Performing a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver
 - Under the direction of {nav_event.controller} 
 """
 
