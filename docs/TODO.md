@@ -219,11 +219,15 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 **Key Design Decisions Needed:**
 
 1. **Global Simulation Queue Architecture:**
-   - Create a singleton `SimulationQueue` class that persists across requests
-   - Use thread-safe operations (threading.Lock) for concurrent API access
-   - Store queue state in Django cache or in-memory singleton (evaluate persistence needs)
+   - **NOTE:** There are TWO existing `SimulationQueue` classes:
+     - `mysite/universe/simulation_queue.py`: Handles `SimulationQueueItem` (NavigationEvent + Ship), used by `comms_check.py`
+     - `mysite/universe/management/commands/start_simulation_loop.py`: Handles DialogueEvents/NavigationEvents directly with heapq, used by `character_dialogue_demo.py`
+   - **Action:** Extract the `SimulationQueue` from `start_simulation_loop.py` (the one that processes events) and make it a singleton
+   - Convert to singleton pattern with thread-safe operations (threading.Lock) for concurrent API access
+   - Store queue state in-memory singleton (evaluate persistence needs later)
    - Single simulation loop running in background thread/process
    - Queue should handle both DialogueEvents and NavigationEvents
+   - **Future:** Consider consolidating or clarifying the two SimulationQueue classes
 
 2. **Simulation Time Management:**
    - **Simulation Time vs Real Time:** Events use simulation timestamps (float seconds from sim start)
@@ -257,11 +261,13 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 **Path Forward:**
 
-1. **Create Global Simulation Infrastructure:**
-   - Create `mysite/universe/simulation/global_queue.py` with singleton `SimulationQueue`
-   - Implement thread-safe `add_event()`, `process_due_events()`, `get_status()` methods
-   - Create `mysite/universe/simulation/loop.py` for background simulation loop
-   - Use Django management command or background thread to run loop continuously
+1. **Refactor Existing SimulationQueue to be Global:**
+   - Extract `SimulationQueue` class from `start_simulation_loop.py` to `mysite/universe/simulation/queue.py`
+   - Convert to singleton pattern (module-level instance with `get_instance()` method)
+   - Add thread-safe operations (threading.Lock) for `add_event()`, `process_due_events()`, `get_status()`
+   - Extract simulation loop logic from `Command.start_simulation_loop()` to standalone function/class
+   - Update all imports: `character_dialogue_demo.py`, tests that import from `start_simulation_loop`
+   - **Note:** `comms_check.py` uses a different `SimulationQueue` from `simulation_queue.py` - leave that for now, clarify later
 
 2. **Unify Time System:**
    - Define clear simulation time semantics (simulation seconds, not real seconds)

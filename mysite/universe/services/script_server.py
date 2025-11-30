@@ -36,14 +36,9 @@ class ScriptService:
         """Get or create the ScriptService instance with optional LLM configuration."""
         if cls._instance is None:
             if llm is None:
-                # Default to LLMJSONService for structured JSON dialogue generation
-                from mysite.universe.services.llm_service import LLMJSONService
-                try:
-                    llm = LLMJSONService(quiet_mode=True)
-                except Exception:
-                    # Fallback to LLMService if LLMJSONService fails to initialize
-                    from mysite.universe.services.llm_service import LLMService
-                    llm = LLMService(quiet_mode=True)
+                # Use unified LLMService for structured JSON dialogue generation
+                from mysite.universe.services.llm_service import LLMService
+                llm = LLMService(quiet_mode=True)
             cls._instance = cls(llm)
         return cls._instance
 
@@ -341,7 +336,7 @@ class ScriptService:
                 f"Current situation: {ship_call_sign} is performing a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver "
                 f"from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}. "
                 f"Currently at {get_location_name(nav_event.current)}, next stop is {get_next_name(nav_event)}.\n\n"
-                f"<YOUR LINE> should be something like: '{line}'\n"
+                f"<YOUR LINE> should be something similar to: '{line}'\n"
                 "Given the situation, say <YOUR LINE> in character, incorporating specific details about your location and maneuver."
             ),
             # Add new context without breaking existing functionality
@@ -376,13 +371,10 @@ class ScriptService:
         if not dialogue.expect_reply:
             return None
 
-        # Check if we're using LLMJSONService
-        from mysite.universe.services.llm_service import LLMJSONService
-        is_json_service = isinstance(self.llm, LLMJSONService)
-
+        # Check if dialogue.text is JSON (LLMService now always returns JSON for get_actor_json_response)
         # Convert dialogue.text to DialogueMessage if it's JSON
         previous_message = None
-        if is_json_service and dialogue.text.strip().startswith('{'):
+        if dialogue.text.strip().startswith('{'):
             try:
                 previous_message = DialogueMessage(**json.loads(dialogue.text))
             except (json.JSONDecodeError, ValueError):

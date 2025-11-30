@@ -131,7 +131,9 @@ def pytest_configure(config):
 # Keep the main function for manual testing outside of pytest
 def main():
     """Run the tests manually outside of pytest."""
-    llm_instance = LLMService(model_name="qwen2.5:0.5b", quiet_mode=True)
+    # Note: LLMService.__init__ takes config_path, not model_name directly
+    # For now, using default config_path - this may need adjustment after refactoring
+    llm_instance = LLMService(quiet_mode=True)
     prompt = """
     You are an AI assistant that has been incorporated into a simple
     software program. You are undergoing functional testing.
@@ -162,7 +164,6 @@ if __name__ == "__main__":
 @pytest.mark.django_db
 def test_json_dialogue_generation():
     """Test that the JSON dialogue path works correctly."""
-    from mysite.universe.services.llm_service import LLMJSONService
     from mysite.universe.models.actor import Pilot, Controller
     from mysite.universe.schemas.dialogue_schema import DialogueMessage, DialogueFormat, Role
 
@@ -170,8 +171,8 @@ def test_json_dialogue_generation():
     pilot = Pilot.create(name="TEST PILOT")
     controller = Controller.create(name="TEST CONTROL")
 
-    # Initialize service with absolute path to config
-    service = LLMJSONService(config_path="c:/Users/Jurph/Documents/Python Scripts/solar/llm.config", quiet_mode=True)
+    # Initialize unified LLMService (replaces LLMJSONService)
+    service = LLMService(config_path="c:/Users/Jurph/Documents/Python Scripts/solar/llm.config", quiet_mode=True)
 
     # Create a proper DialogueMessage for the context
     initial_message = DialogueMessage(

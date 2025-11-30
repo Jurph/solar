@@ -20,7 +20,7 @@ def simulation_queue(db):
 @pytest.fixture
 def script_service():
     """Fixture to provide a configured ScriptService with quiet LLM."""
-    # Create a ScriptService with a quiet LLM
+    # Create a ScriptService with a quiet LLM using unified LLMService
     from mysite.universe.services.llm_service import LLMService
     quiet_llm = LLMService(quiet_mode=True)
     return ScriptService(llm=quiet_llm)
