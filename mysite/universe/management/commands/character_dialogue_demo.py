@@ -26,7 +26,7 @@ from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.navigation import NavigationEvent, UniverseGraph
 from mysite.universe.services.route_server import RouteService
 from mysite.universe.services.script_server import ScriptService
-from mysite.universe.services.llm_service import LLMService, LLMJSONService
+from mysite.universe.services.llm_service import LLMService
 from mysite.universe.import_xml import UniverseImporter
 from mysite.universe.management.commands.start_simulation_loop import (
     SimulationQueue,
@@ -93,15 +93,12 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Universe initialized successfully"))
 
         # Create LLM service with debug mode
+        # Note: LLMService now handles JSON mode automatically based on prompts
         try:
-            if use_json:
-                llm = LLMJSONService(quiet_mode=not debug_mode)
-            else:
-                llm = LLMService(quiet_mode=not debug_mode)
+            llm = LLMService(quiet_mode=not debug_mode)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Failed to initialize LLM service: {e}"))
-            self.stdout.write(self.style.WARNING("Falling back to text mode"))
-            llm = LLMService(quiet_mode=not debug_mode)
+            raise
             use_json = False
 
         llm.temperature = temperature
