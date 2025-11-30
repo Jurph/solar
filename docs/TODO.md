@@ -210,3 +210,102 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - Explain test fixtures and setup requirements
    - Note any tests that require LLM API access (mark as slow tests)
 
+#### Problem 3: Unified Simulation Time System and Commands API
+
+**Big Picture:** The simulation currently has multiple time systems and queue implementations scattered across different commands. The web interface needs to be driven by a real, unified simulation loop rather than artificial backdrops. We need a global simulation queue, consistent timestamp management, and a Commands API to control journey generation and scheduling from the web interface.
+
+**Overall Intent:** Create a single source of truth for simulation time and event processing, with a REST API that allows the web interface to generate journeys, schedule them, and control the simulation loop. The View should reflect the actual simulation state, not a separate artificial system.
+
+**Key Design Decisions Needed:**
+
+1. **Global Simulation Queue Architecture:**
+   - Create a singleton `SimulationQueue` class that persists across requests
+   - Use thread-safe operations (threading.Lock) for concurrent API access
+   - Store queue state in Django cache or in-memory singleton (evaluate persistence needs)
+   - Single simulation loop running in background thread/process
+   - Queue should handle both DialogueEvents and NavigationEvents
+
+2. **Simulation Time Management:**
+   - **Simulation Time vs Real Time:** Events use simulation timestamps (float seconds from sim start)
+   - **Time Reference:** `start_time` = real time when simulation started, `current_time` = real time elapsed
+   - **Event Scheduling:** 
+     - `start_time`: Absolute simulation time (e.g., 100.0 = 100 seconds into simulation)
+     - `time_offset`: Relative to current simulation time (e.g., +10.0 = 10 seconds from now)
+     - `"now"`: Current simulation time (0.0 if just starting, or current elapsed time)
+   - **Time Continuity:** Simulation time should be continuous and monotonic, even across restarts
+
+3. **Commands API Structure:**
+   - **Endpoint:** `POST /api/commands/` with JSON body: `{"command": "command_name", "parameters": {...}}`
+   - **Core Commands:**
+     - `generate_journey`: Create ship, pilot, route, dialogue events (doesn't schedule)
+     - `schedule_journey`: Add journey events to global queue with timestamp
+     - `generate_and_schedule`: Combined operation (most common use case)
+     - `list_locations`: Get available origins/destinations for UI dropdowns
+     - `get_simulation_status`: Check if sim running, queue size, current time
+     - `start_simulation`: Start the global simulation loop
+     - `stop_simulation`: Stop the simulation loop
+   - **Journey Storage:** Option A (store temporarily with journey_id) vs Option B (regenerate on schedule - stateless)
+
+4. **LLM Service Consolidation:**
+   - **Current State:** Both `LLMService` and `LLMJSONService` exist with overlapping functionality
+   - **Proposed:** Make `LLMJSONService` the default, remove `LLMService` or make it a thin wrapper
+   - **Migration Path:**
+     - Update all call sites to use `LLMJSONService`
+     - Remove acknowledgment logic duplication between services
+     - Consolidate prompt building and response parsing
+     - Keep backward compatibility during transition if needed
+
+**Path Forward:**
+
+1. **Create Global Simulation Infrastructure:**
+   - Create `mysite/universe/simulation/global_queue.py` with singleton `SimulationQueue`
+   - Implement thread-safe `add_event()`, `process_due_events()`, `get_status()` methods
+   - Create `mysite/universe/simulation/loop.py` for background simulation loop
+   - Use Django management command or background thread to run loop continuously
+
+2. **Unify Time System:**
+   - Define clear simulation time semantics (simulation seconds, not real seconds)
+   - Track simulation start time and current elapsed time
+   - Ensure all events use consistent timestamp format
+   - Document time conversion utilities if needed
+
+3. **Implement Commands API:**
+   - Create `mysite/universe/views/commands.py` with command router
+   - Implement each command as a function
+   - Add URL route `/api/commands/`
+   - Return consistent JSON responses with status/error handling
+
+4. **Journey Generation Service:**
+   - Extract journey generation logic from `character_dialogue_demo.py` into reusable service
+   - Create `mysite/universe/services/journey_service.py`
+   - Support procedural generation (random ship/pilot names, random routes)
+   - Support explicit parameters (custom ship/pilot names, specific routes)
+
+5. **Web Interface Integration:**
+   - Update "Run Demo" button to use `generate_and_schedule` command
+   - Add "Generate Journey" form with origin/destination dropdowns
+   - Add simulation status display (running/stopped, queue size, current time)
+   - Ensure scroller reflects real simulation events (already working via DialogueEventLog)
+
+6. **LLM Service Consolidation:**
+   - Audit all `LLMService` usages
+   - Migrate to `LLMJSONService` with proper error handling
+   - Remove duplicate acknowledgment logic
+   - Update tests to use consolidated service
+   - Consider renaming `LLMJSONService` to just `LLMService` after migration
+
+7. **Testing Strategy:**
+   - Test global queue thread safety
+   - Test time management and event ordering
+   - Test commands API endpoints
+   - Test journey generation with various parameters
+   - Integration test: generate journey → schedule → verify events appear in scroller
+
+**Success Criteria:**
+- Single simulation loop drives all event processing
+- Web interface can generate and schedule journeys via API
+- View displays events from real simulation, not artificial backdrop
+- Time system is consistent and well-documented
+- LLM service redundancy eliminated
+- All existing functionality preserved
+
