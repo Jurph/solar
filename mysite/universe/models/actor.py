@@ -5,12 +5,15 @@ This module defines the base Actor class and its subclasses for specific roles
 such as Pilots and Controllers. Each Actor has a name and role that define
 their behavior in the simulation.
 """
+from __future__ import annotations
+
 from django.db import models
-from typing import List, Optional, Dict
+from typing import TYPE_CHECKING
 from enum import Enum
-from dataclasses import dataclass
-import json
 from mysite.universe.services.dictionary import DictionaryService
+
+if TYPE_CHECKING:
+    from mysite.universe.models.base import Location
 
 dictionary = DictionaryService()
 
@@ -84,20 +87,29 @@ class Pilot(Actor):
 
     def get_identity_prompt(self) -> str:
         """Return a pilot-specific identity prompt."""
-        return f"""You are a pilot named {self.name}.
+        ship_name = self.ship.name.upper() if self.ship else "YOUR SHIP"
+        return f"""You are a pilot named {self.name}. You operate the ship {ship_name}.
 
 CRITICAL SAFETY RULES:
-1. Always identify yourself and your ship when speaking
-2. Always acknowledge receipt of instructions
-3. Request clarification if instructions are unclear
-4. Report any issues or anomalies immediately"""
+1. When speaking, you identify yourself as {self.name} (the pilot), not as {ship_name} (the ship)
+2. In your message text, you say "{ship_name}" as your callsign, but YOU are the one speaking
+3. Always acknowledge receipt of instructions
+4. Request clarification if instructions are unclear
+5. Report any issues or anomalies immediately
+
+Remember: Ships are metal - they don't speak. You, {self.name}, are the one speaking on behalf of {ship_name}."""
 
     @classmethod
-    def create(cls, name: str = None, ship: Optional['Ship'] = None) -> 'Pilot':
+    def create(cls, name: str = None, ship=None) -> 'Pilot':
         """
         Create a new pilot with sensible defaults.
-        
+
         Args:
+            name: Pilot's name (generated if not provided)
+            ship: Associated ship
+
+        Returns:
+            A new Pilot instance
             name: Pilot's name (generated if not provided)
             ship: Associated ship
             
@@ -149,14 +161,17 @@ class Controller(Actor):
     
     def get_identity_prompt(self) -> str:
         """Return a controller-specific identity prompt."""
-        return f"""You are a space traffic controller at {self.name}.
+        return f"""You are an anonymous space traffic controller operating at {self.name}.
+You do not have a personal name - you speak as the station itself.
 
 CRITICAL SAFETY RULES:
-1. Always identify yourself and your station when speaking
+1. Always identify yourself as {self.name} when speaking (not a personal name)
 2. Give clear, unambiguous instructions
 3. Maintain awareness of all traffic in your sector
 4. Prioritize safety over efficiency
-5. Verify readback of critical instructions"""
+5. Verify readback of critical instructions
+6. You APPROVE, AUTHORIZE, CONFIRM, and CLEAR - you rarely REQUEST anything
+7. You are in a position of authority - pilots request, you approve"""
 
     def get_concrete_instance(self):
         """
@@ -169,7 +184,7 @@ CRITICAL SAFETY RULES:
         return self
 
     @classmethod
-    def create(cls, name: str = None, location: 'Location' = None) -> 'Controller':
+    def create(cls, name: str = None, location: Location = None) -> 'Controller':
         """
         Create a new controller with sensible defaults.
         
@@ -193,7 +208,7 @@ CRITICAL SAFETY RULES:
         return controller
 
     @classmethod
-    def generate_name(cls, location: 'Location') -> str:
+    def generate_name(cls, location: Location) -> str:
         """
         Generate an appropriate controller name based on the location.
         

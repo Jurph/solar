@@ -193,7 +193,7 @@ def test_json_dialogue_generation():
     }
 
     # Generate response
-    response = service.get_actor_text(
+    response = service.get_actor_json_response(
         line="",
         actor=controller,
         context=context,

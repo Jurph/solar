@@ -25,7 +25,7 @@ class ActorModelTests(TestCase):
         )
         controller = Controller.create(location=station)
         self.assertIn(station.name, controller.name)
-        self.assertIn("You are a space traffic controller", controller.get_identity_prompt())
+        self.assertIn("You are an anonymous space traffic controller", controller.get_identity_prompt())
         station.delete()
 
         # Test with no location - should use default name

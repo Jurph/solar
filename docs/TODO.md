@@ -100,19 +100,19 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Randomly generate a solar system other than earth's ✓
 - Visualize a simple universe ✓
 
-### Two - First Flight 
+### Two - First Flight ✓
 - Procedurally generate ship names for scripted events ✓
 - Move a ship from one planet to another with a random cargo ✓
 - Script the "arrival" and "departure" event categories ✓
 - Create Actor model for Pilots and Controllers ✓
 - Develop time-based simulation loop (~0.1 second increments) ✓
 - Build Scheduler for time-stamped dialogue events ✓
-- Create scrolling terminal-like display for dialogue events
+- Create scrolling terminal-like display for dialogue events ✓
 
 ### Three - Time and Narrative
 - Implement dialogue event generation from navigation events ✓
-- Add timestamps to dialogue events based on maneuver durations
-- Create view layer for displaying dialogue events as they unfold
+- Add timestamps to dialogue events based on maneuver durations ✓
+- Create view layer for displaying dialogue events as they unfold ✓
 - Develop admin controls for spawning missions and anomalies
 - Script a small number of "anomalies" with simple resolutions
 
@@ -142,33 +142,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ### Current Backlog 
 
-#### Problem 1: Complete Pydantic v1 to v2 Migration
-
-**Big Picture:** The dialogue schema system was partially migrated from Pydantic v1 to v2, but some syntax and validation patterns may still be using deprecated v1 patterns. This needs to be fully completed to ensure compatibility with current Pydantic versions and avoid future breaking changes.
-
-**Overall Intent:** Ensure all Pydantic models use v2 syntax consistently throughout the codebase, with proper validation context handling and model configuration.
-
-**Path Forward:**
-1. Audit all Pydantic models in `mysite/universe/schemas/dialogue_schema.py` for v1 syntax
-   - Verify `ConfigDict` is used instead of nested `Config` class
-   - Check that `field_validator` uses `ValidationInfo` correctly
-   - Ensure `model_json_schema()` is used instead of `Config.schema_extra`
-2. Update `DialogueMessage.validate_message_format()` to handle Pydantic v2 validation context properly
-   - Test that both dict and `ValidationInfo` contexts work correctly
-   - Verify validation errors are raised with clear messages
-3. Update `DialoguePrompt` model configuration
-   - Convert `Config.schema_extra` to `model_config` with `json_schema_extra`
-   - Update example structure to use "examples" instead of "example" if needed
-4. Search codebase for any remaining Pydantic v1 patterns
-   - Look for `.dict()` calls (should be `.model_dump()`)
-   - Look for `Config` classes (should be `ConfigDict`)
-   - Look for `@validator` decorators (should be `@field_validator`)
-5. Run all dialogue schema tests to verify migration success
-   - Ensure `test_dialogue_schema.py` passes completely
-   - Verify validation still works as expected
-6. Update any documentation that references Pydantic v1 patterns
-
-#### Problem 2: Integrate LLMJSONService into ScriptService Workflow
+#### Problem 1: Integrate LLMJSONService into ScriptService Workflow
 
 **Big Picture:** A new `LLMJSONService` class was created for structured JSON dialogue generation, but `ScriptService` still primarily uses the older `LLMService`. The JSON service provides better structure and validation, but needs to be properly integrated into the dialogue generation pipeline.
 
@@ -201,39 +175,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - Check `character_dialogue_demo.py` and other commands
    - Ensure they work with the new JSON-based service
 
-#### Problem 3: Fix Dialogue Context Parsing and Recipient Identification
-
-**Big Picture:** The `get_actor_text()` method in `LLMJSONService` needs to correctly parse dialogue context (both string and `DialogueMessage` formats) and identify the correct recipient for responses. Currently, there are edge cases where recipient identification fails or is incorrect.
-
-**Overall Intent:** Ensure that when generating dialogue responses, the system correctly identifies who is speaking to whom, maintains conversation context, and properly alternates between pilot and controller in multi-turn exchanges.
-
-**Path Forward:**
-1. Audit current context parsing logic in `LLMJSONService.get_actor_text()`
-   - Review how string format messages are parsed ("Speaker: Message")
-   - Review how `DialogueMessage` objects are handled
-   - Identify edge cases where recipient identification fails
-2. Improve recipient identification from message content
-   - For string format: Extract recipient from message text more reliably
-   - For `DialogueMessage` format: Use the structured recipient_callsign directly
-   - Handle cases where recipient isn't explicitly mentioned in message text
-3. Fix recipient determination in system prompt generation
-   - When previous messages exist, use the last message's speaker as recipient
-   - When no previous messages, use navigation context recipient
-   - Ensure recipient is correctly passed to LLM in system prompt examples
-4. Add validation for dialogue flow consistency
-   - Verify speaker/recipient alternation in multi-turn exchanges
-   - Ensure controller responses address the pilot who made the request
-   - Ensure pilot readbacks address the controller who gave instructions
-5. Update test cases to cover edge cases
-   - Test with missing recipient information
-   - Test with malformed context messages
-   - Test with multiple message exchanges
-6. Add logging for recipient identification decisions
-   - Log when recipient is determined from context vs navigation context
-   - Log warnings when recipient identification is ambiguous
-   - Help debug dialogue flow issues
-
-#### Problem 4: Update and Verify Test Suite for Dialogue System
+#### Problem 2: Update and Verify Test Suite for Dialogue System
 
 **Big Picture:** The test suite needs to be updated to work with the new structured dialogue system (`LLMJSONService`, `DialogueMessage` objects, etc.) and verified to catch regressions. Some tests may be using outdated patterns or may not adequately test the new JSON-based flow.
 
