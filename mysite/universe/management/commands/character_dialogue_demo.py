@@ -37,6 +37,11 @@ from mysite.universe.management.commands.start_simulation_loop import (
 
 class Command(BaseCommand):
     help = 'Demonstrate emergent character dialogue between pilots, controllers, and satellites'
+    
+    # ANSI color codes for retro terminal aesthetic
+    AMBER = "\033[38;5;214m"  # IBM-era amber (Orange3)
+    MUTED_GREEN = "\033[38;5;70m"  # Muted green (DarkSeaGreen3)
+    RESET = "\033[0m"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -279,21 +284,30 @@ class Command(BaseCommand):
                     debug_text += f"User: {debug_info['user']}\n"
                 debug_text += "================\033[0m\n"  # Reset color
                 self.stdout.write(debug_text)
-                
-            # Regular message printing
-            formatted_message = f"\n{self.style.WARNING(speaker)}:\n{message}\n"
             
-            # Try to write character by character if possible
+            # Build formatted message with custom colors
+            # Speaker name in amber, message text in muted green for that retro terminal feel
+            formatted_message = f"\n{self.AMBER}{speaker}{self.RESET}:\n{self.MUTED_GREEN}{message}{self.RESET}\n"
+            
+            # Character-by-character scrolling effect (like a serial/modem feed)
             try:
                 for char in formatted_message:
                     self.stdout.write(char, ending='')
                     self.stdout.flush()
-                    time.sleep(0.005)  # Adjust for typing speed
+                    # Variable delay: faster for spaces, slower for punctuation, medium for letters
+                    if char == ' ':
+                        time.sleep(0.002)  # Quick for spaces
+                    elif char in '.,!?;:':
+                        time.sleep(0.015)  # Slight pause for punctuation
+                    elif char == '\n':
+                        time.sleep(0.01)  # Brief pause for newlines
+                    else:
+                        time.sleep(0.008)  # Medium speed for regular characters
             except (AttributeError, TypeError):
                 # If character-by-character fails, write the whole formatted message
                 self.stdout.write(formatted_message)
             
-            time.sleep(0.5)  # Pause between messages
+            time.sleep(0.3)  # Brief pause between messages
             
         except (AttributeError, TypeError):
             # If all formatting fails, fall back to simple print
@@ -305,4 +319,4 @@ class Command(BaseCommand):
                     print("User:", debug_info['user'])
                 print("================\n")
             print(f"\n{speaker}:\n{message}\n")
-            time.sleep(0.5)  # Still pause between messages
+            time.sleep(0.3)  # Still pause between messages

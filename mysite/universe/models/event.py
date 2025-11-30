@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Dict
 
+# Django imports for model
+from django.db import models
+
 # Import the Actor model to associate events with an actor.
 from mysite.universe.models.actor import Actor, Controller
 from mysite.universe.models.base import Location
@@ -109,6 +112,25 @@ class DialogueEvent(Event):
                         reply_actor = Controller.objects.filter(name=control_name).first()
                     else:
                         reply_actor = None
+                elif getattr(self.actor, 'role', None) == Actor.Role.CONTROLLER:
+                    # Get the ship name from metadata to find the pilot
+                    ship_name = self.metadata.get("ship_name") if self.metadata else None
+                    if ship_name:
+                        # Look up the ship and get its pilot
+                        from mysite.universe.models.ship import Ship
+                        from mysite.universe.models.actor import Pilot
+                        ship = Ship.objects.filter(name=ship_name).first()
+                        if ship and ship.pilot:
+                            reply_actor = ship.pilot
+                        else:
+                            # Try to find pilot by name from metadata
+                            pilot_name = self.metadata.get("pilot_name") if self.metadata else None
+                            if pilot_name:
+                                reply_actor = Pilot.objects.filter(name=pilot_name).first()
+                            else:
+                                reply_actor = None
+                    else:
+                        reply_actor = None
                 else:
                     reply_actor = None
 
@@ -121,7 +143,12 @@ class DialogueEvent(Event):
             reply_text = "BEEP BOOP"
             expect_reply = False
         elif getattr(reply_actor, 'role', None) == Actor.Role.CONTROLLER:
-            # Use the singleton ScriptService instance
+            # Pilot -> Controller: Use ScriptService to generate controller approval
+            from mysite.universe.services.script_server import ScriptService
+            reply_event = ScriptService.get_instance().parse_dialogue_event(self)
+            return reply_event
+        elif getattr(self.actor, 'role', None) == Actor.Role.CONTROLLER and getattr(reply_actor, 'role', None) == Actor.Role.PILOT:
+            # Controller -> Pilot: Use ScriptService to generate pilot acknowledgment
             from mysite.universe.services.script_server import ScriptService
             reply_event = ScriptService.get_instance().parse_dialogue_event(self)
             return reply_event
@@ -174,4 +201,31 @@ class NavigationEvent(Event):
         """Process the navigation event. Returns None as navigation events don't generate follow-ups."""
         # Navigation events don't generate follow-up events
         return None
+
+
+class DialogueEventLog(models.Model):
+    """
+    Django model for storing dialogue events in the database for real-time display.
+    
+    This is an ephemeral storage solution - events are temporary and don't need
+    long-term persistence. Used by the web interface to display scrolling dialogue.
+    
+    CRITICAL: The 'text' field MUST always contain natural language dialogue.
+    If JSON is needed, it can be stored in metadata, but 'text' is for display only.
+    """
+    timestamp = models.FloatField(help_text="Simulation time when event occurred")
+    actor_name = models.CharField(max_length=200, help_text="Name of the speaking actor")
+    text = models.TextField(help_text="The dialogue message (natural language only, never JSON)")
+    created_at = models.DateTimeField(auto_now_add=True, help_text="Database insertion time")
+    
+    class Meta:
+        ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=['timestamp']),
+        ]
+        verbose_name = "Dialogue Event Log"
+        verbose_name_plural = "Dialogue Event Logs"
+    
+    def __str__(self):
+        return f"[{self.timestamp:.2f}] {self.actor_name}: {self.text[:50]}"
 

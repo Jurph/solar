@@ -1,0 +1,237 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dialogue Event Scroller - Control Panel</title>
+    <link rel="stylesheet" type="text/css" href="{% static 'universe/css/event_scroller_wrapper.css' %}">
+    <link rel="stylesheet" type="text/css" href="{% static 'universe/css/event_scroller.css' %}">
+</head>
+<body>
+    <div class="control-panel">
+        <div class="controls">
+            <button id="runDemoButton" class="control-button">Run Demo</button>
+            <button id="clearButton" class="control-button">Clear Terminal</button>
+            <!-- Placeholder for future control buttons -->
+        </div>
+    </div>
+    
+    <div class="event-scroller-container" id="eventContainer">
+        <div class="event-log" id="eventLog">
+            <!-- Events will be appended here -->
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const POLL_INTERVAL = 2000; // Poll every 2 seconds
+        const API_ENDPOINT = '{% url "event_feed" %}';
+        
+        // State
+        let lastEventId = null;
+        let isPolling = true;
+        let eventQueue = []; // Queue for events to type out sequentially
+        let isTyping = false; // Track if we're currently typing an event
+        
+        // DOM elements
+        const eventLog = document.getElementById('eventLog');
+        const eventContainer = document.getElementById('eventContainer');
+        const clearButton = document.getElementById('clearButton');
+        const runDemoButton = document.getElementById('runDemoButton');
+        
+        /**
+         * Format timestamp as HH:MM:SS
+         */
+        function formatTimestamp(timestamp) {
+            const hours = Math.floor(timestamp / 3600);
+            const minutes = Math.floor((timestamp % 3600) / 60);
+            const seconds = Math.floor(timestamp % 60);
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+        
+        /**
+         * Type out text character by character (like a serial/modem feed)
+         */
+        function typeText(element, text, callback) {
+            let index = 0;
+            
+            function typeChar() {
+                if (index < text.length) {
+                    const char = text[index];
+                    element.textContent += char;
+                    
+                    // Variable delay: faster for spaces, slower for punctuation
+                    // Slightly slower for a more relaxed teletype effect
+                    let delay = 12; // Default 12ms for regular characters (was 8ms)
+                    if (char === ' ') {
+                        delay = 3; // Quick for spaces (was 2ms)
+                    } else if (char.match(/[.,!?;:]/)) {
+                        delay = 20; // Slight pause for punctuation (was 15ms)
+                    } else if (char === '\n') {
+                        delay = 15; // Brief pause for newlines (was 10ms)
+                    }
+                    
+                    index++;
+                    setTimeout(typeChar, delay);
+                } else {
+                    if (callback) callback();
+                }
+            }
+            
+            typeChar();
+        }
+        
+        /**
+         * Create and type out an event line element
+         */
+        function typeEventLine(event, callback) {
+            const line = document.createElement('div');
+            line.className = 'event-line';
+            
+            // Timestamp (appears immediately)
+            const timestamp = document.createElement('span');
+            timestamp.className = 'event-timestamp';
+            timestamp.textContent = `[${formatTimestamp(event.timestamp)}] `;
+            line.appendChild(timestamp);
+            
+            // Add line to DOM immediately (so it appears, even if empty)
+            eventLog.appendChild(line);
+            
+            // Speaker name (types out)
+            const speakerContainer = document.createElement('span');
+            speakerContainer.className = 'event-speaker';
+            line.appendChild(speakerContainer);
+            
+            // Type speaker name, then the message text
+            typeText(speakerContainer, `${event.actor_name}: `, () => {
+                // After speaker name is typed, type the message text
+                const textContainer = document.createElement('span');
+                textContainer.className = 'event-text';
+                line.appendChild(textContainer);
+                typeText(textContainer, event.text, () => {
+                    // Auto-scroll to bottom after message completes
+                    eventContainer.scrollTop = eventContainer.scrollHeight;
+                    // Call callback when this event is completely done
+                    if (callback) callback();
+                });
+            });
+        }
+        
+        /**
+         * Process the next event in the queue
+         */
+        function processNextEvent() {
+            if (isTyping || eventQueue.length === 0) {
+                return; // Already typing or queue is empty
+            }
+            
+            isTyping = true;
+            const event = eventQueue.shift();
+            
+            typeEventLine(event, () => {
+                // This event is done, process the next one
+                isTyping = false;
+                processNextEvent();
+            });
+        }
+        
+        /**
+         * Append events to the log with trickle effect (queued sequentially)
+         */
+        function appendEvents(events) {
+            // Add all events to the queue
+            eventQueue.push(...events);
+            // Start processing if not already typing
+            processNextEvent();
+        }
+        
+        /**
+         * Fetch new events from the API
+         */
+        async function fetchEvents() {
+            if (!isPolling) return;
+            
+            try {
+                const url = lastEventId 
+                    ? `${API_ENDPOINT}?after_id=${lastEventId}&limit=100`
+                    : `${API_ENDPOINT}?limit=100`;
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.events && data.events.length > 0) {
+                    appendEvents(data.events);
+                    // Update to the latest ID from the response
+                    lastEventId = data.latest_id;
+                }
+            } catch (error) {
+                console.error('Error fetching events:', error);
+            }
+        }
+        
+        /**
+         * Start polling for events
+         */
+        function startPolling() {
+            // Initial fetch
+            fetchEvents();
+            
+            // Set up interval
+            setInterval(fetchEvents, POLL_INTERVAL);
+        }
+        
+        /**
+         * Run the dialogue demo
+         */
+        runDemoButton.addEventListener('click', async () => {
+            // Disable button while running
+            runDemoButton.disabled = true;
+            runDemoButton.textContent = 'Running...';
+            
+            try {
+                const response = await fetch('{% url "run_demo" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Demo started:', data.message);
+                    // Re-enable button after a moment
+                    setTimeout(() => {
+                        runDemoButton.disabled = false;
+                        runDemoButton.textContent = 'Run Demo';
+                    }, 2000);
+                } else {
+                    throw new Error('Failed to start demo');
+                }
+            } catch (error) {
+                console.error('Error starting demo:', error);
+                runDemoButton.disabled = false;
+                runDemoButton.textContent = 'Run Demo';
+                alert('Failed to start demo. Check console for details.');
+            }
+        });
+        
+        /**
+         * Clear the terminal
+         */
+        clearButton.addEventListener('click', () => {
+            // Clear all events from the display (like a terminal clear command)
+            // Keep lastEventId so we don't re-fetch old events
+            eventLog.innerHTML = '';
+            // Reset scroll position
+            eventContainer.scrollTop = 0;
+        });
+        
+        // Start polling when page loads
+        document.addEventListener('DOMContentLoaded', startPolling);
+    </script>
+</body>
+</html>
+
