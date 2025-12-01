@@ -1,0 +1,72 @@
+SCORING THE CONTROLLER 
+
+0 - Every line that is garbled or contains metadata or JSON scores 0 points 
+1 - Every line that includes an obvious non sequitur fallback like "Error in communications" scores 1 point 
+2 - Every line with an obvious error, e.g. speaker/listener reversal, or talking about going "to Mars" when the flight is to Earth, or calls launch or landing a "maneuver", scores 2 points 
+3 - A boring but correct line that doesn't use any of the context from its cue scores 3.  
+5 - A maximum-scoring line takes the request context into account and answers by echoing back some context  
+
+SCORING THE PILOT 
+
+0 - Every line that is garbled or contains metadata or JSON scores 0 points 
+1 - Every line that includes an obvious non sequitur fallback like "Error in communications" scores 1 point 
+2 - Every line with an obvious error, e.g. speaker/listener reversal, talking about going "to Mars" when the flight is to Earth, or calls launch or landing a "maneuver", scores 2 points 
+3 - A boring but fundamentally correct line can score 3 points. Clunky prose that's technically correct fits here. 
+4/5 - A pilot can score 4 or 5 points for a well-phrased request depending on its subjective novelty. The scripted line to the satellite only ever scores 4. 
+
+SCORING COMMSATS 
+
+0 - A satellite that does not say "BEEP BOOP" scores no points. 
+3 - A satellite that says "BEEP BOOP" scores the maximum point value of 3. 
+
+SOME SPACE GRAMMAR TO NITPICK WITH: 
+- We circularize an orbit, this is "circularization".
+- Insertion burn is for achieving orbit around a specific body.
+- Sublight burns are interplanetary but can also be moon-to-moon. 
+- A launch and a landing aren't really maneuvers, although a direct-ascent launch sort of is a maneuver.
+
+-=-=-=-=- 
+
+WORKED EXAMPLE:  
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON, requesting clearance to maneuver for launch from Mars.
+# 3 points - boring but valid 
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver.
+# 3 points - does not use prior context. Since pilot requested "maneuver for launch", this is not a 2. 
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+# 3 points - "beginning launch" is clunky but valid. 
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We are ready for our insertion burn. Can you provide a vector to Mars?
+# 3 points - "a vector to Mars orbit" would have scored 4. Any other destination would be an error and score 2. 
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+# 3 points - boring 
+[Event 6] Captain Rodriguez: Acknowledged, beginning insertion.
+# 4 points - boring but uses context and flows well. 
+[Event 7] Captain Rodriguez: Mars Control, Captain Rodriguez here. Error in communications.
+# 1 point - something glitched here. 
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Clearing to circularize maneuver.
+# 3 points - clearly "read the script" and ignored the dialogue. Good but clunky recovery.  
+[Event 9] Captain Rodriguez: STELLAR HORIZON, MARS CONTROL. Acknowledged, beginning circularize.
+# 2 points - "beginning circularize" is poor grammar. 
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Request clearance to proceed with sublight maneuver towards Mars.
+# 2 points - STELLAR HORIZON is going to Earth, not Mars! 
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for sublight maneuver.
+# 5 points - textbook perfect answer. 
+[Event 12] Captain Rodriguez: Acknowledged, beginning sublight.
+# 2 points - "beginning sublight" is wrong - say "beginning sublight burn" or "Executing sublight now" to score higher. 
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+# 4 points - a scripted "gimme" 
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+# 3 points - BEEP BOOP 
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. I am maneuvering to deorbit and will be entering Earth's atmosphere soon. Can you confirm the vector for entry?
+# 5 points - imaginative prose, realistic, friendly 
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+# 3 points - boring and anodyne 
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning deorbit.
+# 4 points - textbook if boring 
+[Event 18] Captain Rodriguez: This is STELLAR HORIZON, Earth Orbital Control. Request clearance to land.
+# 4 points - despite protocol inversion this is good prose, and "This is" makes it unambiguous. 
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+# 3 points - still boring 
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+# 4 points - good clean answer 
+
+This script scores 59 points. 

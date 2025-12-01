@@ -2,14 +2,9 @@
 A procedural space system builder 
 
 ## Vision
-Create a realistic-feeling space traffic control simulation with procedurally generated ships, dialogue, and events. See /docs/TODO.md for full project vision and roadmap.
+Create a realistic-feeling space traffic control simulation with procedurally generated ships, procedural dialogue, and emergent events. Generate staticky radio voices and comms beeps that evoke the Apollo mission tapes for ambient background fun. 
 
-## New Feature: LLM-Enhanced Dialogue
-Solar now includes integration with local LLMs through Ollama to generate more realistic and varied dialogue for space traffic communications. The system supports:
-
-- Character-based dialogue for pilots and controllers
-- Contextual responses based on flight parameters
-- Fallback to template-based dialogue when LLM is unavailable
+See /docs/TODO.md for full project vision and roadmap.
 
 ## Installing Prerequisites 
 
@@ -66,15 +61,21 @@ Note: The launch scripts (`launch-django.bat` for Windows or `launch-django.sh` 
 **You don't need to run Ollama!** This is compatible with any OpenAI-compatible endpoint. I find Ollama is an easy way to run lightweight LLMs locally (i.e. without paying per-token!), and so I include it here. You can edit `/services/llm_service.py` to configure the URL and API key for any LLM you like. If you are going to configure your own LLM service you're on you're own; but here are the instructions if you want to run Ollama locally: 
 
 1. Install Ollama from [ollama.com](https://ollama.com/)
-2. Pull your favorite Qwen2.5 model:
+2. Pull your favorite Qwen2.5 or Llama3 model:
 
 ```bash
 ollama pull qwen2.5:0.5b
 
 ```
-If you don't mind the extra resource usage, `qwen2.5:1.5b` is substantially better for marginally more disk space (about 1GB total) and RAM usage. 
+or 
 
-3. Run Ollama with the Qwen model of your choice: 
+```bash 
+ollama pull llama3
+```
+
+If you don't mind the extra resource usage, `qwen2.5:1.5b` and `llama3` are substantially better for marginally more disk space (about 1GB total) and RAM/VRAM usage. 
+
+3. Run Ollama with the model of your choice loaded: 
 
 ```bash
 ollama serve
@@ -96,7 +97,9 @@ chmod +x launch-django.sh  # Make the script executable (first time only)
 ```
 
 The server will start automatically and open these URLs:
+
 - Universe view: http://127.0.0.1:8000/universe/ - the interface you use to view the layout of Solar's universe 
+- Event scroller: http://127.0.0.1:8000/events/ - the dialogue scroller that shows communications going on throughout the solar system 
 - Admin interface: http://127.0.0.1:8000/admin/ - the (dreaded) Django admin interface - best not to mess with this!
 - Ollama endpoint: https:/127.0.0.1:11434/ - the ollama endpoint simply says 'ollama is running' 
 

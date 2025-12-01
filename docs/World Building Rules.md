@@ -65,7 +65,7 @@ So then I might have the following tables:
 ## A Cleaner and More Complete List of Maneuver Rules 
 
 1. First, figure out what kind of Departure you need: 
-    a. If your path starts with a Station, UNDOCK then do an INSERTION burn and then CIRCULARIZE to orbit.  
+    a. If your path starts with a Station, UNDOCK then do an INSERTION burn to achieve an elliptical orbit, and then CIRCULARIZE to a stable circular orbit.  
     b. If your path starts with a Moon or Planet, and the destination is a neighbor, you can do a DIRECT ASCENT followed by whatever arrival is appropriate (DOCK, or DEORBIT and LAND). This lets you skip the INSERTION and CIRCULARIZE steps, since your trip is so short.
     c. If your path starts with a Moon or Planet and your destination is not a neighbor, you'll need to LAUNCH, do an INSERTION burn, and then CIRCULARIZE to achieve orbit. 
 

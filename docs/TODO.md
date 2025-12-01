@@ -3,9 +3,9 @@
 
 ## Vision:
 
-The air in the cockpit smells like azide and sweat and hot electronics. The nav computer's analog display rattles as the new course rolls across the console and gradually emerges from the chaos of clacking. The comm chirps a friendly tone and a welcoming voice says "Commercial tanker PULP NOVELLA, this is Titan Control, please acknowledge." 
+The air in the cockpit smells like azide and sweat and hot electronics, while the thin stream of icy air from the climate control nozzle does its best to keep up. The nav computer's analog display rattles as the new course rolls across the console and gradually emerges from the chaos of clacking. A screen shows glowing amber letters on a black background spelling out dense jargon. The comm chirps a friendly tone and a welcoming voice says "Commercial tanker PULP NOVELLA, this is Titan Control, please acknowledge." 
 
-The grimy cluttered controls of a real commercial aircraft, of the interior of the Millenium Falcon, of the crew's mess in the NOSTROMO; the sounds of modems and elevators and public transportation and rocket launches. The painstaking precision of NASA astronauts going over hour-long preflight checklists, and the almost-bored voices of fighter pilots as they report the loss of an engine out over open water. The lullabye singsong of the Shipping News reporting dangerous weather off Dogger Bank in a terse jargon that might be another language. The constant fight against rust and mechanical failure. A galaxy where space travel is casual but still perilous, and where the routine of hundreds of other ships following it can inspire you to try something boring for fun. 
+The grimy cluttered controls of a real commercial aircraft, of the interior of the Millenium Falcon, of the crew's mess in the NOSTROMO; the sounds of modems and elevators and public transportation and rocket launches. The painstaking precision of NASA astronauts going over hour-long preflight checklists, and the almost-bored voices of fighter pilots as they report the loss of an engine out over open water. The lullabye singsong of the Shipping News reporting dangerous weather off Dogger Bank in a terse jargon that might be another language. The constant fight against rust, hull fatigue, and mechanical failure. A galaxy where space travel is casual but still perilous, and where the routine of hundreds of other ships following it can inspire you to try something boring for fun. 
 
 ## Features on my road-map: 
 
@@ -15,7 +15,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Maybe some kind of CI/CD setup 
     - Figure out how to interact with Django and the sqlite DB for testing ✓
 
-- Stars, planets, moons, and space stations 
+- Realistic stars, planets, moons, and space stations 
     - Just our solar system first ✓
     - XML import/export tooling ✓
     - Add objects like "Colony" or "Spaceport" for surface landings 
@@ -48,7 +48,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Very little concept of roles/classes/sizes ✓
     - Procedurally named with random cargos & missions ✓  
     - Eventually assigned economically-relevant cargos & missions 
-    - Eventually procedurally generated as make/model, sold by particular shipyards, more common "near home" 
+    - Eventually procedurally-generated as make/model, sold by particular shipyards, more common "near home" 
     - More detailed ship mechanics including detailed subsystems and subsystem failures 
 
 - Actors and Missions
@@ -67,7 +67,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
         - In short, "chatter" 
     - When ships have parts, some anomalies will come from "cheap" parts or "too new" technologies 
     - Eventually generated in response to a ship moving along its journey 
-    - Scrolling terminal-like display for viewing dialogue events as they unfold
+    - Scrolling terminal-like display for viewing dialogue events as they unfold ✓
 
 - Simulation and Scheduling
     - Time-based simulation loop that advances time every ~0.1 seconds ✓
@@ -117,6 +117,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Script a small number of "anomalies" with simple resolutions
 
 ### Four - Character Development
+- Contextual dialogue generation that isn't terrible or clunky 
 - Persistent characters with personality notes
 - Build out source files for ship names, planets, stars &c. ✓
 - Implement a richer Mission model for narrative-driven journeys
@@ -314,4 +315,95 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Time system is consistent and well-documented
 - LLM service redundancy eliminated
 - All existing functionality preserved
+
+#### Problem 4: Clear up dialogue glitches and improve aesthetic quality of all prose 
+
+**Big Picture:** Analysis of 25 llama3 dialogue runs (average score: 68/100, range: 53-74) reveals systematic issues preventing higher-quality dialogue. The main problems are: JSON/metadata leakage (scoring 0), controllers not using context (scoring 3 instead of 5), poor grammar patterns, and error fallbacks. These issues prevent dialogue from reaching the target quality level where it sounds natural and contextually aware.
+
+**Overall Intent:** Improve dialogue quality scores from current average of 68/100 to consistently 75+ by fixing systematic errors, improving context usage, and enhancing prompt structure. Focus on making controllers echo specific maneuvers (potential +12 points per run) and ensuring pilots reference approved maneuvers in acknowledgments.
+
+**Path Forward:**
+
+1. **Fix JSON/Metadata/Template Leakage (Score 0 - Critical)**
+   - Add stronger validation in `_validate_text_is_natural_language()` to detect and filter JSON/metadata
+   - Implement retry logic: if response contains JSON/metadata/template variables, regenerate with stricter prompt
+   - Add post-processing filter that detects and strips template variables (e.g., `${current_situation...}`) before returning text
+   - Strengthen prompt warnings: "CRITICAL: Your response must be natural dialogue, NOT structured data, NOT JSON, NOT template variables"
+   - Add detection for common error phrases like "Error in communications" and trigger retry
+
+2. **Improve Controller Context Usage (Score 3 → 5 - High Impact)**
+   - Add context cue right before response request: "With all that in mind, here's the previous line from the pilot: '[PILOT'S REQUEST]'. Respond naturally and use context from the dialogue to respond."
+   - Add hidden imperative field in system prompt (not in output): `"imperative_maneuver": "clear the pilot for sublight maneuver"` or `"imperative_maneuver": "approve the deorbit request"`
+   - Strengthen controller prompt: "CRITICAL: You MUST mention the specific maneuver they requested. If they asked for 'sublight', say 'cleared for sublight'. If they asked for 'deorbit', say 'cleared for deorbit'."
+   - Add examples showing context usage: "When pilot requests 'sublight maneuver', respond with 'Cleared for sublight maneuver', not just 'Cleared for maneuver'."
+   - Update controller examples in `get_actor_json_response()` to emphasize echoing the specific maneuver
+
+3. **Improve Pilot Acknowledgment Context Usage (Score 3 → 4-5)**
+   - Add context cue: "With all that in mind, here's what the controller just approved: '[CONTROLLER'S APPROVAL]'. Acknowledge naturally and reference the approved maneuver."
+   - Add hidden imperative field: `"imperative_maneuver": "acknowledge the sublight clearance and begin the burn"`
+   - Strengthen acknowledgment examples to show maneuver reference: "Acknowledged, beginning the sublight burn" instead of just "Acknowledged"
+   - Update acknowledgment instruction to emphasize: "Echo back the approved maneuver in your acknowledgment"
+   - Fix grammar in examples: show "beginning the circularization burn" and "executing sublight burn" instead of "beginning circularize" or "beginning sublight"
+
+4. **Fix Grammar Issues (Score 2 - Common Pattern)**
+   - Add hidden imperative fields with correct grammar: `"imperative_maneuver": "begin a sublight burn"` or `"imperative_maneuver": "circularize the orbit"`
+   - Strengthen grammar examples in prompts with correct forms
+   - Add post-processing grammar correction for common patterns ("beginning circularize" → "beginning circularization")
+   - Update acknowledgment examples to show correct grammar: "beginning the circularization burn", "executing sublight burn"
+
+5. **Add Context Cue Before Response Request**
+   - Modify prompt structure in `get_actor_json_response()` to add context cue AFTER all instructions but RIGHT BEFORE the JSON schema/example
+   - Format: "With all that in mind, here's the previous line from [SPEAKER]: \"[PREVIOUS_LINE]\"\n\nRespond naturally and use context from the dialogue to respond."
+   - This should appear in the user message, not the system prompt, to ensure it's fresh in the LLM's attention
+
+6. **Implement Retry Logic for Failed Responses**
+   - Add retry mechanism in `get_actor_json_response()`:
+     - If response contains JSON/metadata → retry with stricter prompt (max 2-3 retries)
+     - If response contains "Error in communications" → retry
+     - If response contains template variables → retry
+     - Add exponential backoff between retries
+   - Log retry attempts for analysis
+   - Fall back to error message only after all retries exhausted
+
+7. **Enhance Response Validation**
+   - Improve `_validate_text_is_natural_language()` to detect:
+     - Template variables (${...})
+     - JSON objects
+     - Metadata patterns
+     - Error fallback phrases
+   - Return validation result that triggers retry if needed
+   - Add validation for grammar patterns (detect "beginning circularize" and suggest correction)
+
+8. **Strengthen Navigation Context in Prompts**
+   - Add explicit navigation context to prompts:
+     ```
+     NAVIGATION CONTEXT:
+     - Current location: [CURRENT]
+     - Destination: [DESTINATION]
+     - You are going FROM [CURRENT] TO [DESTINATION]
+     - Do NOT mention going to [CURRENT] - you're already there!
+     ```
+   - Add to hidden imperative: `"imperative_navigation": "going from Mars to Earth"`
+   - This should help prevent destination confusion errors
+
+9. **Implement LLM-Based Quality Control Pass (Architectural)**
+   - After generating a complete dialogue chain, pass the full dialogue + scoring rubric to LLM for a single polish pass
+   - Format: Present the dialogue as a script with speaker labels, then provide the scoring rubric
+   - Prompt: "Here is a dialogue script between a pilot and controller. Using the scoring rubric provided, edit ONLY the text (preserve speaker labels and structure) to improve quality. Focus on: using context, fixing grammar, ensuring natural dialogue."
+   - This could catch issues that individual generation misses (context usage, grammar, flow)
+   - Implementation options:
+     - Option A: Post-process entire dialogue chain after generation (batch polish)
+     - Option B: Post-process individual events after generation (per-event polish)
+     - Option C: Use as validation step - if initial generation scores low, trigger polish pass
+   - Consider using a different/additional LLM call with lower temperature for more consistent polishing
+   - This could be especially effective for fixing context usage issues (controllers echoing maneuvers, pilots referencing approvals)
+
+**Success Criteria:**
+- Average dialogue quality score improves from 68/100 to 75+/100
+- JSON/metadata leakage eliminated (0 occurrences in 25 runs)
+- Controllers consistently echo specific maneuvers (5 points instead of 3)
+- Pilot acknowledgments reference approved maneuvers (4-5 points instead of 3)
+- Grammar errors ("beginning circularize", "beginning sublight") eliminated
+- Error fallback phrases eliminated
+- All improvements maintain natural, conversational tone
 
