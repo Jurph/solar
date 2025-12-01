@@ -143,40 +143,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ### Current Backlog 
 
-#### Problem 1: Integrate LLMJSONService into ScriptService Workflow
-
-**Big Picture:** A new `LLMJSONService` class was created for structured JSON dialogue generation, but `ScriptService` still primarily uses the older `LLMService`. The JSON service provides better structure and validation, but needs to be properly integrated into the dialogue generation pipeline.
-
-**Overall Intent:** Make `ScriptService` use `LLMJSONService` by default for all dialogue generation, ensuring structured JSON responses are properly parsed and used throughout the system.
-
-**Path Forward:**
-1. Update `ScriptService.get_instance()` to use `LLMJSONService` by default
-   - Modify the default LLM initialization to create `LLMJSONService` instead of `LLMService`
-   - Keep `LLMService` as a fallback option for backward compatibility
-2. Update `ScriptService.parse_navigation_event()` to handle JSON responses
-   - Extract message text from JSON responses returned by `LLMJSONService`
-   - Parse JSON using `DialogueMessage` schema for validation
-   - Handle cases where LLM returns invalid JSON gracefully
-3. Update `ScriptService.parse_dialogue_event()` to use structured context
-   - Pass `DialogueMessage` objects in context instead of plain strings where possible
-   - Ensure recipient identification works correctly with structured messages
-   - Update metadata to include structured dialogue information
-4. Add error handling for JSON parsing failures
-   - Log warnings when JSON parsing fails
-   - Fall back to extracting plain text from response
-   - Consider retry logic for malformed JSON responses
-5. Update dialogue event metadata to store structured dialogue data
-   - Store full `DialogueMessage` objects in metadata when available
-   - Preserve format, role, and readback requirements in metadata
-6. Test the integration with existing navigation event flows
-   - Verify pilot requests generate correctly
-   - Verify controller responses generate correctly
-   - Verify readback acknowledgments generate correctly
-7. Update any management commands that use ScriptService
-   - Check `character_dialogue_demo.py` and other commands
-   - Ensure they work with the new JSON-based service
-
-#### Problem 2: Update and Verify Test Suite for Dialogue System
+#### Problem 1: Update and Verify Test Suite for Dialogue System
 
 **Big Picture:** The test suite needs to be updated to work with the new structured dialogue system (`LLMJSONService`, `DialogueMessage` objects, etc.) and verified to catch regressions. Some tests may be using outdated patterns or may not adequately test the new JSON-based flow.
 
@@ -211,7 +178,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - Explain test fixtures and setup requirements
    - Note any tests that require LLM API access (mark as slow tests)
 
-#### Problem 3: Unified Simulation Time System and Commands API
+#### Problem 2: Unified Simulation Time System and Commands API
 
 **Big Picture:** The simulation currently has multiple time systems and queue implementations scattered across different commands. The web interface needs to be driven by a real, unified simulation loop rather than artificial backdrops. We need a global simulation queue, consistent timestamp management, and a Commands API to control journey generation and scheduling from the web interface.
 
