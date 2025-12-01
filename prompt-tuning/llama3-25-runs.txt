@@ -1,0 +1,731 @@
+Starting dialogue quality evaluation: 25 runs at temperature 0.7
+Route planned with 6 navigation events
+
+================================================================================
+RUN 1 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:45:56
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON, requesting clearance for takeoff from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning the launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for insertion into Mars orbit. Can you provide a vector?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver to approach Earth.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, STELLAR HORIZON. Requesting clearance to circle around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: STELLAR HORIZON, Mars Control. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. The sublight burn for our way to Earth has been set.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for sublight maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are maneuvering to deorbit and heading towards Earth.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning the burn.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 2 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:46:15
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. I am initiating my maneuver towards Mars from Earth.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: Roger, proceeding as directed.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're currently at Mars and ready for our insertion burn. Can you provide a vector to move us towards Earth?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, STELLAR HORIZON. Requesting clearance for maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: STELLAR HORIZON, Mars Control, STELLAR HORIZON is on sublight propulsion and will be joining your orbit. Request clearance to position over Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver towards the destination of Earth.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, proceeding as directed.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are deorbiting and heading in to Earth. Request vector for approach.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting landing clearance to Earth. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for landing maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, Captain Rodriguez here. Error in communications.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 3 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:46:32
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to launch from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control here. {"role": "CONTROLLER", "speaker_callsign": "Mars Control", "recipient_callsign": "STELLAR HORIZON, ", "requires_readback": false}
+[Event 3] Captain Rodriguez: STELLAR HORIZON, Mars Control here. {"role", Captain Rodriguez here. Error in communications.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Inserting orbit around Mars.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars for maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: Roger, starting circularize.
+[Event 10] Captain Rodriguez: Mars Control, Captain Rodriguez here. Error in communications.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We're in deorbit mode at Earth orbit. Request your vector so we can enter a stable entry trajectory.
+[Event 16] Earth Orbital Control: ${current_situation.maneuver_type} maneuver in progress. Current location: ${current_situation.current_location}. Destination: ${current_situation.destination}
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land on Earth. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Roger, starting burn.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 4 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:46:52
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver.
+[Event 3] Captain Rodriguez: Roger, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're on our insertion burn to Mars. Request your vector for us.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Clear for maneuver.
+[Event 6] Captain Rodriguez: Roger, proceeding as directed.
+[Event 7] Captain Rodriguez: This is STELLAR HORIZON. Requesting clearance to circularize around Mars for maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: STELLAR HORIZON, MARS CONTROL. Roger.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance to proceed towards Mars.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: STELLAR HORIZON, Mars Control. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are ready to break orbit and head into Earth. Can you provide a heading?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. On approach to Earth orbit for landing clearance.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for landing approach.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 5 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:47:09
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance.
+[Event 2] Mars Control: Please note, STELLAR HORIZON. You are cleared to proceed with your maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, proceeding as directed.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, executing insertion burn. Request vector towards Mars.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Maneuver approved for insertion.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, STELLAR HORIZON. Requesting clearance for circularization around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared to circularize.
+[Event 9] Captain Rodriguez: Roger, starting burn.
+[Event 10] Captain Rodriguez: STELLAR HORIZON, Mars Control, requesting sublight burn on our way to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We're initiating the deorbit maneuver to enter Earth orbit. Can you provide clearance for entering the atmosphere?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: Roger.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. Clearing our approach to Earth orbit for landing.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 6 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:47:25
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance for departure from Mars to Earth.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning the launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for insertion burn.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to proceed from Mars orbit towards Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: Roger, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We're preparing to deorbit. Please give us a clearance.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting an immediate handoff to Earth Orbit Control Tower. We are landing.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 7 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:47:42
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON, requesting clearance to maneuver into position for launch.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're ready for our insertion burn. Can you give us a vector and heading? Please provide the necessary clearances.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: Acknowledged, starting maneuver.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: Roger. Proceeding as directed.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting sublight burn on our way to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, starting sublight sequence.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We're preparing to maneuver away from Earth and we need a clear vector on our course.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit.
+[Event 17] Captain Rodriguez: Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance for landing at Earth. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for landing approach.
+[Event 20] Captain Rodriguez: STELLAR HORIZON, Earth Orbital Control. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 8 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:47:59
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON, requesting clearance to maneuver for launch from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We are ready for our insertion burn. Can you provide a vector to Mars?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, Captain Rodriguez here. Error in communications.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Clearing to circularize maneuver.
+[Event 9] Captain Rodriguez: STELLAR HORIZON, MARS CONTROL. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Request clearance to proceed with sublight maneuver towards Mars.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for sublight maneuver.
+[Event 12] Captain Rodriguez: Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. I am maneuvering to deorbit and will be entering Earth's atmosphere soon. Can you confirm the vector for entry?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: This is STELLAR HORIZON, Earth Orbital Control. Request clearance to land.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 9 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:48:17
+================================================================================
+
+[Event 1] Captain Rodriguez: STELLAR HORIZON, Mars Control, requesting clearance for takeoff from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're preparing to insert into Mars orbit and are ready for our maneuver.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Insertion maneuver approved.
+[Event 6] Captain Rodriguez: Roger.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars for maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. REQUESTING SUBLIGHT BURN TO PROCEED TO EARTH.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: Roger.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. Request vector and heading for deorbiting.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: Acknow...deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance and landing at Earth's orbit. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 10 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:48:33
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON requesting clearance for takeoff from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're on our way to Mars for insertion. Request vector and heading.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Insertion maneuver approved.
+[Event 6] Captain Rodriguez: Roger, beginning deorbit.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON requesting clearance to execute maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared to circularize.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting initial clearance on our departure from Mars towards Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, we're preparing to deorbit. Can you provide a vector towards Earth?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: STELLAR HORIZON, Earth Orbital Control. Acknowledged, beginning the maneuver.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance for landingside approach.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 11 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:48:50
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for departure from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. You are authorized to proceed with launch maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're currently at Mars and preparing for our insertion burn. Can you provide a vector to assist with the maneuver?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Insertion maneuver approved.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, STELLAR HORIZON. Requesting clearance to circularize around Mars for maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, starting burn.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, we're ready to deorbit and head in to Earth. Can you give us a vector?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, on final for our landing at Earth. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: STELLAR HORIZON, Earth Orbital Control. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 12 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:49:07
+================================================================================
+
+[Event 1] Captain Rodriguez: Captain Rodriguez, this is STELLAR HORIZON. Request clearance for departure from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Current situation: maneuver type is launch, and the current location on Mars is to be cleared for takeoff.
+
+Example line: STELLAR HORIZON, MARS CONTROL here. You are cleared for takeoff.
+[Event 3] Captain Rodriguez: Roger, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're ready for our insertion burn. Can you provide a vector and heading to Mars?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance to circularize around Mars for tracking purposes.
+[Event 8] Mars Control: ${current_situation['maneuver_type']} maneuver to ${current_situation['destination']}, Mars Control, ready for circularize.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, initiating sublight maneuver to prepare for Earth departure.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We're deorbiting for a maneuver to Earth Orbit Low (EOLO). Can you give us the vector and heading?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit maneuver.
+[Event 17] Captain Rodriguez: Roger, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 13 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:49:24
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for takeoff from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, we're ready for our insertion burn. Expect a vector of 20 degrees north-east.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, STELLAR HORIZON. Requesting clearance to position around Mars for maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: Roger, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting sublight burn to proceed towards Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Clear for entry into Martian orbit.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are deorbiting to enter the atmosphere of Earth.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance for landing at Earth.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for landing maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 14 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:49:41
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for departure from Mars.
+[Event 2] Mars Control: MARS CONTROL here. You are cleared for maneuver.
+[Event 3] Captain Rodriguez: Roger.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting a vector and heading for our insertion burn.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, MARS CONTROL here. Cleared to circularize.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are currently deorbiting to enter Earth's atmosphere in preparation for a controlled descent. Please provide the vector and heading we need.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. Requesting clearance for our landing at Earth.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 15 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:49:58
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance.
+[Event 2] Mars Control: MARS CONTROL, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, we're ready for our insertion burn. Can you give us a vector for Mars?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: Acknowlng approval, STELLAR HORIZON, starting insertion sequence.
+[Event 7] Captain Rodriguez: Mars Control, Captain Rodriguez here. {"role": "PILOT", "speaker_callsign": "STELLAR HORIZON", "recipient_callsign": "Mars Control, ", "requires_readback": false}
+[Event 8] Mars Control: Mars Control, Captain Rodriguez here. {"role", Mars Control here. Error in communications.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Roger.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance to sublight burn on our way from Mars to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for sublight maneuver.
+[Event 12] Captain Rodriguez: Acknowlledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are ready to deorbit and head into Earth orbit. Can you provide a vector for our maneuver?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land on Earth.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, Captain Rodriguez here. {"recipient_callsign": "EARTH ORBITAL CONTROL", "requires_readback": false}
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 16 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:50:15
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance for departure from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver.
+[Event 3] Captain Rodriguez: Roger, beginning maneuver.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're at Mars, and I'm ready to execute our insertion burn. Can you provide a vector for us to move towards Earth?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Clear to maneuver.
+[Event 6] Captain Rodriguez: Acknowledege, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We are on our way to Mars. Request clearance for a sublight burn towards Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. In position for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. I am to deorbit for a brief maneuver and then enter Earth's atmosphere. We will be descending towards the surface of the Earth. Can you give us a clear vector or heading so we can safely align with the runway?
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance for landing.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning the landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 17 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:50:32
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON, requesting clearance for launch into Mars orbit.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Initial clearance for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning the maneuver.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, we're not ready for our insertion burn yet. Request vector and heading to proceed.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, Captain Rodriguez here. Error in communications.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver to Earth.
+[Event 9] Captain Rodriguez: Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for sublight maneuver to the vicinity of Mars.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to maneuver away from Earth for deorbiting.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance for landing.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 18 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:50:50
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance for takeoff from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, proceeding as directed.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Request vector for insertion burn.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: Acknowledge, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared to circularize.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting sublight burn on our way to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to deorbit and align with Earth's atmosphere. Pilot understands.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance towards the Earth's atmosphere.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 19 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:51:06
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON is in position for takeoff from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We are ready for our insertion burn. Can you provide the necessary vector and heading?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Insertion maneuver approved.
+[Event 6] Captain Rodriguez: Roger, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to proceed towards Earth.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance to proceed.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Roger.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. Request deorbit clearance.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land on Earth.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 20 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:51:22
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for takeoff.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We're currently maneuvering from Mars for our insertion burn. Can you provide a clear and precise vector instruction?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver to insert into orbit around Earth.
+[Event 6] Captain Rodriguez: STELLAR HORIZON, MARS CONTROL. Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars for a docking maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: Roger, starting deorbit sequence.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON requesting clearance to proceed towards Mars.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. You are cleared to proceed with your sublight maneuver.
+[Event 12] Captain Rodriguez: Roger, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are on deorbit course and ready to enter Earth orbit. Request clearance.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land on Earth.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning the landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 21 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:51:40
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for launch.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting a vector for insertion into Mars orbit.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, STELLAR HORIZON. Requesting clearance to maneuver into position for departure.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, Captain Rodriguez here. {"requires_readback": false}
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting initial vector and heading.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land on Earth. Please inform of any restrictions.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for landing maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, Captain Rodriguez here. Error in communications.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 22 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:51:59
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to maneuver towards the Earth.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. You are cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. We've just left Mars and are now on a course to Earth. Request vector for our insertion burn.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 7] Captain Rodriguez: Mars Control, Captain Rodriguez here. {"recipient_callsign": "Mars Control", "requires_readback": false}
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance to sublight burn for our journey to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Clear for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. Request vector and heading for deorbit clearance.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 23 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:52:16
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON, requesting clearance for launch from Mars.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: MARS CONTROL, THIS IS STELLAR HORIZON, REQUESTING GUIDANCE FOR OUR INSERTION BURN. CAN YOU PROVIDE A VECTOR AND HEADING?
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Insertion maneuver approved.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to circularize around Mars for a maneuver.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Request sublight burn in preparation for the transfer to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. Request clearance to maneuver and deorbit.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We are landing at Earth. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for landing approach.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 24 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:52:34
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance to launch.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: ACKNOWLEDGED, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. I am ready for insertion burn. Can you provide a vector and heading to Mars? Please, confirm the instructions.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 6] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, starting insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting clearance for circularization around Mars.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared to circularize.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Request clearance to proceed sublight burn towards Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for sublight maneuver.
+[Event 12] Captain Rodriguez: STELLAR HORIZON, MARS CONTROL. Acknowledged.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON. We're currently deorbiting to reach Earth. Request any final instructions.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for deorbit maneuver.
+[Event 17] Captain Rodriguez: STELLAR HORIZON, Earth Orbital Control. Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, this is STELLAR HORIZON, on final for our landing at Earth. Please advise.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning landing.
+
+--------------------------------------------------------------------------------
+
+
+================================================================================
+RUN 25 of 25
+Settings: 25 runs, temperature = 0.7, run at 2025-11-30 20:52:51
+================================================================================
+
+[Event 1] Captain Rodriguez: Mars Control, STELLAR HORIZON, requesting clearance for launch from Mars to Earth.
+[Event 2] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 3] Captain Rodriguez: Acknowledged, beginning launch.
+[Event 4] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Insertion burn complete. Request vector and heading for our rendezvous with Earth.
+[Event 5] Mars Control: STELLAR HORIZON, Mars Control. Insertion maneuver cleared.
+[Event 6] Captain Rodriguez: Acknowldege, beginning insertion.
+[Event 7] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Requesting permission to circularize around Mars for a vector heading of 180 degrees.
+[Event 8] Mars Control: STELLAR HORIZON, Mars Control. Cleared for circularize maneuver.
+[Event 9] Captain Rodriguez: MARS CONTROL, STELLAR HORIZON. Acknowledged, beginning circularize.
+[Event 10] Captain Rodriguez: Mars Control, this is STELLAR HORIZON. Seeking clearance for sublight maneuver to Earth.
+[Event 11] Mars Control: STELLAR HORIZON, Mars Control. Cleared for maneuver.
+[Event 12] Captain Rodriguez: STELLAR HORIZON, Mars Control. Acknowledged, beginning sublight.
+[Event 13] Captain Rodriguez: Relay Satellite Alpha, this is Stellar Horizon. Performing routine comms check, please respond.
+[Event 14] Relay Satellite Alpha: BEEP BOOP
+[Event 15] Captain Rodriguez: Earth Orbital Control, STELLAR HORIZON understands the situation. We're ready to execute maneuvering for deorbit and prepare for re-entry into Earth's atmosphere.
+[Event 16] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 17] Captain Rodriguez: EARTH ORBITAL CONTROL, STELLAR HORIZON. Acknowledged, beginning deorbit.
+[Event 18] Captain Rodriguez: Earth Orbital Control, Captain Rodriguez here. Error in communications.
+[Event 19] Earth Orbital Control: STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.
+[Event 20] Captain Rodriguez: STELLAR HORIZON, Earth Orbital Control. Acknowledged.
+
+--------------------------------------------------------------------------------
+
+
+Completed 25 runs

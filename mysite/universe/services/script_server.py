@@ -1,5 +1,5 @@
 from mysite.universe.services.dictionary import DictionaryService
-from typing import Optional, List, Union
+from typing import Optional, List
 import json
 
 # Import our navigation models
@@ -267,60 +267,90 @@ class ScriptService:
                 return get_location_name(nav_event.next)
             return get_location_name(nav_event.destination)
 
-        # Generate the line first based on maneuver type
+        # Generate template variations based on maneuver type - these will be passed as examples to the LLM
+        templates = []
         if nav_event.maneuver == ManeuverType.LAUNCH:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}."
-            )
+            templates = [
+                f"{controller_name}, {ship_call_sign}, requesting clearance for takeoff from {get_location_name(nav_event.origin)}.",
+                f"{controller_name}, this is {ship_call_sign}, ready for launch from {get_location_name(nav_event.origin)}. Requesting clearance.",
+                f"{controller_name}, {ship_call_sign} here. Requesting takeoff clearance from {get_location_name(nav_event.origin)}.",
+                f"{controller_name}, {ship_call_sign}. Please clear us for {get_location_name(nav_event.origin)} departure.",
+            ]
         elif nav_event.maneuver == ManeuverType.DIRECT_ASCENT:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}."
-            )
+            templates = [
+                f"{controller_name}, {ship_call_sign}, requesting a direct ascent burn for {get_location_name(nav_event.destination)}.",
+                f"{controller_name}, {ship_call_sign} here. Ready for direct ascent to {get_location_name(nav_event.destination)}. Requesting clearance.",
+                f"{controller_name}, this is {ship_call_sign}, requesting permission for direct ascent burn to {get_location_name(nav_event.destination)}.",
+                f"{controller_name}, {ship_call_sign}, I need a vector for a direct ascent burn to {get_location_name(nav_event.destination)}. Please advise.",
+            ]
         elif nav_event.maneuver == ManeuverType.CIRCULARIZE:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, requesting permission to circularize around {get_location_name(nav_event.current)}."
-            )
+            templates = [
+                f"{controller_name}, {ship_call_sign}. Requesting permission to circularize around {get_location_name(nav_event.current)}.",
+                f"{controller_name}, {ship_call_sign}, can you transmit a circularization approval for {get_location_name(nav_event.current)} orbit please?",
+                f"{controller_name}, {ship_call_sign} here. Ready to circularize orbit around {get_location_name(nav_event.current)}. Requesting clearance.",
+                f"{controller_name}, this is {ship_call_sign}, requesting clearance to circularize around {get_location_name(nav_event.current)}.",
+            ]
         elif nav_event.maneuver == ManeuverType.PLANE_CHANGE:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, we're ready for our plane change maneuver."
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}, we're ready for our plane change maneuver.",
+                f"{controller_name}, {ship_call_sign} here. Requesting clearance for plane change maneuver.",
+                f"{controller_name}, this is {ship_call_sign}, ready to execute plane change. Requesting permission.",
+            ]
         elif nav_event.maneuver == ManeuverType.DEORBIT:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?"
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}, we're ready to break orbit and head in to {get_location_name(nav_event.destination)}. Can you give us a vector?",
+                f"{controller_name}, {ship_call_sign} here. Ready for deorbit burn to {get_location_name(nav_event.destination)}. Requesting vector.",
+                f"{controller_name}, this is {ship_call_sign}, requesting deorbit clearance and vector for {get_location_name(nav_event.destination)}.",
+            ]
         elif nav_event.maneuver == ManeuverType.LANDING:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise."
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}, on final for our landing at {get_location_name(nav_event.destination)}. Please advise.",
+                f"{controller_name}, {ship_call_sign} here. On final approach to {get_location_name(nav_event.destination)}. Requesting landing clearance.",
+                f"{controller_name}, this is {ship_call_sign}, approaching {get_location_name(nav_event.destination)} for landing. Requesting final clearance.",
+            ]
         elif nav_event.maneuver == ManeuverType.INSERTION:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?"
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}, we're ready for our insertion burn. Can you give us a vector for {get_location_name(nav_event.current)}?",
+                f"{controller_name}, {ship_call_sign} here. Ready for insertion burn into {get_location_name(nav_event.current)} orbit. Requesting vector.",
+                f"{controller_name}, this is {ship_call_sign}, requesting insertion burn clearance and vector for {get_location_name(nav_event.current)}.",
+            ]
         elif nav_event.maneuver == ManeuverType.DOCK:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}."
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}, requesting docking clearance for {get_location_name(nav_event.destination)}.",
+                f"{controller_name}, {ship_call_sign} here. Approaching {get_location_name(nav_event.destination)} for docking. Requesting clearance.",
+                f"{controller_name}, this is {ship_call_sign}, requesting permission to dock at {get_location_name(nav_event.destination)}.",
+            ]
         elif nav_event.maneuver == ManeuverType.UNDOCK:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}."
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}, ready for departure. Request permission to undock from {get_location_name(nav_event.origin)}.",
+                f"{controller_name}, {ship_call_sign} here. Ready to undock from {get_location_name(nav_event.origin)}. Requesting clearance.",
+                f"{controller_name}, this is {ship_call_sign}, requesting undocking clearance from {get_location_name(nav_event.origin)}.",
+            ]
         elif nav_event.maneuver == ManeuverType.SUBLIGHT:
             if controller_name == get_next_name(nav_event):
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}."
-                )
+                templates = [
+                    f"{controller_name}, this is {ship_call_sign}, we're inbound from {get_location_name(nav_event.origin)}, request a vector for {get_location_name(nav_event.destination)}.",
+                    f"{controller_name}, {ship_call_sign} here. Inbound from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}. Requesting vector.",
+                    f"{controller_name}, this is {ship_call_sign}, requesting approach vector from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}.",
+                ]
             elif controller_name == get_location_name(nav_event.current):
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn."
-                )
+                templates = [
+                    f"{controller_name}, this is {ship_call_sign}, heading for {get_location_name(nav_event.destination)} and ready for our outbound sublight burn.",
+                    f"{controller_name}, {ship_call_sign} here. Ready for outbound sublight burn to {get_location_name(nav_event.destination)}. Requesting clearance.",
+                    f"{controller_name}, this is {ship_call_sign}, requesting clearance for outbound sublight burn to {get_location_name(nav_event.destination)}.",
+                ]
             else:
-                line = (
-                    f"{controller_name}, this is {ship_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}."
-                )
+                templates = [
+                    f"{controller_name}, this is {ship_call_sign}, requesting sublight burn on our way to {get_location_name(nav_event.destination)}.",
+                    f"{controller_name}, {ship_call_sign} here. Ready for sublight burn to {get_location_name(nav_event.destination)}. Requesting clearance.",
+                    f"{controller_name}, this is {ship_call_sign}, requesting permission for sublight burn to {get_location_name(nav_event.destination)}.",
+                ]
         elif nav_event.maneuver == ManeuverType.HYPERSPACE:
-            line = (
-                f"{controller_name}, this is {ship_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}."
-            )
+            templates = [
+                f"{controller_name}, this is {ship_call_sign}. Gravity well shows clear; requesting hyperspace jump to {get_next_name(nav_event)}.",
+                f"{controller_name}, {ship_call_sign} here. Gravity well is clear. Requesting clearance for hyperspace jump to {get_next_name(nav_event)}.",
+                f"{controller_name}, this is {ship_call_sign}, requesting hyperspace jump clearance to {get_next_name(nav_event)}. Gravity well is clear.",
+            ]
         else:
             raise NotImplementedError("Navigation parsing for this maneuver type is not implemented.")
 
@@ -336,8 +366,9 @@ class ScriptService:
                 f"Current situation: {ship_call_sign} is performing a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver "
                 f"from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}. "
                 f"Currently at {get_location_name(nav_event.current)}, next stop is {get_next_name(nav_event)}.\n\n"
-                f"<YOUR LINE> should be something similar to: '{line}'\n"
-                "Given the situation, say <YOUR LINE> in character, incorporating specific details about your location and maneuver."
+                f"You are requesting clearance from {controller_name} for a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver.\n"
+                f"<YOUR LINE> should be something similar to: '{templates[0]}'\n"
+                "Given the situation, say <YOUR LINE> in character, but feel free to improvise a bit and make it your own."
             ),
             # Add new context without breaking existing functionality
             "context": {
@@ -355,10 +386,39 @@ class ScriptService:
             }
         }
 
+        # Generate LLM text for the pilot's request
+        nav_context = {
+            "maneuver_type": nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver,
+            "current_location": get_location_name(nav_event.current),
+            "destination": get_location_name(nav_event.destination),
+            "recipient": controller_name
+        }
+        
+        llm_response = self.llm.get_actor_json_response(
+            line=templates[0],
+            actor=pilot,
+            context=[],
+            navigation_context=nav_context,
+            temperature=getattr(self.llm, 'temperature', None)
+        )
+        
+        # Extract message text from response (handles both JSON and plain text)
+        llm_text, dialogue_msg = self._extract_message_from_response(llm_response)
+        
+        # CRITICAL: Ensure text is natural language, never JSON
+        llm_text = self._validate_text_is_natural_language(llm_text)
+        
+        # Store structured dialogue message in metadata if available
+        if dialogue_msg:
+            metadata['dialogue_message'] = dialogue_msg.model_dump()
+            format_value = dialogue_msg.format.value if hasattr(dialogue_msg.format, 'value') else str(dialogue_msg.format)
+            metadata['dialogue_format'] = format_value
+            metadata['requires_readback'] = dialogue_msg.requires_readback
+
         return DialogueEvent(
             timestamp=nav_event.duration,
             actor=pilot,
-            text=line,
+            text=llm_text,  # Use LLM-generated text instead of template
             expect_reply=True,
             expected_reply_actor=expected_reply_actor,
             duration=RouteService().get_event_duration(nav_event),

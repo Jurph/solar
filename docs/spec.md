@@ -1,4 +1,5 @@
-# Space Comms Simulation Specification
+# "Solar" - the space comms simulation 
+## Software Feature Specification
 
 ## 1. Overview
 
@@ -31,6 +32,7 @@ This ambient simulation creates a radio-like environment for ship communications
 - **Dialogue Presentation:**
   - **Speaker Labels:** Rendered as all-uppercase versions of character names (using a helper method like `allcaps()`).
   - **Dialogue Text:** Preserves natural case (e.g., "Venus Control, this is Lima VI…").
+  - **Hidden Context:** Dialogue passed behind the scenes in a context-rich JSON blob   
 
 ### 2.2 Character Generation
 
@@ -58,6 +60,7 @@ This ambient simulation creates a radio-like environment for ship communications
 - **Ambient Audio:**
   - **Room Tone:** Procedurally generated static that will later vary by ship size (e.g., low, rumbling static for Large ships; high-pitched buzz for Small ships).
   - **Comm Beeps:** Derived from Quindar Tones with slight modulation according to ship characteristics.
+  - **Per-Ship "Voice":** A mix of room tone and tailored comm beeps will make each ship distinctive. 
 - **TTS Voices:**
   - Each Actor (Pilots and Control) is assigned a specific voice template. Future enhancements will allow these templates to be dynamically modified (i.e., tunable voice avatars) to reflect character traits.
 - **Output Views:**

@@ -413,6 +413,7 @@ The JSON must match this exact schema:
             controller_rule = f"""5. As a CONTROLLER: 
    - You APPROVE, AUTHORIZE, CONFIRM, and CLEAR requests in a professional, declarative manner
    - You do NOT request things - that's what pilots do
+   - You do NOT describe 'where things stand' in the situation. You just approve the request.
    - When a pilot requests clearance, you APPROVE it in declarative/affirmative mode
    - Speak naturally and conversationally
    - Use proper grammar: don't say "cleared for circularize", instead say "cleared for circularization". 
@@ -424,7 +425,8 @@ The JSON must match this exact schema:
    - "{recipient_callsign}, {speaker_callsign}, you're cleared to proceed. Begin your {maneuver_type} when you're ready." 
    - "{recipient_callsign}, {speaker_callsign}, confirmed for {maneuver_type} maneuver. Safe travels."
    - CRITICAL: Use ACTUAL callsigns, NEVER use placeholders like $SHIP or $EVENT or CONTROL or PILOT
-   - CRITICAL: Your response must be natural dialogue, NOT structured data or metadata like VARIABLE:VALUE or RANGE:750KM."""
+   - CRITICAL: Your response must be natural dialogue, NOT structured data or metadata like VARIABLE:VALUE or RANGE:750KM.
+   """
             pilot_rule = ""
             example_message = f"{recipient_callsign}, {speaker_callsign}. Cleared for maneuver."
         
@@ -482,7 +484,7 @@ IMPORTANT: You must respond with ONLY a valid JSON object in the following forma
     "speaker_callsign": "{speaker_callsign}",
     "recipient_callsign": "{recipient_callsign}",
     "format": "{'ACKNOWLEDGMENT' if is_acknowledgment else 'INITIAL_CONTACT'}",
-    "message": "Your actual message text here",
+    "message": "{example_message}",
     "requires_readback": false
 }}
 
@@ -543,6 +545,15 @@ The response must be ONLY the raw JSON object, nothing else."""
             "example_line": line,
             "recipient_callsign": recipient_callsign  # Explicitly state the recipient (actual name, never placeholder)
         }
+        
+        # If navigation context includes example_lines (for initial requests), add them as multiple examples
+        if nav_ctx and nav_ctx.get("example_lines") and not is_acknowledgment:
+            user_prompt["example_lines"] = nav_ctx["example_lines"]
+            user_prompt["instruction"] = (
+                f"Here are some example lines for this situation:\n" +
+                "\n".join([f'  - "{ex}"' for ex in nav_ctx["example_lines"]]) +
+                "\n\nUse these as inspiration, but feel free to improvise and make it your own within the basic context of the script."
+            )
         
         # If this is an acknowledgment scenario, add explicit instructions
         if is_acknowledgment:

@@ -1,0 +1,107 @@
+Here’s what I’ve got for you.
+
+### 📄 CSV with strict combined scores
+
+I parsed all 25 runs, applied a **strict heuristic implementation** of your rubric (including JSON/metadata → 0, “Error in communications” → 1, obvious grammar/terminology issues like “beginning circularize/beginning sublight” → 2, satellites “BEEP BOOP” → 3, and then 3–5 based on how well a line used context).
+
+You can download the CSV here:
+
+**[Download the CSV of run scores](sandbox:/mnt/data/run_scores_strict_combined.csv)**
+
+It has columns:
+
+```text
+Run,TotalScore
+1,68
+2,66
+3,53
+4,68
+5,70
+6,67
+7,69
+8,68
+9,69
+10,73
+11,72
+12,67
+13,72
+14,71
+15,60
+16,70
+17,64
+18,69
+19,69
+20,70
+21,66
+22,65
+23,73
+24,74
+25,68
+```
+
+(So Run 24 is the top performer in this strict pass; Run 3 and Run 15 are clear laggards.)
+
+---
+
+### 🧩 Rundown of the most common errors
+
+Looking across the 25 runs and 500 events, the main failure modes I see, using your rubric and the dialogue text :
+
+1. **Template / JSON / metadata leakage (score 0)**
+
+   * Shows up in multiple runs, especially early in Mars Control exchanges.
+   * Examples include whole JSON blobs or template variables like `${current_situation...}` getting spoken as if they were radio messages.
+   * These lines automatically zero out per rubric.
+
+2. **Fallback “Error in communications” lines (score 1)**
+
+   * Several runs have at least one line like:
+
+     > “Captain Rodriguez here. Error in communications.”
+   * These are clear non-sequiturs and get hard-punished as 1-point lines.
+
+3. **Bad grammar around circularization / sublight (score 2)**
+
+   * The repeated pattern you highlighted appears a lot:
+
+     * “beginning circularize”
+     * “beginning sublight”
+   * Per your worked example, those are treated as **poor grammar / misuse of the term** and downgraded to 2s.
+
+4. **Boring controllers that don’t use context (3 instead of 5)**
+
+   * Controllers very often say some variant of:
+
+     > “STELLAR HORIZON, Mars Control. Cleared for maneuver.”
+   * Even when the pilot asked for “deorbit” or “sublight”, this line fails to echo the specific maneuver and thus only earns a **boring 3** instead of a 5.
+   * When the controller *does* mention the specific maneuver (“Cleared for sublight maneuver”, “Cleared for deorbit maneuver”, “Cleared to circularize”), those lines get bumped to **5**.
+
+5. **Pilots missing easy upgrades from 3 → 4/5**
+
+   * Many pilot lines are mechanically correct but under-exploited context-wise.
+   * Acknowledgements that could be richer (“Acknowledged, beginning the deorbit burn to align with your vector”) are often just “Roger” or “Acknowledged,” leaving points on the table.
+   * On the other hand, when the pilot gives a nice, contextual deorbit or entry call (mentions atmosphere, deorbit, Earth, and vector/heading), those were bumped to **5**.
+
+6. **Scattered destination / phase confusion (treated conservatively)**
+
+   * There are a few places where the wording is ambiguous or slightly off about which phase they’re in (“on our way to Mars” when they should be at Mars, etc.).
+   * Under a very strict semantic model they’d all be 2s, but in this pass I only downgraded the **clearly wrong grammatical/terminology patterns** and obvious glitches, not every subtle narrative mismatch.
+
+7. **Comms sat behavior: almost perfect**
+
+   * Relay Satellite Alpha is almost always correct: `BEEP BOOP`.
+   * Those lines consistently score the max **3** for the satellite rubric.
+
+---
+
+### TL;DR error profile
+
+* **System-level glitches** (JSON/template leakage + “Error in communications”) are the biggest quality killers, dragging whole runs down.
+* **Terminology/grammar nitpicks** (“beginning circularize/sublight”) are the second most common systematic error.
+* **Controllers are underperforming contextually**: lots of 3-point “Cleared for maneuver” where a 5-point context-echo was easy.
+* **Pilots vary** between solid 3s and occasional 4/5s; the best lines are rich deorbit/entry calls and clean acknowledgements that explicitly reference the maneuver.
+
+If you’d like, next step I can:
+
+* Break down **per-event error rates** (e.g., “Event 7 is the most failure-prone across runs”), or
+* Tighten the heuristics even more to align closer to your worked-example 59-point scoring, then regenerate the CSV.
