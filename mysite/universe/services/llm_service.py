@@ -3,6 +3,7 @@ from openai import OpenAI
 from mysite.universe.models.actor import Actor
 import yaml
 import io
+import re
 from contextlib import redirect_stdout, redirect_stderr
 import json
 from ..schemas.dialogue_schema import (
@@ -105,12 +106,11 @@ The JSON must match this exact schema:
             prompt += user_msg
 
         try:
-            # Debug output before API call - show what's ACTUALLY being sent
             if not self.quiet_mode:
                 print("\n" + "="*80)
-                print("=== FINAL PROMPT TO LLM (ACTUAL PROMPT SENT TO API) ===")
+                print("=== PROMPT ===")
                 print("="*80)
-                print("=== SYSTEM MESSAGE (AFTER chat() MODIFICATIONS) ===")
+                print("=== SYSTEM MESSAGE ===")
                 print(system_msg)
                 print("\n=== USER MESSAGE ===")
                 print(user_msg)
@@ -125,10 +125,10 @@ The JSON must match this exact schema:
                 handler = logging.FileHandler('llm_debug.log', mode='a', encoding='utf-8')
                 handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
                 logger.addHandler(handler)
-            logger.debug(f"=== ACTUAL PROMPT SENT TO LLM API ===")
-            logger.debug(f"SYSTEM MESSAGE (after chat() modifications):\n{system_msg}")
+            logger.debug(f"=== PROMPT SENT TO LLM API ===")
+            logger.debug(f"SYSTEM MESSAGE:\n{system_msg}")
             logger.debug(f"USER MESSAGE:\n{user_msg}")
-            logger.debug(f"=== END ACTUAL PROMPT ===\n")
+            logger.debug(f"=== END PROMPT ===\n")
 
             # Make API call
             if self.quiet_mode:
@@ -618,139 +618,153 @@ The response must be ONLY the raw JSON object, nothing else."""
         logger.debug(f"SYSTEM PROMPT:\n{system_prompt}")
         logger.debug(f"USER PROMPT:\n{json.dumps(user_prompt, indent=2)}")
 
+        # Simple regex-based safety fence for bad dialogue content
+        bad_msg_re = re.compile(r"\$\{|\{\s*\"|Error in communication", re.IGNORECASE)
+        max_retries = 2
+
         try:
-            response = self.chat(messages, temperature=temperature)
-            
-            logger.debug(f"RAW RESPONSE:\n{response}")
-            logger.debug(f"=== END LLMService.get_actor_json_response ===\n")
-            
-            # Try to extract JSON from response
-            try:
-                # First, check if this is a schema definition (common LLM mistake)
-                # Schema definitions have "$defs", "description", "properties", "title" etc.
-                if any(keyword in response for keyword in ['"$defs"', '"description"', '"properties"', '"title"', '"type"']):
-                    # This looks like a schema definition - try to extract actual message
-                    if not self.quiet_mode:
-                        print("Warning: LLM returned schema definition instead of message. Attempting extraction...")
-                    
-                    # Try to find a JSON object with "message" field that looks like a dialogue message
-                    import re
-                    # Pattern: find JSON objects that have "message" field and look like dialogue
-                    # Look for objects with message, role, speaker_callsign, recipient_callsign
-                    pattern = r'\{\s*"(?:role|speaker_callsign|recipient_callsign|message|format|requires_readback)"\s*:\s*[^}]+\}'
-                    matches = list(re.finditer(pattern, response, re.DOTALL))
-                    
-                    # Try each potential match
-                    for match in matches:
-                        try:
-                            # Expand match to include full object (find matching braces)
-                            start = match.start()
-                            brace_count = 0
-                            end = start
-                            for i, char in enumerate(response[start:], start):
-                                if char == '{':
-                                    brace_count += 1
-                                elif char == '}':
-                                    brace_count -= 1
-                                    if brace_count == 0:
-                                        end = i + 1
-                                        break
-                            
-                            if end > start:
-                                json_str = response[start:end]
-                                json_data = json.loads(json_str)
+            for attempt in range(max_retries + 1):
+                response = self.chat(messages, temperature=temperature)
+                
+                logger.debug(f"RAW RESPONSE:\n{response}")
+                logger.debug(f"=== END LLMService.get_actor_json_response ===\n")
+                
+                # Try to extract JSON from response
+                try:
+                    # First, check if this is a schema definition (common LLM mistake)
+                    # Schema definitions have "$defs", "description", "properties", "title" etc.
+                    if any(keyword in response for keyword in ['"$defs"', '"description"', '"properties"', '"title"', '"type"']):
+                        # This looks like a schema definition - try to extract actual message
+                        if not self.quiet_mode:
+                            print("Warning: LLM returned schema definition instead of message. Attempting extraction...")
+                        
+                        # Try to find a JSON object with "message" field that looks like a dialogue message
+                        # Pattern: find JSON objects that have "message" field and look like dialogue
+                        # Look for objects with message, role, speaker_callsign, recipient_callsign
+                        pattern = r'\{\s*"(?:role|speaker_callsign|recipient_callsign|message|format|requires_readback)"\s*:\s*[^}]+\}'
+                        matches = list(re.finditer(pattern, response, re.DOTALL))
+                        
+                        # Try each potential match
+                        for match in matches:
+                            try:
+                                # Expand match to include full object (find matching braces)
+                                start = match.start()
+                                brace_count = 0
+                                end = start
+                                for i, char in enumerate(response[start:], start):
+                                    if char == '{':
+                                        brace_count += 1
+                                    elif char == '}':
+                                        brace_count -= 1
+                                        if brace_count == 0:
+                                            end = i + 1
+                                            break
                                 
-                                # Convert string enum values to enum types
-                                if 'role' in json_data and isinstance(json_data['role'], str):
-                                    json_data['role'] = Role(json_data['role'])
-                                if 'format' in json_data and isinstance(json_data['format'], str):
-                                    json_data['format'] = DialogueFormat(json_data['format'])
-                                
-                                # Check if this looks like a dialogue message (has message field, not schema)
-                                if 'message' in json_data and 'role' in json_data and '$defs' not in json_data:
-                                    msg_obj = DialogueMessage(**json_data)
-                                    # Correct recipient if needed
-                                    if msg_obj.recipient_callsign != recipient_callsign:
-                                        msg_obj = DialogueMessage.model_construct(
-                                            role=msg_obj.role,
-                                            speaker_callsign=msg_obj.speaker_callsign,
-                                            recipient_callsign=recipient_callsign,
-                                            format=msg_obj.format,
-                                            message=msg_obj.message,
-                                            requires_readback=msg_obj.requires_readback
-                                        )
-                                    return json.dumps(msg_obj.model_dump())
-                        except (json.JSONDecodeError, ValueError, TypeError):
+                                if end > start:
+                                    json_str = response[start:end]
+                                    json_data = json.loads(json_str)
+                                    
+                                    # Convert string enum values to enum types
+                                    if 'role' in json_data and isinstance(json_data['role'], str):
+                                        json_data['role'] = Role(json_data['role'])
+                                    if 'format' in json_data and isinstance(json_data['format'], str):
+                                        json_data['format'] = DialogueFormat(json_data['format'])
+                                    
+                                    # Check if this looks like a dialogue message (has message field, not schema)
+                                    if 'message' in json_data and 'role' in json_data and '$defs' not in json_data:
+                                        msg_obj = DialogueMessage(**json_data)
+                                        # Correct recipient if needed
+                                        if msg_obj.recipient_callsign != recipient_callsign:
+                                            msg_obj = DialogueMessage.model_construct(
+                                                role=msg_obj.role,
+                                                speaker_callsign=msg_obj.speaker_callsign,
+                                                recipient_callsign=recipient_callsign,
+                                                format=msg_obj.format,
+                                                message=msg_obj.message,
+                                                requires_readback=msg_obj.requires_readback
+                                            )
+                                        # Safety fence: check message content
+                                        msg_text = msg_obj.message or ""
+                                        if bad_msg_re.search(msg_text) and attempt < max_retries:
+                                            logger.debug("Bad dialogue message content detected (schema branch); retrying LLM call")
+                                            continue
+                                        return json.dumps(msg_obj.model_dump())
+                            except (json.JSONDecodeError, ValueError, TypeError):
+                                continue
+                        
+                        # If we couldn't extract from schema, raise error
+                        raise ValueError("LLM returned schema definition instead of dialogue message. Response: " + response[:200])
+                    
+                    # Normal JSON extraction - look for JSON object boundaries
+                    start = response.find('{')
+                    end = response.rfind('}') + 1
+                    if start >= 0 and end > start:
+                        json_str = response[start:end]
+                        json_data = json.loads(json_str)
+                        
+                        # Skip if this looks like a schema definition
+                        if '$defs' in json_data or ('properties' in json_data and 'type' in json_data):
+                            raise ValueError("Response appears to be a schema definition, not a message")
+                        
+                        # Convert string enum values to enum types
+                        if 'role' in json_data and isinstance(json_data['role'], str):
+                            json_data['role'] = Role(json_data['role'])
+                        if 'format' in json_data and isinstance(json_data['format'], str):
+                            json_data['format'] = DialogueFormat(json_data['format'])
+                        
+                        msg_obj = DialogueMessage(**json_data)
+                        
+                        # CRITICAL FIX: Ensure recipient_callsign is correct
+                        # We know the correct recipient from our logic above, so enforce it
+                        if msg_obj.recipient_callsign != recipient_callsign:
+                            # Correct the recipient if LLM got it wrong
+                            # Use model_construct to bypass validation (message text may not match new recipient)
+                            msg_obj = DialogueMessage.model_construct(
+                                role=msg_obj.role,
+                                speaker_callsign=msg_obj.speaker_callsign,
+                                recipient_callsign=recipient_callsign,  # Use our determined recipient
+                                format=msg_obj.format,
+                                message=msg_obj.message,
+                                requires_readback=msg_obj.requires_readback
+                            )
+                        
+                        # Safety fence: check message content
+                        msg_text = msg_obj.message or ""
+                        if bad_msg_re.search(msg_text) and attempt < max_retries:
+                            logger.debug("Bad dialogue message content detected (normal branch); retrying LLM call")
                             continue
+                        
+                        return json.dumps(msg_obj.model_dump())
+                    else:
+                        raise ValueError("No JSON object found in response")
+                except Exception as e:
+                    if not self.quiet_mode:
+                        print(f"Error parsing JSON response: {e}")
+                        print(f"Raw response: {response}")
                     
-                    # If we couldn't extract from schema, raise error
-                    raise ValueError("LLM returned schema definition instead of dialogue message. Response: " + response[:200])
-                
-                # Normal JSON extraction - look for JSON object boundaries
-                start = response.find('{')
-                end = response.rfind('}') + 1
-                if start >= 0 and end > start:
-                    json_str = response[start:end]
-                    json_data = json.loads(json_str)
+                    # If JSON parsing fails, try to construct a valid response
+                    # CRITICAL: Use actual recipient from context, never placeholders
+                    fallback_recipient = recipient_callsign  # Use the recipient we determined above
+                    if not fallback_recipient:
+                        # Try to extract from response text as last resort
+                        # Look for a callsign pattern in the response
+                        match = re.search(r'([A-Z][A-Z0-9_\s]+),?\s+this is', response.upper())
+                        if match:
+                            fallback_recipient = match.group(1).strip()
                     
-                    # Skip if this looks like a schema definition
-                    if '$defs' in json_data or ('properties' in json_data and 'type' in json_data):
-                        raise ValueError("Response appears to be a schema definition, not a message")
+                    if not fallback_recipient:
+                        # If we truly cannot determine recipient, this is an error
+                        raise ValueError(f"Cannot determine recipient for fallback response. Actor: {actor.name}, nav_ctx: {nav_ctx}")
                     
-                    # Convert string enum values to enum types
-                    if 'role' in json_data and isinstance(json_data['role'], str):
-                        json_data['role'] = Role(json_data['role'])
-                    if 'format' in json_data and isinstance(json_data['format'], str):
-                        json_data['format'] = DialogueFormat(json_data['format'])
-                    
-                    msg_obj = DialogueMessage(**json_data)
-                    
-                    # CRITICAL FIX: Ensure recipient_callsign is correct
-                    # We know the correct recipient from our logic above, so enforce it
-                    if msg_obj.recipient_callsign != recipient_callsign:
-                        # Correct the recipient if LLM got it wrong
-                        # Use model_construct to bypass validation (message text may not match new recipient)
-                        msg_obj = DialogueMessage.model_construct(
-                            role=msg_obj.role,
-                            speaker_callsign=msg_obj.speaker_callsign,
-                            recipient_callsign=recipient_callsign,  # Use our determined recipient
-                            format=msg_obj.format,
-                            message=msg_obj.message,
-                            requires_readback=msg_obj.requires_readback
-                        )
-                    
-                    return json.dumps(msg_obj.model_dump())
-                else:
-                    raise ValueError("No JSON object found in response")
-            except Exception as e:
-                if not self.quiet_mode:
-                    print(f"Error parsing JSON response: {e}")
-                    print(f"Raw response: {response}")
-                
-                # If JSON parsing fails, try to construct a valid response
-                # CRITICAL: Use actual recipient from context, never placeholders
-                fallback_recipient = recipient_callsign  # Use the recipient we determined above
-                if not fallback_recipient:
-                    # Try to extract from response text as last resort
-                    import re
-                    # Look for a callsign pattern in the response
-                    match = re.search(r'([A-Z][A-Z0-9_\s]+),?\s+this is', response.upper())
-                    if match:
-                        fallback_recipient = match.group(1).strip()
-                
-                if not fallback_recipient:
-                    # If we truly cannot determine recipient, this is an error
-                    raise ValueError(f"Cannot determine recipient for fallback response. Actor: {actor.name}, nav_ctx: {nav_ctx}")
-                
-                role_value = actor.role.value if hasattr(actor.role, 'value') else str(actor.role)
-                return json.dumps({
-                    "role": role_value,
-                    "speaker_callsign": actor.name,
-                    "recipient_callsign": fallback_recipient,
-                    "format": "RESPONSE",
-                    "message": f"{fallback_recipient}, {actor.name} here. {response.strip()}",
-                    "requires_readback": False
-                })
+                    role_value = actor.role.value if hasattr(actor.role, 'value') else str(actor.role)
+                    return json.dumps({
+                        "role": role_value,
+                        "speaker_callsign": actor.name,
+                        "recipient_callsign": fallback_recipient,
+                        "format": "RESPONSE",
+                        "message": f"{fallback_recipient}, {actor.name} here. {response.strip()}",
+                        "requires_readback": False
+                    })
         except Exception as e:
             # Always log the actual error, even in quiet mode
             import logging
