@@ -360,16 +360,6 @@ class ScriptService:
             "ship_name": ship_call_sign,
             "pilot_name": pilot.name,
             "maneuver": nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver,
-            "llm_system_prompt": f"{pilot.get_identity_prompt()} {pilot.get_instruction_prompt()}",
-            # Build a more specific example using the actual context
-            "llm_user_prompt": (
-                f"Current situation: {ship_call_sign} is performing a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver "
-                f"from {get_location_name(nav_event.origin)} to {get_location_name(nav_event.destination)}. "
-                f"Currently at {get_location_name(nav_event.current)}, next stop is {get_next_name(nav_event)}.\n\n"
-                f"You are requesting clearance from {controller_name} for a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver.\n"
-                f"<YOUR LINE> should be something similar to: '{templates[0]}'\n"
-                "Given the situation, say <YOUR LINE> in character, but feel free to improvise a bit and make it your own."
-            ),
             # Add new context without breaking existing functionality
             "context": {
                 "mission": {
@@ -447,29 +437,69 @@ class ScriptService:
             # Pilot has made a request -> Controller approves it
             # Controllers APPROVE, AUTHORIZE, CONFIRM, and CLEAR - they don't request
             # ====================================================================
-            # CRITICAL: Get actual names from metadata - these should always be present
-            control_name = dialogue.metadata.get("control_name")
-            ship_name = dialogue.metadata.get("ship_name")
-            
-            # If names are missing, this is an error - we need actual values
-            if not control_name:
-                raise ValueError(f"Missing control_name in dialogue metadata. Event: {dialogue}")
-            if not ship_name:
-                raise ValueError(f"Missing ship_name in dialogue metadata. Event: {dialogue}")
-            
-            control_name = control_name.upper()
-            ship_name = ship_name.upper()
 
+            # Populate variables from dialogue.metadata() 
+            control_name = dialogue.metadata.get("control_name", "").upper()
+            ship_name = dialogue.metadata.get("ship_name", "").upper()
             control_actor = dialogue.expected_reply_actor
             if not control_actor:
                 control_actor = Controller.objects.filter(name=control_name).first()
                 if not control_actor:
                     control_actor = Controller.create(name=control_name)
 
-            # Extract what the pilot requested from their message
+            # Gather all relevant context at the top for clarity and to avoid duplication
             maneuver = dialogue.metadata.get("maneuver", "maneuver")
-            current_location = dialogue.metadata.get("context", {}).get("current_situation", {}).get("location", "current location")
-            
+            current_location = (
+                dialogue.metadata.get("context", {})
+                .get("current_situation", {})
+                .get("location")
+                or dialogue.metadata.get("current_location")
+            )
+            current_situation = (
+                dialogue.metadata.get("context", {}).get("current_situation")
+            )
+            destination = (
+                dialogue.metadata.get("context", {})
+                .get("mission", {})
+                .get("destination")
+                or dialogue.metadata.get("destination")
+            )
+            previous_exchanges = dialogue.metadata.get("previous_exchanges")
+            mission = dialogue.metadata.get("context", {}).get("mission")
+            extra_context = dialogue.metadata.get("extra_context")
+            pilot_name = dialogue.metadata.get("pilot_name")
+            pilot_callsign = dialogue.metadata.get("pilot_callsign")
+            ship_name_meta = dialogue.metadata.get("ship_name")
+            control_name_meta = dialogue.metadata.get("control_name")
+            callsign = dialogue.metadata.get("callsign")
+            actor_role = getattr(dialogue.actor, 'role', None)
+            event_timestamp = getattr(dialogue, 'timestamp', None)
+
+            # Build navigation context from dialogue.metadata()
+            nav_context = {
+                "maneuver_type": maneuver,
+                "maneuver": maneuver,
+                "current_location": current_location,
+                "current_situation": current_situation,
+                "destination": destination,
+                "recipient": ship_name,  # using the actual ship_name for recipient
+                "pilot_name": pilot_name,
+                "pilot_callsign": pilot_callsign,
+                "ship_name": ship_name_meta,
+                "control_name": control_name_meta,
+                "callsign": callsign,
+                "actor_role": actor_role,
+                "event_timestamp": event_timestamp,
+                "previous_exchanges": previous_exchanges,
+                "mission": mission,
+                "extra_context": extra_context,
+            }
+            # Remove None values to avoid passing "UNKNOWN" defaults
+            nav_context = {k: v for k, v in nav_context.items() if v is not None}
+            # Extract what the pilot requested from their message, now from nav_context (built above)
+            maneuver = nav_context.get("maneuver", "maneuver")
+            current_location = nav_context.get("current_location", "current location")
+
             # Build an approval example - controllers APPROVE, not request
             # Format: "$SHIP, you are approved for $EVENT" or "$SHIP, cleared for $EVENT"
             if maneuver == "launch" or maneuver == "takeoff":
@@ -479,27 +509,15 @@ class ScriptService:
             elif maneuver == "insertion":
                 reply_text = f"{ship_name}, {control_name}. Insertion burn approved."
             elif maneuver == "circularize":
-                reply_text = f"{ship_name}, {control_name} here. Cleared to circularize."
+                reply_text = f"{ship_name}, {control_name} here. Circularization approved."
             elif maneuver == "deorbit":
                 reply_text = f"{ship_name}, {control_name}. Cleared for deorbit... you can head on in."
             else:
                 reply_text = f"{ship_name}, {control_name}. Cleared for {maneuver}."
 
             # Build context - use DialogueMessage if available, otherwise use string
-            context = [previous_message] if previous_message else [dialogue.text]
-            
-            # Build navigation context for LLM
-            # CRITICAL: Always use actual names from metadata, never placeholders
-            nav_context = {
-                "maneuver_type": dialogue.metadata.get("maneuver"),
-                "current_location": dialogue.metadata.get("context", {}).get("current_situation", {}).get("location"),
-                "destination": dialogue.metadata.get("context", {}).get("mission", {}).get("destination"),
-                "recipient": ship_name  # Controller is responding to the pilot - use actual ship name
-            }
-            
-            # Remove None values to avoid passing "UNKNOWN" defaults
-            nav_context = {k: v for k, v in nav_context.items() if v is not None}
-
+            context = [previous_message] if previous_message else [dialogue.text]            
+        
             # Log the call before making it - print to console if LLM is not in quiet mode
             import logging
             logger = logging.getLogger('script_service_debug')
@@ -555,19 +573,6 @@ class ScriptService:
 
             metadata = dialogue.metadata.copy() if dialogue.metadata else {}
             metadata.update({
-                'llm_system_prompt': f"{control_actor.get_identity_prompt()} {control_actor.get_instruction_prompt()}",
-                # Build a more specific example using the actual context
-                'llm_user_prompt': (
-                    f"SITUATION: {ship_name} has requested clearance for a {maneuver} maneuver. "
-                    f"They are currently at {current_location}.\n\n"
-                    f"PILOT'S REQUEST: {dialogue.text}\n\n"
-                    f"YOUR JOB: APPROVE their request. Everything is in order - this is routine and good!\n"
-                    f"You are NOT requesting anything - you are APPROVING their request.\n\n"
-                    f"APPROVE by echoing back what they asked for in affirmative/declarative mode.\n"
-                    f"Example: '{ship_name}, {control_name}. Cleared for {maneuver}.'\n"
-                    f"Or: '{ship_name}, you are approved for {maneuver}.'\n\n"
-                    f"Your response should be an APPROVAL, not a request."
-                ),
                 'ship_name': ship_name,
                 'control_name': control_name,
                 # Preserve all existing metadata while ensuring context is maintained
@@ -711,22 +716,8 @@ class ScriptService:
             # CRITICAL: Ensure text is natural language, never JSON
             llm_text = self._validate_text_is_natural_language(llm_text)
 
-            # Build explicit prompt for acknowledgment
-            maneuver = dialogue.metadata.get("maneuver", "maneuver")
-            examples_str = "\n".join([f"- '{ex}'" for ex in acknowledgment_examples[:3]])
-            
             metadata = dialogue.metadata.copy() if dialogue.metadata else {}
             metadata.update({
-                'llm_system_prompt': f"{pilot_actor.get_identity_prompt()} {pilot_actor.get_instruction_prompt()}",
-                'llm_user_prompt': (
-                    f"SITUATION: {control_name} has just APPROVED your request for a {maneuver} maneuver.\n\n"
-                    f"CONTROLLER'S APPROVAL: {dialogue.text}\n\n"
-                    f"YOUR JOB: ACKNOWLEDGE receipt of the approval. This is a BRIEF confirmation, NOT a new request!\n\n"
-                    f"You are simply confirming that you received and understood the approval.\n"
-                    f"Keep it SHORT - one or two words plus your callsign is typical.\n\n"
-                    f"Examples of appropriate acknowledgments:\n{examples_str}\n\n"
-                    f"Your response should be a BRIEF ACKNOWLEDGMENT, not a new request or question."
-                ),
                 'ship_name': ship_name,
                 'control_name': control_name,
                 'pilot_name': pilot_name or pilot_actor.name,

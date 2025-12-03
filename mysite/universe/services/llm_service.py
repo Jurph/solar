@@ -14,8 +14,35 @@ from ..schemas.dialogue_schema import (
 
 class LLMService:
     """
-    A service for interacting with the Qwen2.5 model via Ollama.
+    A service for interacting with a local LLM model via Ollama.
     """
+    
+    # Compiled regex for detecting invalid dialogue message content
+    # This is the SINGLE SOURCE OF TRUTH for message content validation
+    # Patterns detected: template variables (${...}), JSON fragments ({ "...), error fallbacks
+    _INVALID_DIALOGUE_CONTENT_PATTERN = re.compile(r"\$\{|\{\s*\"|Error in communication", re.IGNORECASE)
+    
+    @classmethod
+    def is_invalid_dialogue_message(cls, message_text: str) -> bool:
+        """
+        Check if a dialogue message contains invalid content that should trigger a retry.
+        
+        All code that needs to validate dialogue message content should use this method.
+        
+        Detects:
+        - Template variables: ${...} patterns
+        - JSON fragments: { " patterns (leaked JSON structure)
+        - Error fallbacks: "Error in communication" (case-insensitive)
+        
+        Args:
+            message_text: The message text to validate
+            
+        Returns:
+            True if message contains invalid content (should retry), False otherwise
+        """
+        if not message_text or not isinstance(message_text, str):
+            return False
+        return bool(cls._INVALID_DIALOGUE_CONTENT_PATTERN.search(message_text))
 
     def __init__(self, config_path: str = "llm.config", quiet_mode: bool = True):
         """
@@ -348,7 +375,6 @@ The JSON must match this exact schema:
             # Try to get from the line parameter if it contains a callsign
             if line:
                 # Extract callsign from line (e.g., "SHIP_NAME, this is CONTROL")
-                import re
                 match = re.match(r'^([A-Z][A-Z0-9_\s]+),', line.upper())
                 if match:
                     recipient_callsign = match.group(1).strip()
@@ -410,25 +436,30 @@ The JSON must match this exact schema:
             # For controllers, the station name IS the callsign
             speaker_callsign = actor.name
             speaker_description = f"{actor.name} (anonymous controller)"
-            controller_rule = f"""5. As a CONTROLLER: 
+            controller_rule = f"""CRITICAL SAFETY RULES:
+1. Always identify yourself as {speaker_callsign} when speaking (not a personal name)
+2. Your job is to APPROVE, AUTHORIZE, CONFIRM, and CLEAR pilots who are requesting clearance for routine maneuvers.
+3. You almost never REQUEST anything; you are in a position of authority - pilots request, you approve.
+
+As a CONTROLLER:
    - You APPROVE, AUTHORIZE, CONFIRM, and CLEAR requests in a professional, declarative manner
    - You do NOT request things - that's what pilots do
    - You do NOT describe 'where things stand' in the situation. You just approve the request.
    - When a pilot requests clearance, you APPROVE it in declarative/affirmative mode
    - Speak naturally and conversationally
-   - Use proper grammar: don't say "cleared for circularize", instead say "cleared for circularization". 
+   - Use proper grammar: don't say "cleared for circularize", instead say "cleared for circularization".
    - Keep responses professional, specific, and friendly.
-   - Examples: 
-   - "{recipient_callsign}, {speaker_callsign}. Cleared for {maneuver_type} maneuver."
-   - "{recipient_callsign}, {speaker_callsign}, maneuver is approved."
-   - "{recipient_callsign}, {speaker_callsign}. Approved for {maneuver_type}, go ahead."
-   - "{recipient_callsign}, {speaker_callsign}, you're cleared to proceed. Begin your {maneuver_type} when you're ready." 
-   - "{recipient_callsign}, {speaker_callsign}, confirmed for {maneuver_type} maneuver. Safe travels."
-   - CRITICAL: Use ACTUAL callsigns, NEVER use placeholders like $SHIP or $EVENT or CONTROL or PILOT
-   - CRITICAL: Your response must be natural dialogue, NOT structured data or metadata like VARIABLE:VALUE or RANGE:750KM.
-   """
+   - Examples of a valid message field: 
+   - "message": "{recipient_callsign}, {speaker_callsign}. Cleared for {maneuver_type} maneuver."
+   - "message": "{recipient_callsign}, {speaker_callsign}, maneuver is approved."
+   - "message": "{recipient_callsign}, {speaker_callsign}. Approved for {maneuver_type}, go ahead."
+   - "message": "{recipient_callsign}, {speaker_callsign}, you're cleared to proceed. Begin your {maneuver_type} when you're ready."
+   - "message": "{recipient_callsign}, {speaker_callsign}, confirmed for {maneuver_type} maneuver. Safe travels."
+   - CRITICAL: When constructing the message field, use the ACTUAL callsigns, NEVER use placeholders like $SHIP or $EVENT or CONTROL or PILOT
+   - CRITICAL: The message field must be natural dialogue, NOT structured data or metadata like VARIABLE:VALUE or RANGE:750KM.
+"""
             pilot_rule = ""
-            example_message = f"{recipient_callsign}, {speaker_callsign}. Cleared for maneuver."
+            example_message = f"{recipient_callsign}, {speaker_callsign}. Cleared for maneuver." # TODO: this is boring, why are we even setting this variable??
         
         # Build acknowledgment-specific instruction if this is an acknowledgment
         acknowledgment_instruction = ""
@@ -472,11 +503,16 @@ REMEMBER: The controller has ALREADY approved you. You are just politely confirm
 ═══════════════════════════════════════════════════════════════════════════════
 """
         
-        system_prompt = f"""You are {speaker_description} in a space traffic control simulation.
+        system_prompt = f"""IMPORTANT: You must respond with ONLY a valid JSON object.
+Your entire response must be parseable as JSON.
+Do not include any text before or after the JSON.
+Do NOT wrap the JSON in markdown code blocks (no ```json or ```).
+Return ONLY the raw JSON object, nothing else.
+
+You are {speaker_description} in a space traffic control simulation.
 
 {actor.get_identity_prompt()}
 {acknowledgment_instruction}
-CRITICAL: You are responding to {recipient_callsign}. Your recipient_callsign MUST be "{recipient_callsign}".
 
 IMPORTANT: You must respond with ONLY a valid JSON object in the following format:
 {{
@@ -488,34 +524,26 @@ IMPORTANT: You must respond with ONLY a valid JSON object in the following forma
     "requires_readback": false
 }}
 
-The message field must follow these rules:
+The role, speaker, recipient, and format fields must match the example.
+
+You are responsible for tailoring the message field to follow these rules:
+
 1. Always identify both parties in communications
-2. For initial contact, address recipient before identifying yourself
+2. Address recipient before identifying yourself
 3. Keep messages clear, concise, and professional
-4. Set requires_readback to true for any vectors, headings, or critical instructions
-{f'5. CRITICAL FOR ACKNOWLEDGMENTS: This is an ACKNOWLEDGMENT, not a request. Keep it BRIEF - one or two words plus your callsign. Examples: "{recipient_callsign}, {speaker_callsign}. Roger." or "{recipient_callsign}, {speaker_callsign}. Acknowledged." Do NOT make a new request or ask questions.' if is_acknowledgment else ''}
+{f'4. CRITICAL FOR ACKNOWLEDGMENTS: This is an ACKNOWLEDGMENT, not a request. Keep it BRIEF - one or two words plus your callsign. Examples: "{recipient_callsign}, {speaker_callsign}. Roger." or "{recipient_callsign}, {speaker_callsign}. Acknowledged." Do NOT make a new request or ask questions.' if is_acknowledgment else ''}
 
 {controller_rule}
 
 {pilot_rule}
 
-Example response for {'acknowledgment' if is_acknowledgment else 'initial contact'}:
+Example response:
 {{
     "role": "{role_value}",
     "speaker_callsign": "{speaker_callsign}",
     "recipient_callsign": "{recipient_callsign}",
     "format": "{'ACKNOWLEDGMENT' if is_acknowledgment else 'INITIAL_CONTACT'}",
     "message": "{example_message}",
-    "requires_readback": false
-}}
-
-Example response for readback:
-{{
-    "role": "{role_value}",
-    "speaker_callsign": "{speaker_callsign}",
-    "recipient_callsign": "{recipient_callsign}",
-    "format": "READBACK",
-    "message": "{recipient_callsign}, {speaker_callsign} good copy. Message received.",
     "requires_readback": false
 }}
 
@@ -574,11 +602,35 @@ The response must be ONLY the raw JSON object, nothing else."""
                     f"Examples: '{recipient_callsign}, {speaker_callsign}. Roger.' or '{recipient_callsign}, {speaker_callsign}. Acknowledged.'\n"
                     f"Do NOT make a new request. Simply confirm you received the approval."
                 )
+        
+        # Add summary instruction for controllers responding to pilot requests
+        # This helps the LLM focus on the immediate context (matches recommendations.txt style)
+        if actor.role == Actor.Role.CONTROLLER and previous_exchanges and not is_acknowledgment:
+            # Get the pilot's request from the most recent exchange
+            last_exchange = previous_exchanges[-1]
+            pilot_name = nav_ctx.get("pilot_name") or (last_exchange.speaker_callsign if hasattr(last_exchange, 'speaker_callsign') else "the pilot")
+            pilot_request_text = last_exchange.message if hasattr(last_exchange, 'message') else str(last_exchange)
+            ship_name = last_exchange.speaker_callsign if hasattr(last_exchange, 'speaker_callsign') else recipient_callsign
+            maneuver_desc = nav_ctx.get("maneuver_type", "maneuver")
+            destination = nav_ctx.get("destination") or current_situation.get("destination", "")
+            
+            # Build summary instruction as a single string (no += concatenation)
+            destination_part = f" to {destination}" if destination else ""
+            maneuver_part = f" for a {maneuver_desc} maneuver" if maneuver_desc and maneuver_desc != "maneuver" else ""
+            user_prompt["summary"] = (
+                f"Now: the {ship_name} ({pilot_name}) has just sent a request for clearance{destination_part}{maneuver_part}. "
+                f"The request reads:\n\n[{pilot_name}]: {pilot_request_text}\n\n"
+                f"Given the above examples, all of the rules above, and your duties as a CONTROLLER, please generate a reply.\n\n"
+                f"Reply ONLY in the form of a valid JSON object, including an appropriate message field."
+            )
+
+        # Serialize user_prompt to JSON (all fields, including summary if present)
+        user_message_content = json.dumps(user_prompt, indent=2)
 
         # Send chat request
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_prompt, indent=2)}
+            {"role": "user", "content": user_message_content}
         ]
 
         # Log the call for debugging - print to console if not in quiet mode
@@ -618,8 +670,6 @@ The response must be ONLY the raw JSON object, nothing else."""
         logger.debug(f"SYSTEM PROMPT:\n{system_prompt}")
         logger.debug(f"USER PROMPT:\n{json.dumps(user_prompt, indent=2)}")
 
-        # Simple regex-based safety fence for bad dialogue content
-        bad_msg_re = re.compile(r"\$\{|\{\s*\"|Error in communication", re.IGNORECASE)
         max_retries = 2
 
         try:
@@ -683,9 +733,8 @@ The response must be ONLY the raw JSON object, nothing else."""
                                                 message=msg_obj.message,
                                                 requires_readback=msg_obj.requires_readback
                                             )
-                                        # Safety fence: check message content
-                                        msg_text = msg_obj.message or ""
-                                        if bad_msg_re.search(msg_text) and attempt < max_retries:
+                                        # Safety fence: check message content using single source of truth
+                                        if self.is_invalid_dialogue_message(msg_obj.message) and attempt < max_retries:
                                             logger.debug("Bad dialogue message content detected (schema branch); retrying LLM call")
                                             continue
                                         return json.dumps(msg_obj.model_dump())
@@ -728,9 +777,8 @@ The response must be ONLY the raw JSON object, nothing else."""
                                 requires_readback=msg_obj.requires_readback
                             )
                         
-                        # Safety fence: check message content
-                        msg_text = msg_obj.message or ""
-                        if bad_msg_re.search(msg_text) and attempt < max_retries:
+                        # Safety fence: check message content using single source of truth
+                        if self.is_invalid_dialogue_message(msg_obj.message) and attempt < max_retries:
                             logger.debug("Bad dialogue message content detected (normal branch); retrying LLM call")
                             continue
                         
