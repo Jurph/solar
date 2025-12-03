@@ -283,94 +283,23 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - LLM service redundancy eliminated
 - All existing functionality preserved
 
-#### Problem 4: Clear up dialogue glitches and improve aesthetic quality of all prose 
+#### Problem 4: Prompt Sprawl makes quality control of LLM process hard 
 
-**Big Picture:** Analysis of 25 llama3 dialogue runs (average score: 68/100, range: 53-74) reveals systematic issues preventing higher-quality dialogue. The main problems are: JSON/metadata leakage (scoring 0), controllers not using context (scoring 3 instead of 5), poor grammar patterns, and error fallbacks. These issues prevent dialogue from reaching the target quality level where it sounds natural and contextually aware.
+**Big Picture:** Even with limited styles of dialogue ("request", "response", "acknowledgement") we are getting bogged down in too many details fine-tuning each prompt, and boxing ourselves in for later expansion into e.g. "inspection", "maintenance", "emergency", etc. - or even letting characters have a short open-ended conversation. Prompts are either too long or not effective at mandating JSON-only formats.  
 
-**Overall Intent:** Improve dialogue quality scores from current average of 68/100 to consistently 75+ by fixing systematic errors, improving context usage, and enhancing prompt structure. Focus on making controllers echo specific maneuvers (potential +12 points per run) and ensuring pilots reference approved maneuvers in acknowledgments.
+**Path Forward:** Build prompts from reusable templates, using string-builder functions like buildSystemPrompt() and buildUserPrompt(), which will take arguments like an optional previous dialogue object, an Actor/Role, and dialogue type ("Maneuver" consisting of request, response, acknowledgment; and later on "Inspection" consisting of orders, acknowledgement, scan results, permission to proceed, and acknowledgement; etc.) This will let us extend our dialogue options by templating out sets of exchanges for which we build a pair of prompts for each dialogue element. 
 
-**Path Forward:**
+SYSTEM PROMPT: 
+1. Global System Prompt Header [static] - here's your schema, we always speak JSON around here, always use JSON. Pay particular attention to generating a valid message field.  
+2. Role assignment [from Actor] - you are a $ROLE and follow these basic rules. 
+3. JSON defaults [from dialogue type] - You will use $SENDER for the sender field, $RECIPIENT for the recipient field. 
+4. Global System Prompt Footer [static] - You will need to be creative in constructing a valid and evocative MESSAGE field; those rules follow.  
 
-1. **Fix JSON/Metadata/Template Leakage (Score 0 - Critical)**
-   - Add stronger validation in `_validate_text_is_natural_language()` to detect and filter JSON/metadata
-   - Implement retry logic: if response contains JSON/metadata/template variables, regenerate with stricter prompt
-   - Add post-processing filter that detects and strips template variables (e.g., `${current_situation...}`) before returning text
-   - Strengthen prompt warnings: "CRITICAL: Your response must be natural dialogue, NOT structured data, NOT JSON, NOT template variables"
-   - Add detection for common error phrases like "Error in communications" and trigger retry
+USER PROMPT: 
+4. Actor details [from dialogue context] - you are $ACTOR, a $ROLE who is talking to $COUNTERPART. You are $SITUATION and they are $SITUATION
+5. Response examples [from dialogue type] - valid message fields you could build include examples like: $EX1, $EX2, or $EX3 
+6. Response details [static] - an INVALID message field would have FLAW1, FLAW2, FLAW3, so avoid that as you build the valid message. 
+7. Setup [programmatic] - The last thing $COUNTERPART said was $DIALOGUE. 
+8. Prompt [static] - Given all of the above context, what will you say? Remember to generate a JSON object with a valid message field. 
 
-2. **Improve Controller Context Usage (Score 3 → 5 - High Impact)**
-   - Add context cue right before response request: "With all that in mind, here's the previous line from the pilot: '[PILOT'S REQUEST]'. Respond naturally and use context from the dialogue to respond."
-   - Add hidden imperative field in system prompt (not in output): `"imperative_maneuver": "clear the pilot for sublight maneuver"` or `"imperative_maneuver": "approve the deorbit request"`
-   - Strengthen controller prompt: "CRITICAL: You MUST mention the specific maneuver they requested. If they asked for 'sublight', say 'cleared for sublight'. If they asked for 'deorbit', say 'cleared for deorbit'."
-   - Add examples showing context usage: "When pilot requests 'sublight maneuver', respond with 'Cleared for sublight maneuver', not just 'Cleared for maneuver'."
-   - Update controller examples in `get_actor_json_response()` to emphasize echoing the specific maneuver
-
-3. **Improve Pilot Acknowledgment Context Usage (Score 3 → 4-5)**
-   - Add context cue: "With all that in mind, here's what the controller just approved: '[CONTROLLER'S APPROVAL]'. Acknowledge naturally and reference the approved maneuver."
-   - Add hidden imperative field: `"imperative_maneuver": "acknowledge the sublight clearance and begin the burn"`
-   - Strengthen acknowledgment examples to show maneuver reference: "Acknowledged, beginning the sublight burn" instead of just "Acknowledged"
-   - Update acknowledgment instruction to emphasize: "Echo back the approved maneuver in your acknowledgment"
-   - Fix grammar in examples: show "beginning the circularization burn" and "executing sublight burn" instead of "beginning circularize" or "beginning sublight"
-
-4. **Fix Grammar Issues (Score 2 - Common Pattern)**
-   - Add hidden imperative fields with correct grammar: `"imperative_maneuver": "begin a sublight burn"` or `"imperative_maneuver": "circularize the orbit"`
-   - Strengthen grammar examples in prompts with correct forms
-   - Add post-processing grammar correction for common patterns ("beginning circularize" → "beginning circularization")
-   - Update acknowledgment examples to show correct grammar: "beginning the circularization burn", "executing sublight burn"
-
-5. **Add Context Cue Before Response Request**
-   - Modify prompt structure in `get_actor_json_response()` to add context cue AFTER all instructions but RIGHT BEFORE the JSON schema/example
-   - Format: "With all that in mind, here's the previous line from [SPEAKER]: \"[PREVIOUS_LINE]\"\n\nRespond naturally and use context from the dialogue to respond."
-   - This should appear in the user message, not the system prompt, to ensure it's fresh in the LLM's attention
-
-6. **Implement Retry Logic for Failed Responses**
-   - Add retry mechanism in `get_actor_json_response()`:
-     - If response contains JSON/metadata → retry with stricter prompt (max 2-3 retries)
-     - If response contains "Error in communications" → retry
-     - If response contains template variables → retry
-     - Add exponential backoff between retries
-   - Log retry attempts for analysis
-   - Fall back to error message only after all retries exhausted
-
-7. **Enhance Response Validation**
-   - Improve `_validate_text_is_natural_language()` to detect:
-     - Template variables (${...})
-     - JSON objects
-     - Metadata patterns
-     - Error fallback phrases
-   - Return validation result that triggers retry if needed
-   - Add validation for grammar patterns (detect "beginning circularize" and suggest correction)
-
-8. **Strengthen Navigation Context in Prompts**
-   - Add explicit navigation context to prompts:
-     ```
-     NAVIGATION CONTEXT:
-     - Current location: [CURRENT]
-     - Destination: [DESTINATION]
-     - You are going FROM [CURRENT] TO [DESTINATION]
-     - Do NOT mention going to [CURRENT] - you're already there!
-     ```
-   - Add to hidden imperative: `"imperative_navigation": "going from Mars to Earth"`
-   - This should help prevent destination confusion errors
-
-9. **Implement LLM-Based Quality Control Pass (Architectural)**
-   - After generating a complete dialogue chain, pass the full dialogue + scoring rubric to LLM for a single polish pass
-   - Format: Present the dialogue as a script with speaker labels, then provide the scoring rubric
-   - Prompt: "Here is a dialogue script between a pilot and controller. Using the scoring rubric provided, edit ONLY the text (preserve speaker labels and structure) to improve quality. Focus on: using context, fixing grammar, ensuring natural dialogue."
-   - This could catch issues that individual generation misses (context usage, grammar, flow)
-   - Implementation options:
-     - Option A: Post-process entire dialogue chain after generation (batch polish)
-     - Option B: Post-process individual events after generation (per-event polish)
-     - Option C: Use as validation step - if initial generation scores low, trigger polish pass
-   - Consider using a different/additional LLM call with lower temperature for more consistent polishing
-   - This could be especially effective for fixing context usage issues (controllers echoing maneuvers, pilots referencing approvals)
-
-**Success Criteria:**
-- Average dialogue quality score improves from 68/100 to 75+/100
-- JSON/metadata leakage eliminated (0 occurrences in 25 runs)
-- Controllers consistently echo specific maneuvers (5 points instead of 3)
-- Pilot acknowledgments reference approved maneuvers (4-5 points instead of 3)
-- Grammar errors ("beginning circularize", "beginning sublight") eliminated
-- Error fallback phrases eliminated
-- All improvements maintain natural, conversational tone
-
+We might want to define these as dataclasses, with example strings inside the class for retrieval. Then a prompt-builder could take the Class and some context and work with it. 

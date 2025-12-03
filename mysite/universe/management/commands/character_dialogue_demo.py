@@ -217,11 +217,7 @@ class Command(BaseCommand):
                         for i in range(last_event_count, current_count):
                             event = DIALOGUE_EVENTS_RECEIVED[i]
                             if isinstance(event, DialogueEvent):
-                                debug_info = {
-                                    'system': event.metadata.get('llm_system_prompt'),
-                                    'user': event.metadata.get('llm_user_prompt')
-                                } if debug_mode else None
-                                self._print_message(event.actor.name, event.text, debug_info)
+                                self._print_message(event.actor.name, event.text)
                             elif isinstance(event, NavigationEvent):
                                 self._print_message(
                                     "NAVIGATION",
