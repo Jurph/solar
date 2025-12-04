@@ -99,6 +99,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Successfully populate a solar system data structure ✓
 - Randomly generate a solar system other than earth's ✓
 - Visualize a simple universe ✓
+- Generate realistic planets (type, composition, mass, radius)
 
 ### Two - First Flight ✓
 - Procedurally generate ship names for scripted events ✓
@@ -108,6 +109,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Develop time-based simulation loop (~0.1 second increments) ✓
 - Build Scheduler for time-stamped dialogue events ✓
 - Create scrolling terminal-like display for dialogue events ✓
+- Use planetary characteristics to inform safe altitudes & orbits 
 
 ### Three - Time and Narrative
 - Implement dialogue event generation from navigation events ✓
