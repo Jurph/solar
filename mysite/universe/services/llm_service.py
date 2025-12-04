@@ -77,6 +77,7 @@ class LLMService:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         system_prompt: Optional[str] = None,
+        use_structured_output: bool = True,
     ) -> str:
         """
         Send a chat request to the LLM and get a JSON-formatted response.

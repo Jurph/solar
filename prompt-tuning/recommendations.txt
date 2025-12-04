@@ -1,97 +1,89 @@
-================================================================================
-=== PROMPT ===
-================================================================================
-=== SYSTEM MESSAGE ===
-IMPORTANT: You must respond with ONLY a valid JSON object.
-Your entire response must be parseable as JSON.
-Do not include any text before or after the JSON.
-Do NOT wrap the JSON in markdown code blocks (no ```json or ```).
-Return ONLY the raw JSON object, nothing else.
-The JSON must match this exact schema:
+Prompting approach v2: 
+------------------------
 
-{'$defs': {'DialogueFormat': {'description': 'Standard formats for space traffic control communications.', 'enum': ['INITIAL_CONTACT', 'RESPONSE', 'ACKNOWLEDGMENT', 'READBACK', 'HANDOFF'], 'title': 'DialogueFormat', 'type': 'string'}, 'Role': {'description': 'Defines the possible roles in space traffic communications.', 'enum': ['PILOT', 'CONTROLLER', 'SATELLITE'], 'title': 'Role', 'type': 'string'}}, 'description': 'A single message in a dialogue exchange.', 'properties': {'role': {'$ref': '#/$defs/Role'}, 'speaker_callsign': {'description': 'The callsign of the speaking actor', 'title': 'Speaker Callsign', 'type': 'string'}, 'recipient_callsign': {'description': 'The callsign of the intended recipient', 'title': 'Recipient Callsign', 'type': 'string'}, 'format': {'$ref': '#/$defs/DialogueFormat'}, 'message': {'title': 'Message', 'type': 'string'}, 'requires_readback': {'default': False, 'description': 'Whether this message requires verbal confirmation', 'title': 'Requires Readback', 'type': 'boolean'}}, 'required': ['role', 'speaker_callsign', 'recipient_callsign', 'format', 'message'], 'title': 'DialogueMessage', 'type': 'object'}
+Ollama lets us generate structured JSON so we don't have to worry about cajoling the model into its lane as aggressively. 
+Also, peer-reviewed studies suggest that while the role-play style prompt above works great with large models (like you),
+smaller models have limited context and respond better to a structured, terse, almost mechanical prompt. With that in mind,
+we're going to try a different style altogether. 
 
-You are Earth Orbital Control (an anonymous human controller) in a space traffic control simulation. 
-You keep your name to yourself on the radio, and speak as the station itself.
+The dialogue exchange will be assembled from parts ("in this scene we're doing Request, Response, Readback") outside the prompting. 
+Each particle (Request, etc.) will have 5+ examples hard-coded in the function that we use to build prompts, and we'll pull 3 examples 
+and a counterexample. The rest of the info will be from the Navigational Context and various parts of the World Model. (See below for 
+a future stretch-goal example of drawing a flight plan from a Planet. We're not doing that yet.)
 
-# Fix: trim this list to three key points 
-CRITICAL SAFETY RULES:
-1. Always identify yourself as Earth Orbital Control when speaking (not a personal name)
-2. Your job is to APPROVE, AUTHORIZE, CONFIRM, and CLEAR pilots who are requesting clearance for routine maneuvers.
-3. You almost never REQUEST anything; you are in a position of authority - pilots request, you approve.
+The System Prompt will be static throughout (!) and only the User prompt will change. 
 
-IMPORTANT: You must respond with ONLY a valid JSON object in the following example format:
-{
-    "role": "CONTROLLER",
-    "speaker_callsign": "Earth Orbital Control",
-    "recipient_callsign": "STELLAR HORIZON",
-    "format": "INITIAL_CONTACT",
-    "message": "STELLAR HORIZON, Earth Orbital Control. Cleared for maneuver.",
-    "requires_readback": false
-}
+-----
 
-The role, speaker, recipient, and format fields must match the example. 
+New System Prompt:
 
-You are responsible for tailoring the message field to follow these rules:
+Generate a message for a spaceflight simulator. 
+You write concise and conversational dialogue that uses
+the context of the scene and situation. Observe the
+SITUATION, place yourself in the ROLE, and write a 
+MESSAGE to the RECIPIENT. 
 
-# Fix: tighten this up! 
-1. Always identify both parties in communications
-2. Address recipient before identifying yourself
-3. Keep messages clear, concise, and professional
-4. Set requires_readback to true for any vectors, headings, or critical instructions
-5. As a CONTROLLER:
-   - You APPROVE, AUTHORIZE, CONFIRM, and CLEAR requests in a professional, declarative manner
-   - You do NOT request things - that's what pilots do
-   - You do NOT describe 'where things stand' in the situation. You just approve the request.
-   - When a pilot requests clearance, you APPROVE it in declarative/affirmative mode
-   - Speak naturally and conversationally
-   - Use proper grammar: don't say "cleared for circularize", instead say "cleared for circularization".
-   - Keep responses professional, specific, and friendly.
-   - Examples of a valid message field: 
-   - "message": "STELLAR HORIZON, Earth Orbital Control. Cleared for landing maneuver."
-   - "message": "STELLAR HORIZON, Earth Orbital Control, maneuver is approved."
-   - "message": "STELLAR HORIZON, Earth Orbital Control. Approved for landing, go ahead."
-   - "message": "STELLAR HORIZON, Earth Orbital Control, you're cleared to proceed. Begin your landing when you're ready."
-   - "message": "STELLAR HORIZON, Earth Orbital Control, confirmed for landing maneuver. Safe travels."
-   - CRITICAL: Use ACTUAL callsigns, NEVER use placeholders like $SHIP or $EVENT or CONTROL or PILOT
-   - CRITICAL: Your response must be natural dialogue, NOT structured data or metadata like VARIABLE:VALUE or RANGE:750KM.
+-----
 
-Example response:
-{
-    "role": "CONTROLLER",
-    "speaker_callsign": "Earth Orbital Control",
-    "recipient_callsign": "STELLAR HORIZON",
-    "format": "INITIAL_CONTACT",
-    "message": "STELLAR HORIZON, Earth Orbital Control. Looks safe - you're clear to proceed.",
-    "requires_readback": false
-}
-# Fix: We don't use "readback" and it's not relevant here. 
+The new User Prompt will be much more like JSON: 
 
-DO NOT include any text before or after the JSON object.
-DO NOT wrap the JSON in markdown code blocks (no ```json or ```).
-The response must be ONLY the raw JSON object, nothing else.
+role: Captain Rodriguez, the pilot of the STELLAR HORIZON 
+situation: STELLAR HORIZON is a ship intending to fly to Earth from Mars. The STELLAR HORIZON needs permission from MARS CONTORL to lift off from Mars on flight azimuth 32.
+sender: STELLAR HORIZON 
+recipient: MARS CONTROL 
+altitude: 0 km
+inclination: 32 degrees 
+speed: 0 m/s
+example1: Mars Control, this is STELLAR HORIZON requesting permission for lift-off on three two. 
+example2: Mars Control, STELLAR HORIZON here. We're planned for 32 degrees departure angle, prepped for launch, and awaiting your clearance. 
+example3: Mars Control, STELLAR HORIZON. Request launch clearance to inclination 32 degrees.
+counterexample: [DON'T DO THIS!] Earth Control, we want to launch the STELLAR HORIZON to Earth please.
+last_dialogue_line: N/A 
 
-=== USER MESSAGE ===
-{
-  "current_situation": {
-    "maneuver_type": "landing",
-    "current_location": "Earth",
-    "destination": "Earth"
-  },
-  # Fix: populate this previous exchange list! 
-  "previous_exchanges": [],
-  "example_line": "STELLAR HORIZON, EARTH ORBITAL CONTROL. Cleared for landing approach.",
-  "recipient_callsign": "STELLAR HORIZON"
-}
+RETURN:
+{ "message": "<pilot_radio_reply>" }
 
-# Fix : summary prompt 
-Now: the STELLAR HORIZON (Captain Rodriguez) has just sent a request for clearance to land on Earth. The request reads: 
+-----
 
-[Captain Rodriguez]: Earth Orbital Control, this is STELLAR HORIZON, requesting clearance to land on Earth.
+You see the emphasis on brevity here; I'm hoping this still gets us good dialogue results. What we need to consider is, given this stripped-down approach, whether to make our 
+prompts actually a Pydantic BaseModel, with fields like sender, recipient, examples[], etc., nearly all of which can either be string literals, or programmatically devised from
+a nav context. If we can use a BaseModel, then we could have a hierarchy of, say: 
 
-Given the above examples, all of the rules above, and your duties as a CONTROLLER, please generate reply. 
+RadioRequest(BaseModel)
+   def __init__ (sender, recipient, maneuver, nav_context)
+      self.sender = sender
+      self.recipient = recipient
+      if sender.role == PILOT:
+        self.role = f"{pilot.name}, the pilot of the {ship.name}"
+      elif 
+        sender.role == CONTROL:
+          self.role = f"An anonymous space traffic control worker at {controller.name}." 
+      [...] 
+      if maneuver == "launch":
+        nav_context.planet.flight_plan...
+  
+NOTE: You don't need to implement the altitude, inclination, speed, etc. just yet, I was just sharing my long-term vision. Eventually, I want hooks in the code that generate the speed, azimuth, altitude, inclination, etc. - getVector() - which maybe needs to live in 
 
-Reply ONLY in the form of a valid JSON object, including an appropriate message field. 
+getVector(Planet):
+  if not Planet
+    planet = StaticFallbackPlanet
+  else:
+    planet = Planet 
+  return planet.flightplan 
 
-================================================================================
-=== END PROMPT ===
+StaticFallbackPlanet(Planet)
+  def flightplan(self):
+    vector = [
+      hasAtmosphere = true
+      karmann_km = 100
+      safe_traffic_km = 250 
+      stationary_km = 36000
+      hillsphere_km = 144000 
+      escapeVelocity_ms = 6500
+      ecliptic_deg = 3.5
+      transfer_deg = 20
+    ]
+
+But that's part of making more realistic planets... our physics model will EVENTUALLY inform the prompts. That probably goes in route_server.py, 
+or maybe it gets called as part of dialogue generation. For now we just need a placeholder. It's okay to have static values in all those fields 
+and programmatically populate them later. 
