@@ -77,13 +77,19 @@ class DialogueParticle(ABC):
     SYSTEM_PROMPT: str = """Generate a message for a spaceflight simulator. 
 You write concise and conversational dialogue that uses
 the context of the scene and situation. Observe the
-SITUATION, place yourself in the ROLE, and write a 
-MESSAGE to the RECIPIENT. Protocol suggests that you address
-the RECIPIENT first, then identify yourself (the SENDER), before 
-sending the MESSAGE.
+SITUATION, place yourself in the ROLE. Follow the EXAMPLES and avoid the COUNTEREXAMPLE. 
+Write a professional and concise MESSAGE to the RECIPIENT that follows the LAST DIALOGUE LINE.
 
-The MESSAGE almost always opens with the fixed text: "RECIPIENT, SENDER," but may vary slightly.  
-After the rigid opening, you will need to be creative in constructing a valid and evocative MESSAGE field; those rules follow.  
+Some guidelines: 
+1. The greeting protocol (callsigns, station names) is handled procedurally.
+Your message field should contain ONLY the dialogue content (request, response, 
+acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phrases.
+
+2. You will be given a counterexample. Avoid its mistakes! 
+
+3. You will be given examples. Follow them closely! 
+
+4. You will be given the last dialogue line. Respond to it naturally and contextually. 
 
 """
     
@@ -262,13 +268,34 @@ After the rigid opening, you will need to be creative in constructing a valid an
         Returns:
             Uppercase callsign string.
         """
-        # Check actor role - Actor.role is stored as string, compare with enum value
-        if hasattr(self.actor, 'role') and self.actor.role == Actor.Role.PILOT.value:
-            # For pilots, use ship name as callsign
+        from mysite.universe.models.actor import Pilot
+        # For pilots, use ship name as callsign
+        if isinstance(self.actor, Pilot):
             if hasattr(self.actor, 'ship') and self.actor.ship:
                 return self.actor.ship.name.upper()
         # For controllers or if no ship, use actor name
         return self.actor.name.upper()
+    
+    def get_role(self):
+        """
+        Get the dialogue Role enum for this particle's actor.
+        
+        Uses isinstance() to check the actor's class type - the class IS the role.
+        
+        Returns:
+            Role.PILOT, Role.CONTROLLER, or Role.SATELLITE
+        """
+        from mysite.universe.schemas.dialogue_schema import Role
+        from mysite.universe.models.actor import Pilot, Controller, Satellite
+        
+        if isinstance(self.actor, Controller):
+            return Role.CONTROLLER
+        elif isinstance(self.actor, Satellite):
+            return Role.SATELLITE
+        elif isinstance(self.actor, Pilot):
+            return Role.PILOT
+        # Default to PILOT if unknown
+        return Role.PILOT
     
     def generate_procedural_greeting(self) -> str:
         """
@@ -322,10 +349,16 @@ After the rigid opening, you will need to be creative in constructing a valid an
             lines.append(f"speed: {data.speed}")
         
         lines.extend([
+            f"counterexample (NEVER DO THIS): {data.counterexample}",
+            "",
+            "key task: Instead, generate text like the examples below.",
+            "",
             f"example1: {data.example1}",
             f"example2: {data.example2}",
             f"example3: {data.example3}",
-            f"counterexample: {data.counterexample}",
+            "",
+            "IMPORTANT: Follow the examples above, strictly avoid the mistakes of the counterexample, and respond to the last dialogue line as you generate your reply.",
+            "",
             f"last_dialogue_line: {data.last_dialogue_line or 'N/A'}",
             "",
             "RETURN:",

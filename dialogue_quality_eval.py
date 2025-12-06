@@ -37,7 +37,7 @@ from mysite.universe.models.actor import Pilot, Controller, Satellite
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.base import Location
 from mysite.universe.models.event import DialogueEvent
-from mysite.universe.models.navigation import NavigationEvent, UniverseGraph
+from mysite.universe.models.navigation import UniverseGraph
 from mysite.universe.services.route_server import RouteService
 from mysite.universe.services.script_server import ScriptService
 from mysite.universe.services.llm_service import LLMService
@@ -59,26 +59,20 @@ def ensure_controllers_exist(quiet=False):
 
 def process_dialogue_chain(initial_event: DialogueEvent) -> List[DialogueEvent]:
     """
-    Process a dialogue event and all its replies recursively.
-    Returns a list of all dialogue events in the chain.
-    Uses DialogueEvent.expect_reply_action() which handles satellites, controllers, etc.
+    Process a dialogue event and handle satellite replies if needed.
+    
+    NOTE: Dialogue chains are now generated COMPLETE upfront by parse_navigation_events().
+    This function only handles special cases like satellite comms checks (BEEP BOOP).
+    For normal controller/pilot chains, the events are already complete.
     """
     events = [initial_event]
-    current = initial_event
     
-    # Follow the dialogue chain until no more replies are expected
-    max_iterations = 20  # Safety limit to prevent infinite loops
-    iteration = 0
-    
-    while current.expect_reply and iteration < max_iterations:
-        # Use the built-in expect_reply_action which handles satellites, controllers, etc.
-        reply = current.expect_reply_action()
+    # Only process replies for special cases (e.g., satellites)
+    # Normal dialogue chains are already complete from parse_navigation_events()
+    if initial_event.expect_reply:
+        reply = initial_event.expect_reply_action()
         if reply:
             events.append(reply)
-            current = reply
-        else:
-            break
-        iteration += 1
     
     return events
 
@@ -227,22 +221,26 @@ def main():
                     metadata={
                         "type": "comms_check",
                         "reply_actor_name": satellite.name,
-                        "control_name": satellite.name,  # Required by parse_dialogue_event
-                        "ship_name": ship.name,  # Required by parse_dialogue_event
-                        "maneuver": "comms_check"  # Required by parse_dialogue_event
                     },
                     expected_reply_actor=satellite
                 )
                 script_events.insert(comms_check_position + 1, comms_check_event)
             
             # Process all dialogue events immediately (no timing/queue)
+            # NOTE: script_events already contains COMPLETE dialogue chains from parse_navigation_events()
+            # We only need to handle special cases like satellite comms checks
             all_dialogue_events = []
             event_counter = 1
             
-            for initial_event in script_events:
-                # Process this event and all its replies
-                dialogue_chain = process_dialogue_chain(initial_event)
-                all_dialogue_events.extend(dialogue_chain)
+            for event in script_events:
+                # For normal dialogue events, chains are already complete - just add them
+                # For special cases (e.g., comms checks), process any satellite replies
+                if event.expect_reply and event.metadata.get("type") == "comms_check":
+                    dialogue_chain = process_dialogue_chain(event)
+                    all_dialogue_events.extend(dialogue_chain)
+                else:
+                    # Normal dialogue chain - already complete
+                    all_dialogue_events.append(event)
             
             # Print all dialogue events for this run
             for event in all_dialogue_events:

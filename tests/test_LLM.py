@@ -1,5 +1,7 @@
 import pytest
 import io
+import requests
+import yaml
 from contextlib import redirect_stdout, redirect_stderr
 from mysite.universe.services.llm_service import LLMService
 
@@ -50,6 +52,64 @@ def check_response_format(response):
     # Check that response isn't too long (allowing for some variation)
     is_short = len(response) <= 6
     return has_yes_no, is_short
+
+def test_ollama_api_endpoint_available():
+    """
+    Test that Ollama's /api/chat endpoint is listening and responding.
+    
+    Makes a minimal health check request that doesn't engage the LLM model.
+    Uses /api/tags endpoint which is a simple GET request that lists available models.
+    """
+    # Read config to get base URL
+    with open("llm.config", 'r') as f:
+        config = yaml.safe_load(f)
+    
+    api_base = config["api_base"].rstrip('/')
+    # Remove /v1 suffix if present to get base Ollama URL
+    if api_base.endswith('/v1'):
+        api_base = api_base[:-3]
+    
+    # Ollama's /api/tags endpoint lists models without requiring inference
+    tags_url = f"{api_base}/api/tags"
+    
+    try:
+        response = requests.get(tags_url, timeout=5)
+        response.raise_for_status()
+        # Should return JSON with models list
+        data = response.json()
+        assert "models" in data, f"Expected 'models' key in response: {data}"
+    except requests.exceptions.ConnectionError:
+        pytest.skip("Ollama server not running - cannot test endpoint availability")
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"Ollama /api/tags endpoint returned error: {e}")
+
+def test_openai_compatible_endpoint_available():
+    """
+    Test that OpenAI-compatible /v1/completions endpoint is listening.
+    
+    Makes a minimal request to verify the endpoint exists. Since we can't easily
+    test /v1/completions without engaging the model, we check if the base URL
+    responds (many OpenAI-compatible servers have a /health or /v1/models endpoint).
+    """
+    # Read config to get base URL
+    with open("llm.config", 'r') as f:
+        config = yaml.safe_load(f)
+    
+    api_base = config["api_base"].rstrip('/')
+    
+    # Try /v1/models endpoint (common in OpenAI-compatible servers)
+    models_url = f"{api_base}/models"
+    
+    try:
+        response = requests.get(models_url, timeout=5)
+        # Accept 200 (success) or 404 (endpoint doesn't exist but server is up)
+        # 404 means server is listening but endpoint doesn't exist (still useful info)
+        assert response.status_code in [200, 404], \
+            f"Expected 200 or 404, got {response.status_code}: {response.text}"
+    except requests.exceptions.ConnectionError:
+        pytest.skip("LLM server not running - cannot test endpoint availability")
+    except requests.exceptions.RequestException as e:
+        pytest.fail(f"OpenAI-compatible endpoint check failed: {e}")
 
 @pytest.mark.slow
 def test_llm_connection(llm, yes_no_prompt):

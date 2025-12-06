@@ -136,21 +136,25 @@ class SimulationQueue:
         self._queue = []  # Priority queue ordered by timestamp
         self._start_time = None
         self._current_time = 0
+        self._event_counter = 0  # Tie-breaker for events with same timestamp
 
     def add_event(self, event):
         """Add an event to the queue (using heapq to maintain order by timestamp)."""
-        heapq.heappush(self._queue, (event.timestamp, event))
+        # Use counter as tie-breaker: (timestamp, counter, event)
+        # This prevents comparison errors when timestamps are equal
+        heapq.heappush(self._queue, (event.timestamp, self._event_counter, event))
+        self._event_counter += 1
 
     def peek_next_event(self):
         """Return the next event without removing it, or None if empty."""
         if self._queue:
-            return self._queue[0][1]
+            return self._queue[0][2]  # Third element is the event
         return None
 
     def get_next_event(self):
         """Get and remove the next event, or return None if empty."""
         if self._queue:
-            return heapq.heappop(self._queue)[1]
+            return heapq.heappop(self._queue)[2]  # Third element is the event
         return None
 
     def process_due_events(self, current_time: float) -> None:
@@ -163,7 +167,7 @@ class SimulationQueue:
         3. If process() returns new events, add them to the queue
         4. Emit appropriate signal based on event type
         """
-        while self._queue and self._queue[0][0] <= current_time:
+        while self._queue and self._queue[0][0] <= current_time:  # First element is timestamp
             event = self.get_next_event()
             
             # First process the event and handle any returned events
