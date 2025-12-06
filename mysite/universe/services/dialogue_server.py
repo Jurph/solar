@@ -11,6 +11,7 @@ import random
 from typing import List, Dict, Any, Optional, Tuple
 from .dialogue.base import DialogueParticle
 from .dialogue.factory import ParticleFactory
+from .dialogue.particles import PilotRequest
 from mysite.universe.models.actor import Actor
 from mysite.universe.models.event import NavigationEvent
 from mysite.universe.schemas.dialogue_schema import DialogueMessage
@@ -104,16 +105,24 @@ class DialogueService:
         
         logger = logging.getLogger('dialogue_service')
         
+        # All particles now use procedural greetings
+        # Generate procedural greeting prefix (inherited from base class or overridden)
+        greeting = particle.generate_procedural_greeting()
+        
         # Get JSON schema for structured outputs
         format_schema = DialogueMessage.model_json_schema()
         
-        # Build prompts
+        # Build prompts (LLM will generate just the message content, no greeting)
         system_prompt, user_prompt = self.build_prompt(particle, previous_dialogue)
+        
+        # Modify prompts to indicate greeting is procedural
+        system_prompt_modified = system_prompt + "\n\nIMPORTANT: The greeting protocol is handled procedurally. The message will start with a greeting that includes both callsigns - you only need to generate the message content that follows the greeting."
+        user_prompt_modified = user_prompt + f"\n\nNOTE: The procedural greeting '{greeting}' will be prepended automatically. Generate ONLY the message content (do not include callsigns or greeting in your message field)."
         
         # Prepare messages for LLM
         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
+            {"role": "system", "content": system_prompt_modified},
+            {"role": "user", "content": user_prompt_modified},
         ]
         
         # Retry loop for validation failures
@@ -129,6 +138,10 @@ class DialogueService:
             # Parse response into DialogueMessage
             try:
                 response_dict = json.loads(response_json)
+                # Prepend procedural greeting to message
+                message_content = response_dict.get("message", "").strip()
+                full_message = f"{greeting} {message_content}"
+                response_dict["message"] = full_message
                 dialogue_msg = DialogueMessage.model_validate(response_dict)
                 return dialogue_msg
             except Exception as e:

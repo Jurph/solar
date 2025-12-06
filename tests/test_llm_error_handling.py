@@ -2,7 +2,7 @@
 import json
 from unittest.mock import Mock
 from django.test import TestCase
-from mysite.universe.schemas.dialogue_schema import DialogueMessage, Role, DialogueFormat
+from mysite.universe.schemas.dialogue_schema import DialogueMessage, Role
 from mysite.universe.services.llm_service import LLMService
 
 
@@ -17,9 +17,7 @@ class LLMErrorHandlingTest(TestCase):
             "role": "PILOT",
             "speaker_callsign": "STELLAR HORIZON",
             "recipient_callsign": "Mars Control",
-            "format": "INITIAL_CONTACT",
             "message": "Mars Control, this is STELLAR HORIZON, requesting clearance.",
-            "requires_readback": False
         }
     
     def setUp(self):
@@ -120,7 +118,6 @@ class LLMErrorHandlingTest(TestCase):
                     role=Role.PILOT,
                     speaker_callsign="STELLAR HORIZON",
                     recipient_callsign="Mars Control",
-                    format=DialogueFormat.INITIAL_CONTACT,
                     message=message_text
                 )
                 detected = self._check_bad_message_detection(msg_obj.message)
@@ -132,13 +129,12 @@ class LLMErrorHandlingTest(TestCase):
         # Test good messages - can use normal constructor
         for message_text, description in good_messages:
             with self.subTest(message=message_text, description=description):
-                # For valid messages, use RESPONSE format for controller messages
-                format_type = DialogueFormat.RESPONSE if "STELLAR HORIZON, Mars Control" in message_text else DialogueFormat.INITIAL_CONTACT
+                # Determine role based on message content
+                is_controller = "STELLAR HORIZON, Mars Control" in message_text
                 msg_obj = DialogueMessage(
-                    role=Role.PILOT if format_type == DialogueFormat.INITIAL_CONTACT else Role.CONTROLLER,
-                    speaker_callsign="STELLAR HORIZON" if format_type == DialogueFormat.INITIAL_CONTACT else "Mars Control",
-                    recipient_callsign="Mars Control" if format_type == DialogueFormat.INITIAL_CONTACT else "STELLAR HORIZON",
-                    format=format_type,
+                    role=Role.CONTROLLER if is_controller else Role.PILOT,
+                    speaker_callsign="Mars Control" if is_controller else "STELLAR HORIZON",
+                    recipient_callsign="STELLAR HORIZON" if is_controller else "Mars Control",
                     message=message_text
                 )
                 detected = self._check_bad_message_detection(msg_obj.message)
@@ -172,4 +168,3 @@ class LLMErrorHandlingTest(TestCase):
                     )
                 except json.JSONDecodeError as e:
                     self.fail(f"Failed to parse test JSON for '{description}': {e}")
-

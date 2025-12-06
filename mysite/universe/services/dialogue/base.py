@@ -9,7 +9,6 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 from mysite.universe.models.actor import Actor
-from mysite.universe.schemas.dialogue_schema import DialogueFormat
 
 
 class UserPromptData(BaseModel):
@@ -63,7 +62,7 @@ class DialogueParticle(ABC):
     (2) Counterexamples (what NOT to do)
     (3) Role descriptions (how to describe the speaker)
     (4) Situation descriptions (context from navigation)
-    (5) Format (expected DialogueFormat)
+    (5) Examples and counterexamples
     
     The system prompt is static and shared across all particles. Only the user prompt
     changes based on the particle type and context.
@@ -159,21 +158,6 @@ After the rigid opening, you will need to be creative in constructing a valid an
         """
         pass
     
-    @abstractmethod
-    def get_format(self) -> DialogueFormat:
-        """
-        Return expected DialogueFormat for this particle.
-        
-        Examples:
-        - INITIAL_CONTACT for pilot requests
-        - RESPONSE for controller responses
-        - ACKNOWLEDGMENT for pilot acknowledgments
-        - READBACK for pilot readbacks
-        
-        Returns:
-            DialogueFormat enum value.
-        """
-        pass
     
     def get_duration(self) -> float:
         """
@@ -285,6 +269,20 @@ After the rigid opening, you will need to be creative in constructing a valid an
                 return self.actor.ship.name.upper()
         # For controllers or if no ship, use actor name
         return self.actor.name.upper()
+    
+    def generate_procedural_greeting(self) -> str:
+        """
+        Generate procedural greeting prefix for this particle type.
+        
+        Default pattern: "{recipient}, {sender}."
+        Override in subclasses for different greeting patterns (e.g., "this is" for initial contact).
+        
+        Returns:
+            Greeting string to prepend to message content.
+        """
+        sender = self.get_sender_callsign()
+        recipient = self.recipient
+        return f"{recipient}, {sender}."
     
     def format_user_prompt(self, data: UserPromptData) -> str:
         """

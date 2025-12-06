@@ -252,7 +252,6 @@ class ScriptService:
                     }
                 },
                 "dialogue_message": msg.model_dump(),
-                "dialogue_format": msg.format.value if hasattr(msg.format, 'value') else str(msg.format),
                 "requires_readback": msg.requires_readback,
             }
             

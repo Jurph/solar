@@ -10,7 +10,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--ship_id', type=int, help='Specific ship ID to use (optional)')
         parser.add_argument('--destination_id', type=int, help='Specific destination ID to use (optional)')
-        parser.add_argument('--model', type=str, default='qwen2.5:0.5b', help='LLM model to use')
+        parser.add_argument('--model', type=str, help='LLM model to use')
         parser.add_argument('--detailed', action='store_true', help='Generate more detailed descriptions')
 
     def handle(self, *args, **options):

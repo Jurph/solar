@@ -86,7 +86,6 @@ Respond naturally and in character."""
         self.assertIn("role", result)
         self.assertIn("speaker_callsign", result)
         self.assertIn("recipient_callsign", result)
-        self.assertIn("format", result)
         # requires_readback may be omitted if False (default value), which is acceptable
         # We'll check it exists or default to False when constructing the object
         
@@ -117,9 +116,8 @@ Respond naturally and in character."""
         self.assertIn("role", result)
         self.assertIn("speaker_callsign", result)
         self.assertIn("recipient_callsign", result)
-        self.assertIn("format", result)
         # requires_readback may be omitted if False (default value), which is acceptable
-        
+
         # Verify the message content contains the expected words (LLM may be creative)
         message_text = result["message"].upper()
         self.assertTrue("BEEP" in message_text or "BOOP" in message_text, 
@@ -142,7 +140,6 @@ Respond naturally and in character."""
         self.assertIn("role", result)
         self.assertIn("speaker_callsign", result)
         self.assertIn("recipient_callsign", result)
-        self.assertIn("format", result)
         
         # Verify the message content includes the readback (LLM may phrase it differently)
         message_text = result["message"].upper()
