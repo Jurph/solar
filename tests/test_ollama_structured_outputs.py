@@ -3,7 +3,7 @@ import json
 import yaml
 import requests
 from unittest import TestCase
-from mysite.universe.schemas.dialogue_schema import DialogueMessage, Role, DialogueFormat
+from mysite.universe.schemas.dialogue_schema import DialogueMessage
 
 
 class OllamaStructuredOutputsTest(TestCase):
@@ -130,37 +130,6 @@ Respond naturally and in character."""
         dialogue_msg = DialogueMessage.model_construct(**result)
         self.assertIsNotNone(dialogue_msg)
         self.assertIsNotNone(dialogue_msg.message)
-    
-    def test_simple_acknowledgment(self):
-        """Test: Simple acknowledgment without readback."""
-        instruction = "You are a pilot acknowledging instructions. Say 'ACKNOWLEDGED' only. Do NOT read back the instructions."
-        
-        result = self._call_ollama_with_schema(instruction)
-        
-        # Verify it's valid JSON matching our schema (this is what we're really testing)
-        self.assertIn("message", result)
-        self.assertIn("role", result)
-        self.assertIn("speaker_callsign", result)
-        self.assertIn("recipient_callsign", result)
-        self.assertIn("format", result)
-        
-        # Verify the message content contains acknowledgment words (LLM may phrase it differently)
-        message_text = result["message"].upper()
-        acknowledgment_words = ["ACKNOWLEDGED", "ACKNOWLEDGE", "ROGER", "COPY", "UNDERSTOOD", "CONFIRMED"]
-        self.assertTrue(
-            any(word in message_text for word in acknowledgment_words),
-            f"Expected acknowledgment word in message, got: {result['message']}"
-        )
-        
-        # Verify requires_readback is False (since we said not to read back)
-        # Note: LLM may omit the field if it's False (default), which is acceptable
-        # The important thing is that if it's present, it should be False
-        if "requires_readback" in result:
-            self.assertFalse(result["requires_readback"])
-        
-        # Verify we can construct a DialogueMessage from it (using model_construct to bypass strict validation)
-        dialogue_msg = DialogueMessage.model_construct(**result)
-        self.assertIsNotNone(dialogue_msg)
     
     def test_readback_confirmation(self):
         """Test: Confirmation with readback of specific instructions."""

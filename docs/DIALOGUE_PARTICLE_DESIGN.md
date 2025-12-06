@@ -898,3 +898,307 @@ for event in events:
 6. **Phase 6**: Deprecate `parse_dialogue_event()` (no longer needed for chains)
 7. **Phase 7**: Remove old prompt-building code
 
+---
+
+## Implementation TODO List
+
+### Files to CREATE
+
+#### `mysite/universe/services/dialogue_server.py` (NEW FILE)
+1. Create `DialogueService` class
+2. Implement `__init__(llm_service: LLMService)`
+3. Implement `generate_chain_from_nav_event()` method
+4. Implement `generate_chain()` method
+5. Implement `generate_dialogue()` method (single message generation)
+6. Implement `build_prompt()` method (system + user prompt building)
+7. Add `chain_selector` instance variable (ChainSelector)
+
+#### `mysite/universe/services/dialogue/__init__.py` (NEW FILE)
+1. Create module `__init__.py`
+2. Export `DialogueParticle`, `UserPromptData` from `base`
+3. Export particle classes from `particles`
+4. Export `ParticleFactory` from `factory`
+5. Export `DialogueChain`, `ChainSelector` from `chain`
+
+#### `mysite/universe/services/dialogue/base.py` (NEW FILE)
+1. Create `UserPromptData` Pydantic model
+2. Create `DialogueParticle` abstract base class
+3. Implement `SYSTEM_PROMPT` class variable (static prompt)
+4. Implement `__init__(actor, recipient, nav_context)` method
+5. Implement abstract methods:
+   - `get_examples() -> List[str]`
+   - `get_counterexample() -> str`
+   - `get_role_description() -> str`
+   - `get_situation_description() -> str`
+   - `get_format() -> DialogueFormat`
+6. Implement `select_examples(count=3)` method (random selection)
+7. Implement `build_user_prompt_data()` method
+8. Implement `get_sender_callsign()` method
+9. Implement `format_user_prompt()` method (JSON-like format)
+
+#### `mysite/universe/services/dialogue/particles.py` (NEW FILE)
+1. Create `PilotRequest` base class (inherits from `DialogueParticle`)
+2. Create `LaunchRequest` class (inherits from `PilotRequest`)
+3. Create `CircularizationRequest` class (inherits from `PilotRequest`)
+4. Create `InsertionRequest` class (inherits from `PilotRequest`)
+5. Create `GenericRequest` class (inherits from `PilotRequest`, fallback)
+6. Create `RadioResponse` class (controller responses)
+7. Create `RadioAcknowledgment` class (pilot acknowledgments)
+8. Create `RadioReadback` class (pilot readbacks)
+9. Create `HoldResponse` class (controller hold responses)
+10. Create `Holding` class (pilot holding acknowledgment)
+11. Create `AdjustedResponse` class (controller adjusted clearance)
+12. Implement `get_examples()` for each class (5+ examples each)
+13. Implement `get_counterexample()` for each class
+14. Implement `get_role_description()` for each class
+15. Implement `get_situation_description()` for each class
+16. Implement `get_format()` for each class
+
+#### `mysite/universe/services/dialogue/factory.py` (NEW FILE)
+1. Create `ParticleFactory` class
+2. Implement `REQUEST_PARTICLE_MAP` class variable (maneuver → particle mapping)
+3. Implement `PARTICLE_MAP` class variable (generic particle types)
+4. Implement `create_particle()` classmethod
+5. Implement `register_particle()` classmethod
+6. Implement `register_request_particle()` classmethod
+
+#### `mysite/universe/services/dialogue/chain.py` (NEW FILE)
+1. Create `DialogueChain` class
+2. Implement `__init__(steps, weights)` method
+3. Implement `create_standard_chain()` classmethod (3-step)
+4. Implement `create_readback_chain()` classmethod (4-step)
+5. Implement `create_extended_chain()` classmethod (5-step)
+6. Create `ChainSelector` class
+7. Implement `CHAIN_WEIGHTS` class variable
+8. Implement `select_chain(maneuver_type)` classmethod
+
+### Files to MODIFY
+
+#### `mysite/universe/services/llm_service.py`
+1. **REMOVE**: `get_actor_json_response()` method (move to DialogueService)
+2. **MODIFY**: `chat()` method - add `use_structured_output` parameter support
+3. **MODIFY**: `chat()` method - implement structured outputs via `format` parameter when enabled
+4. **KEEP**: `is_invalid_dialogue_message()` classmethod (or move to DialogueService)
+5. **KEEP**: `generate_with_system_prompt()` convenience method
+6. **UPDATE**: Docstrings to reflect thin wrapper role
+
+#### `mysite/universe/services/script_server.py`
+1. **MODIFY**: `parse_navigation_event()` method
+   - Change return type: `DialogueEvent` → `List[DialogueEvent]`
+   - Add call to `DialogueService.generate_chain_from_nav_event()`
+   - Add `_convert_messages_to_events()` call
+   - Remove old prompt-building code
+2. **ADD**: `_build_nav_context()` helper method
+3. **ADD**: `_convert_messages_to_events()` helper method
+   - Converts `List[DialogueMessage]` → `List[DialogueEvent]`
+   - Sets sequential timestamps
+   - Builds metadata for each event
+   - Sets `expect_reply` flags correctly
+4. **MODIFY**: `parse_navigation_events()` method
+   - Change `append()` to `extend()` to handle list return type
+5. **DEPRECATE**: `parse_dialogue_event()` method
+   - Add deprecation warning
+   - Keep for backward compatibility during migration
+   - Mark for removal in future version
+6. **REMOVE**: Old prompt-building methods (after migration):
+   - `build_situation_prompt()` (if no longer used)
+   - `build_controller_examples()` (replaced by particles)
+   - `build_pilot_examples()` (replaced by particles)
+7. **REMOVE**: Old helper methods (if no longer used):
+   - `format_context_for_llm()` (replaced by particle system)
+   - `get_dialogue_context()` (replaced by particle system)
+8. **UPDATE**: `__init__()` to optionally accept `DialogueService` instance
+9. **ADD**: Import `DialogueService` from `dialogue_server`
+
+#### `mysite/universe/management/commands/character_dialogue_demo.py`
+1. **MODIFY**: `handle()` method
+   - Update `parse_navigation_events()` result handling (already returns list, but verify)
+   - Update any direct `parse_navigation_event()` calls to handle list
+2. **VERIFY**: Comms check insertion logic still works with list return type
+
+#### `dialogue_quality_eval.py` (if exists in root)
+1. **MODIFY**: Update `parse_navigation_events()` handling
+2. **MODIFY**: Update `process_dialogue_chain()` if it calls `parse_dialogue_event()`
+3. **VERIFY**: Comms check event creation still works
+
+#### `mysite/universe/models/event.py`
+1. **MODIFY**: `DialogueEvent.expect_reply_action()` method
+   - Currently calls `ScriptService.parse_dialogue_event()` (lines 148, 153)
+   - **DECISION NEEDED**: Should chain events still trigger replies, or are chains complete?
+   - If chains are complete, remove `parse_dialogue_event()` calls
+   - If chains need dynamic replies, update logic
+2. **VERIFY**: `DialogueEvent.process()` handles chain events correctly
+
+#### `tests/test_space_traffic_llm.py`
+1. **UPDATE**: Test that calls `parse_navigation_events()` to handle list return type
+2. **VERIFY**: Test assertions work with list of events
+
+#### `mysite/universe/models/event.py`
+1. **VERIFY**: `DialogueEvent.expect_reply_action()` still works correctly
+2. **VERIFY**: `DialogueEvent.process()` handles chain events correctly
+3. **NOTE**: May need updates if chain events have different metadata structure
+
+### Files to VERIFY/UPDATE (Callers of Changed Methods)
+
+#### `mysite/universe/simulation_queue.py`
+1. **VERIFY**: `SimulationQueue.add_event()` handles list of events correctly
+2. **VERIFY**: `process_due_events()` handles chain events correctly
+
+#### `tests/test_queue_functions.py`
+1. **UPDATE**: Tests that call `parse_navigation_event()` to expect list return type
+2. **ADD**: Tests for chain generation
+3. **ADD**: Tests for sequential timestamps in chains
+
+#### `tests/test_llm_error_handling.py`
+1. **VERIFY**: Still works after `get_actor_json_response()` removal
+2. **UPDATE**: If tests reference old method, update to use `DialogueService`
+
+#### `tests/test_route_planning.py`
+1. **VERIFY**: No direct calls to `parse_navigation_event()` that need updating
+
+### Files to CREATE (Tests)
+
+#### `tests/test_dialogue_particles.py` (NEW FILE)
+1. Create test class for `DialogueParticle` base class
+2. Create test class for each particle type (LaunchRequest, etc.)
+3. Test `get_examples()` returns 5+ examples
+4. Test `get_counterexample()` returns valid counterexample
+5. Test `select_examples()` returns correct number
+6. Test `build_user_prompt_data()` creates valid `UserPromptData`
+7. Test `format_user_prompt()` creates correct format
+
+#### `tests/test_dialogue_factory.py` (NEW FILE)
+1. Test `ParticleFactory.create_particle()` with specific maneuver types
+2. Test `ParticleFactory.create_particle()` with generic types
+3. Test `ParticleFactory.register_particle()` extensibility
+4. Test fallback to `GenericRequest` for unknown maneuvers
+
+#### `tests/test_dialogue_chains.py` (NEW FILE)
+1. Test `DialogueChain.create_standard_chain()` structure
+2. Test `DialogueChain.create_readback_chain()` structure
+3. Test `DialogueChain.create_extended_chain()` structure
+4. Test `ChainSelector.select_chain()` weighted selection
+5. Test chain selection probabilities for different maneuvers
+
+#### `tests/test_dialogue_service.py` (NEW FILE)
+1. Test `DialogueService.generate_chain_from_nav_event()`
+2. Test `DialogueService.generate_chain()` with mock LLM
+3. Test `DialogueService.generate_dialogue()` with structured outputs
+4. Test `DialogueService.build_prompt()` output format
+5. Test integration with real LLM (marked as slow test)
+
+#### `tests/test_script_service_chains.py` (NEW FILE)
+1. Test `ScriptService.parse_navigation_event()` returns list
+2. Test `ScriptService._convert_messages_to_events()` timestamp sequencing
+3. Test `ScriptService._convert_messages_to_events()` metadata building
+4. Test `ScriptService.parse_navigation_events()` with multiple nav events
+5. Test integration: NavigationEvent → complete chain → DialogueEvents
+
+### Files to UPDATE (Documentation)
+
+#### `docs/DIALOGUE_PARTICLE_DESIGN.md`
+1. **VERIFY**: All code examples match final implementation
+2. **UPDATE**: Add usage examples for new API
+
+#### `docs/DIALOGUE_CHAIN_FLOW.md`
+1. **VERIFY**: Flow diagrams match final implementation
+2. **UPDATE**: Add migration examples for common patterns
+
+### Implementation Order
+
+**Phase 1: Foundation (Create Particle System)**
+1. Create `dialogue/__init__.py` (empty initially)
+2. Create `dialogue/base.py` with `DialogueParticle` ABC and `UserPromptData`
+3. Create `dialogue/particles.py` with all particle classes
+4. Create `dialogue/factory.py` with `ParticleFactory`
+5. Create `dialogue/chain.py` with `DialogueChain` and `ChainSelector`
+6. Update `dialogue/__init__.py` with proper exports
+7. Write unit tests for particles (`tests/test_dialogue_particles.py`)
+8. Write unit tests for factory (`tests/test_dialogue_factory.py`)
+9. Write unit tests for chains (`tests/test_dialogue_chains.py`)
+
+**Phase 2: Service Layer (Create DialogueService)**
+10. Add structured outputs support to `llm_service.py` `chat()` method
+11. Create `dialogue_server.py` with `DialogueService` class
+12. Implement `DialogueService.generate_chain_from_nav_event()` method
+13. Implement `DialogueService.generate_chain()` method
+14. Implement `DialogueService.generate_dialogue()` method
+15. Implement `DialogueService.build_prompt()` method
+16. Write unit tests for DialogueService (`tests/test_dialogue_service.py`)
+
+**Phase 3: Integration (Update ScriptService)**
+17. Add `DialogueService` import to `script_server.py`
+18. Add `_build_nav_context()` helper method to `ScriptService`
+19. Add `_convert_messages_to_events()` helper method to `ScriptService`
+20. Modify `ScriptService.parse_navigation_event()` to:
+    - Call `DialogueService.generate_chain_from_nav_event()`
+    - Call `_convert_messages_to_events()`
+    - Return `List[DialogueEvent]` instead of `DialogueEvent`
+21. Modify `ScriptService.parse_navigation_events()` to use `extend()` instead of `append()`
+22. Deprecate `ScriptService.parse_dialogue_event()` with warning
+23. Write integration tests (`tests/test_script_service_chains.py`)
+
+**Phase 4: Migration (Update Callers)**
+24. Update `mysite/universe/models/event.py` `DialogueEvent.expect_reply_action()`
+    - **DECISION**: Determine if chain events should trigger dynamic replies
+    - If chains are complete, remove `parse_dialogue_event()` calls
+    - If chains need replies, update logic
+25. Update `mysite/universe/management/commands/character_dialogue_demo.py`
+26. Update `dialogue_quality_eval.py` (if exists)
+27. Update `tests/test_space_traffic_llm.py`
+28. Verify `mysite/universe/simulation_queue.py` handles lists correctly
+
+**Phase 5: Cleanup (Remove Old Code)**
+29. Remove `get_actor_json_response()` from `llm_service.py`
+30. Remove old prompt-building methods from `script_server.py`:
+    - `build_situation_prompt()` (if unused)
+    - `build_controller_examples()` (replaced by particles)
+    - `build_pilot_examples()` (replaced by particles)
+    - `format_context_for_llm()` (replaced by particles)
+    - `get_dialogue_context()` (replaced by particles)
+31. Remove deprecated `parse_dialogue_event()` (after migration period)
+32. Update all docstrings to reflect new architecture
+
+### Testing Strategy
+
+1. **Unit Tests**: Test each particle class independently
+2. **Integration Tests**: Test chain generation end-to-end
+3. **Regression Tests**: Verify existing functionality still works
+4. **Performance Tests**: Ensure chain generation is fast enough
+5. **Structured Outputs Tests**: Verify Ollama structured outputs work correctly
+
+### Critical Decision Points
+
+#### Decision 1: Chain Events and Dynamic Replies
+**Location**: `mysite/universe/models/event.py` - `DialogueEvent.expect_reply_action()`
+
+**Current Behavior**: When a `DialogueEvent` has `expect_reply=True`, it calls `ScriptService.parse_dialogue_event()` to generate a reply dynamically.
+
+**Question**: Should chain events (which are complete) still trigger dynamic replies, or are chains self-contained?
+
+**Option A**: Chains are complete - remove `parse_dialogue_event()` calls from `expect_reply_action()`
+- Chains generated upfront are complete sequences
+- No dynamic reply generation needed
+- Simpler, more predictable
+
+**Option B**: Chains can trigger replies - keep dynamic reply logic
+- Some events might need dynamic replies even within chains
+- More flexible but more complex
+
+**Recommendation**: Option A - chains are complete. If a chain event has `expect_reply=True`, it means the NEXT event in the chain is the reply (already generated). Remove dynamic reply generation.
+
+#### Decision 2: Backward Compatibility Period
+**How long to keep deprecated `parse_dialogue_event()`?**
+- Recommendation: Keep for 1-2 release cycles with deprecation warning
+- Remove after all callers migrated
+
+#### Decision 3: LLMService Validation Method
+**Location**: `llm_service.py` - `is_invalid_dialogue_message()`
+
+**Question**: Should this stay in `LLMService` or move to `DialogueService`?
+
+**Option A**: Keep in `LLMService` (shared utility)
+**Option B**: Move to `DialogueService` (dialogue-specific)
+
+**Recommendation**: Option A - it's a validation utility that could be used by other LLM consumers.
+

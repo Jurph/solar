@@ -349,3 +349,12 @@ mysite/universe/services/
     └── builder.py             # Prompt building utilities (or in dialogue_server)
 ```
 
+## Generation approach 
+
+TODO: Discuss with my co-developers whether a Particle ought to contain its own probabilities. 
+For instance, everything in the PilotRequest should always generate either an Approval or a Hold; all 
+Approvals should always generate basically 100% readbacks, with maybe a low probability of also generating 
+a follow-on request for e.g. a change of course. Inspection requests from Control should always generate
+an acknowledgement (although I guess if "is_pirate==True" maybe we generate a "screw you copper!" reply?!)
+
+We'll cover this later. 

@@ -6,6 +6,7 @@ import io
 import re
 from contextlib import redirect_stdout, redirect_stderr
 import json
+import requests
 from ..schemas.dialogue_schema import (
     DialogueMessage,
     DialogueFormat,
@@ -63,8 +64,9 @@ class LLMService:
 
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
+        self.api_base = config["api_base"]
         self.client = OpenAI(
-            base_url=config["api_base"],
+            base_url=self.api_base,
             api_key=config["api_key"]
         )
         self.model_name = config["model_name"]
@@ -78,6 +80,7 @@ class LLMService:
         max_tokens: Optional[int] = None,
         system_prompt: Optional[str] = None,
         use_structured_output: bool = True,
+        format: Optional[Dict] = None,
     ) -> str:
         """
         Send a chat request to the LLM and get a JSON-formatted response.
@@ -87,6 +90,8 @@ class LLMService:
             temperature: Optional temperature override (defaults to instance temperature)
             max_tokens: Optional max tokens override (defaults to instance max_tokens)
             system_prompt: Optional system prompt (for backward compatibility with old API)
+            use_structured_output: Whether to use structured outputs (default: True)
+            format: Optional JSON schema dict for structured outputs (Ollama format parameter)
             
         Returns:
             A valid JSON string containing the complete DialogueMessage (or plain text if not JSON mode)
@@ -158,26 +163,56 @@ The JSON must match this exact schema:
             logger.debug(f"USER MESSAGE:\n{user_msg}")
             logger.debug(f"=== END PROMPT ===\n")
 
-            # Make API call
-            if self.quiet_mode:
-                f_stdout = io.StringIO()
-                f_stderr = io.StringIO()
-                with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
+            # Use structured outputs if format schema is provided
+            if use_structured_output and format is not None:
+                # Use Ollama's /api/chat endpoint directly for structured outputs
+                base_url = self.api_base.rstrip('/')
+                if base_url.endswith('/v1'):
+                    base_url = base_url[:-3]
+                api_url = f"{base_url}/api/chat"
+                
+                # Convert messages to Ollama format
+                ollama_messages = []
+                for msg in messages:
+                    ollama_messages.append({
+                        "role": msg.get("role", "user"),
+                        "content": msg.get("content", "")
+                    })
+                
+                payload = {
+                    "model": self.model_name,
+                    "messages": ollama_messages,
+                    "stream": False,
+                    "format": format,
+                    "options": {
+                        "temperature": temperature if temperature is not None else self.temperature,
+                    }
+                }
+                
+                response_obj = requests.post(api_url, json=payload)
+                response_obj.raise_for_status()
+                result = response_obj.json()
+                response = result['message']['content'].strip()
+            else:
+                # Fallback to OpenAI client completions API (legacy)
+                if self.quiet_mode:
+                    f_stdout = io.StringIO()
+                    f_stderr = io.StringIO()
+                    with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
+                        completion = self.client.completions.create(
+                            model=self.model_name,
+                            prompt=prompt,
+                            temperature=temperature if temperature is not None else self.temperature,
+                            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
+                        )
+                else:
                     completion = self.client.completions.create(
                         model=self.model_name,
                         prompt=prompt,
                         temperature=temperature if temperature is not None else self.temperature,
                         max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
                     )
-            else:
-                completion = self.client.completions.create(
-                    model=self.model_name,
-                    prompt=prompt,
-                    temperature=temperature if temperature is not None else self.temperature,
-                    max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
-                )
-
-            response = completion.choices[0].text.strip()
+                response = completion.choices[0].text.strip()
             
             # Always log prompts and responses for debugging (even in quiet mode, log to file)
             if not self.quiet_mode:
