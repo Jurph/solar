@@ -6,8 +6,8 @@ pilots and controllers, ensuring consistent format and role adherence.
 """
 
 from enum import Enum
-from typing import Dict, List, Optional, Union
-from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationInfo
+from typing import Dict, List, Optional
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 import json
 
 
@@ -18,45 +18,31 @@ class Role(str, Enum):
     SATELLITE = "SATELLITE"
 
 
-class DialogueFormat(str, Enum):
-    """Standard formats for space traffic control communications."""
-    INITIAL_CONTACT = "INITIAL_CONTACT"  # First contact in an exchange
-    RESPONSE = "RESPONSE"  # Response to a contact
-    ACKNOWLEDGMENT = "ACKNOWLEDGMENT"  # Confirming receipt
-    READBACK = "READBACK"  # Repeating instructions
-    HANDOFF = "HANDOFF"  # Transferring to another controller
-
-
 class DialogueMessage(BaseModel):
     """A single message in a dialogue exchange."""
     role: Role
     speaker_callsign: str = Field(..., description="The callsign of the speaking actor")
     recipient_callsign: str = Field(..., description="The callsign of the intended recipient")
-    format: DialogueFormat
     message: str
-    requires_readback: bool = Field(default=False, description="Whether this message requires verbal confirmation")
     
     model_config = ConfigDict(validate_assignment=True)
     
-    @field_validator('message')
-    @classmethod
-    def validate_message_format(cls, v: str, info: ValidationInfo) -> str:
+    @model_validator(mode='after')
+    def validate_message_format(self) -> 'DialogueMessage':
         """
         Validates the critical safety requirements of messages:
         1. Message must not be empty
         2. Both parties must be identified in the message (allowing shortened forms)
-        3. For INITIAL_CONTACT only: recipient must be addressed before speaker
+        
+        Runs after all fields are validated and converted to their proper types.
         """
-        if not v.strip():
+        if not self.message.strip():
             raise ValueError("Message cannot be empty")
             
-        # Get values from the validation context
-        # Pydantic v2 passes ValidationInfo, but we also support dict for manual validation
-        data = info.data if hasattr(info, 'data') else info
-        speaker = data.get('speaker_callsign', '').replace('_', ' ')
-        recipient = data.get('recipient_callsign', '').replace('_', ' ')
-        msg_format = data.get('format')
-        msg_role = data.get('role')
+        # Access fields from the model instance (all fields are validated and converted)
+        speaker = self.speaker_callsign.replace('_', ' ')
+        recipient = self.recipient_callsign.replace('_', ' ')
+        msg_role = self.role
         
         # Get all possible parts of callsigns for matching
         speaker_parts = speaker.upper().split()
@@ -67,15 +53,15 @@ class DialogueMessage(BaseModel):
             speaker_parts.extend(["CONTROL", "CONTROL HERE"])
             
         # Find earliest position where any part of each callsign appears
-        v_upper = v.upper()
-        speaker_pos = min((v_upper.find(part) for part in speaker_parts if part in v_upper), default=-1)
-        recipient_pos = min((v_upper.find(part) for part in recipient_parts if part in v_upper), default=-1)
+        msg_upper = self.message.upper()
+        speaker_pos = min((msg_upper.find(part) for part in speaker_parts if part in msg_upper), default=-1)
+        recipient_pos = min((msg_upper.find(part) for part in recipient_parts if part in msg_upper), default=-1)
         
         # For ongoing dialogue, allow shortened forms (first word of multi-word callsigns)
         if speaker_pos == -1 and len(speaker_parts) > 1:
-            speaker_pos = v_upper.find(speaker_parts[0])
+            speaker_pos = msg_upper.find(speaker_parts[0])
         if recipient_pos == -1 and len(recipient_parts) > 1:
-            recipient_pos = v_upper.find(recipient_parts[0])
+            recipient_pos = msg_upper.find(recipient_parts[0])
         
         # Validate both parties are mentioned (in some form)
         if speaker_pos == -1:
@@ -83,11 +69,7 @@ class DialogueMessage(BaseModel):
         if recipient_pos == -1:
             raise ValueError(f"Message must include recipient identification (any part of {recipient})")
             
-        # Only enforce recipient-before-speaker order for initial contact
-        if msg_format == DialogueFormat.INITIAL_CONTACT and speaker_pos < recipient_pos:
-            raise ValueError(f"Initial contact must address {recipient} before {speaker} identifies themselves")
-            
-        return v
+        return self
 
 
 class DialogueContext(BaseModel):
@@ -105,7 +87,6 @@ class DialoguePrompt(BaseModel):
     """The complete dialogue prompt structure."""
     role: Role
     context: DialogueContext
-    expected_format: DialogueFormat
     example_exchange: Optional[List[DialogueMessage]] = None
     
     model_config = ConfigDict(
@@ -123,29 +104,22 @@ class DialoguePrompt(BaseModel):
                             "role": "PILOT",
                             "speaker_callsign": "WICKER BASKET",
                             "recipient_callsign": "PHOBOS CONTROL",
-                            "format": "INITIAL_CONTACT",
-                            "message": "PHOBOS CONTROL, this is WICKER BASKET, requesting clearance for orbital insertion.",
-                            "requires_readback": False
+                            "message": "PHOBOS CONTROL, this is WICKER BASKET, requesting clearance for orbital insertion."
                         }
                     ]
                 },
-                "expected_format": "RESPONSE",
                 "example_exchange": [
                     {
                         "role": "CONTROLLER",
                         "speaker_callsign": "PHOBOS CONTROL",
                         "recipient_callsign": "WICKER BASKET",
-                        "format": "RESPONSE",
-                        "message": "WICKER BASKET, PHOBOS CONTROL here. Cleared for orbital insertion, maintain current vector.",
-                        "requires_readback": True
+                        "message": "WICKER BASKET, PHOBOS CONTROL here. Cleared for orbital insertion, maintain current vector."
                     },
                     {
                         "role": "PILOT",
                         "speaker_callsign": "WICKER BASKET",
                         "recipient_callsign": "PHOBOS CONTROL",
-                        "format": "READBACK",
-                        "message": "PHOBOS CONTROL, WICKER BASKET. Cleared for orbital insertion, maintaining current vector.",
-                        "requires_readback": False
+                        "message": "PHOBOS CONTROL, WICKER BASKET. Cleared for orbital insertion, maintaining current vector."
                     }
                 ]
             }]
@@ -170,28 +144,13 @@ def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
         return True
         
     for i, msg in enumerate(messages):
-        # Create validation context
-        validation_context = {
-            "format": msg.format,
-            "recipient_callsign": msg.recipient_callsign,
-            "speaker_callsign": msg.speaker_callsign,
-            "role": msg.role
-        }
-        
-        # Validate individual message using Pydantic v2 context
-        msg.validate_message_format(msg.message, validation_context)
+        # Individual message validation happens automatically via model_validator
+        # when the DialogueMessage is created. No need to manually validate here.
         
         # Check for proper response sequence
         if i > 0:
             prev_msg = messages[i-1]
             
-            # Validate readback requirements
-            if prev_msg.requires_readback:
-                if i == len(messages) - 1 and msg.format != DialogueFormat.READBACK:
-                    raise ValueError("Final message must be a readback when previous message requires it")
-                elif msg.format != DialogueFormat.READBACK:
-                    raise ValueError(f"Message {i} should be a readback of previous instructions")
-                    
             # Validate speaker/recipient alternation
             if msg.speaker_callsign != prev_msg.recipient_callsign:
                 raise ValueError(f"Message {i} speaker should be previous message's recipient")
@@ -199,21 +158,16 @@ def validate_dialogue_sequence(messages: List[DialogueMessage]) -> bool:
             if msg.recipient_callsign != prev_msg.speaker_callsign:
                 raise ValueError(f"Message {i} recipient should be previous message's speaker")
     
-    # Check if the last message requires readback but there isn't one
-    if len(messages) > 0 and messages[-1].requires_readback:
-        raise ValueError("Sequence ends with a message requiring readback, but no readback was provided")
-    
     return True
 
 
-def create_dialogue_prompt(role: Role, context: Dict, expected_format: DialogueFormat) -> DialoguePrompt:
+def create_dialogue_prompt(role: Role, context: Dict) -> DialoguePrompt:
     """
     Creates a properly formatted dialogue prompt from the given parameters.
     
     Args:
         role: The role of the actor who will speak next
         context: Dictionary containing context information
-        expected_format: The expected format of the next message
         
     Returns:
         DialoguePrompt: A validated prompt object
@@ -224,8 +178,7 @@ def create_dialogue_prompt(role: Role, context: Dict, expected_format: DialogueF
     # Create and validate the prompt
     prompt = DialoguePrompt(
         role=role,
-        context=dialogue_context,
-        expected_format=expected_format
+        context=dialogue_context
     )
     
     return prompt 

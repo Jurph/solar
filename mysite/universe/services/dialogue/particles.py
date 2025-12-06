@@ -8,7 +8,6 @@ DialogueParticle and implement the abstract methods.
 import random
 from typing import List, Dict, Optional
 from .base import DialogueParticle
-from mysite.universe.schemas.dialogue_schema import DialogueFormat
 
 
 class PilotRequest(DialogueParticle):
@@ -36,15 +35,6 @@ class PilotRequest(DialogueParticle):
         pilot_name = self.actor.name
         return f"{pilot_name}, the pilot of the {ship_name}"
     
-    def get_format(self) -> DialogueFormat:
-        """
-        Return expected DialogueFormat for pilot requests.
-        
-        Returns:
-            DialogueFormat.INITIAL_CONTACT
-        """
-        return DialogueFormat.INITIAL_CONTACT
-    
     def get_situation_description(self) -> str:
         """
         Return situation description from nav_context.
@@ -61,6 +51,31 @@ class PilotRequest(DialogueParticle):
         current = self.nav_context.get("current_location", "current location")
         
         return f"{sender} is a ship intending to fly to {destination} from {current}. The {sender} needs permission from {self.recipient} to {maneuver.lower()}."
+    
+    def generate_procedural_greeting(self) -> str:
+        """
+        Generate procedural greeting for initial contact requests.
+        
+        Protocol: "{recipient}, this is {sender}." (with weighted variants)
+        The greeting is generated procedurally to ensure correct protocol ordering.
+        All PilotRequest subclasses inherit this method.
+        
+        Returns:
+            Greeting string to prepend to message content.
+        """
+        sender = self.get_sender_callsign()
+        recipient = self.recipient
+        
+        # Generate the procedural greeting prefix with weighted variants
+        # Default greeting occurs ~90% of the time, variants ~5% each
+        greetings = [
+            f"{recipient}, this is {sender}.",   # Default (90%)
+            f"{recipient}, {sender} here.",      # Variant 1 (5%)
+            f"{recipient}, {sender}.",            # Variant 2 (5%)
+        ]
+        weights = [0.90, 0.05, 0.05]
+        
+        return random.choices(greetings, weights=weights, k=1)[0]
     
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
@@ -108,14 +123,14 @@ class LaunchRequest(PilotRequest):
         azimuth = self.nav_context.get("azimuth", "five five")
         
         return [
-            f"{recipient}, this is {sender} requesting permission for lift-off on {azimuth} degrees north.",
-            f"{recipient}, {sender} here. We're planned for {azimuth} degrees departure angle, prepped for launch, and awaiting your clearance.",
-            f"{recipient}, {sender}. Request launch clearance to outbound {azimuth} degrees north, heading to {destination}.",
-            f"{recipient}, this is {sender}, requesting clearance for launch. We're planned on {azimuth} degrees departure angle.",
-            f"{recipient}, {sender}. Ready for launch, requesting authorization. My crew want to get to {destination} as soon as you'll let us go.",
-            f"{recipient}, {sender} here. Requesting clearance for takeoff, outbound to {destination} on heading {azimuth} north.",
-            f"{recipient}, {sender}. Our launch window opened up about a minute ago, and I've got our azimuth keyed in. Permission to launch, please?",
-            f"{recipient}, {sender}, standing by on {origin}. Requesting clearance for launch, bound for {destination} on heading {azimuth} north." ,
+            f"Requesting permission for lift-off on {azimuth} degrees north.",
+            f"We're planned for {azimuth} degrees departure angle, prepped for launch, and awaiting your clearance.",
+            f"Request launch clearance to outbound {azimuth} degrees north, heading to {destination}.",
+            f"Requesting clearance for launch. We're planned on {azimuth} degrees departure angle.",
+            f"Ready for launch, requesting authorization. My crew want to get to {destination} as soon as you'll let us go.",
+            f"Requesting clearance for takeoff, outbound to {destination} on heading {azimuth} north.",
+            f"Our launch window opened up about a minute ago, and I've got our azimuth keyed in. Permission to launch, please?",
+            f"Standing by on {origin}. Requesting clearance for launch, bound for {destination} on heading {azimuth} north.",
         ]
     
     def get_counterexample(self) -> str:
@@ -179,12 +194,12 @@ class CircularizationRequest(PilotRequest):
         inclination_deg = 20
         
         return [
-            f"{recipient}, this is {sender}, requesting clearance for circularization burn to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"{recipient}, {sender}. Ready for circularization, looks like we can hit {altitude_km} kilometers and {inclination_deg} degrees pretty easily. Does that work for you?",
-            f"{recipient}, {sender} here, coasting to apogee. Requesting permission to circularize orbit to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"{recipient}, {sender}. Clearance to circularize to {altitude_km} by {inclination_deg}, please.",
-            f"{recipient}, this is {sender}, ascent burn was clean. My nav computer shows {inclination_deg} degrees inclination and {altitude_km} kilometers is my minimum-energy burn. Any problem clearing me for that orbit?"
-            f"{recipient}, {sender} here, approaching apogee on {inclination_deg} degrees inclination. Request clearance to circularize orbit to {altitude_km} kilometers."
+            f"Requesting clearance for circularization burn to {altitude_km} kilometers, {inclination_deg} degrees.",
+            f"Ready for circularization, looks like we can hit {altitude_km} kilometers and {inclination_deg} degrees pretty easily. Does that work for you?",
+            f"Coasting to apogee. Requesting permission to circularize orbit to {altitude_km} kilometers, {inclination_deg} degrees.",
+            f"Clearance to circularize to {altitude_km} by {inclination_deg}, please.",
+            f"Ascent burn was clean. My nav computer shows {inclination_deg} degrees inclination and {altitude_km} kilometers is my minimum-energy burn. Any problem clearing me for that orbit?",
+            f"Approaching apogee on {inclination_deg} degrees inclination. Request clearance to circularize orbit to {altitude_km} kilometers."
         ]
     
     def get_counterexample(self) -> str:
@@ -259,11 +274,11 @@ class InsertionRequest(PilotRequest):
         destination = self.nav_context.get("destination", "destination")
         
         return [
-            f"{recipient}, this is {sender}, requesting clearance for insertion burn into {destination} orbit.",
-            f"{recipient}, {sender}. Ready for orbital insertion, requesting authorization.",
-            f"{recipient}, {sender} here. Requesting permission for insertion maneuver into {destination} orbit.",
-            f"{recipient}, {sender}. Request insertion burn clearance for {destination}.",
-            f"{recipient}, this is {sender}, approaching {destination}. Requesting clearance for insertion burn.",
+            f"Requesting clearance for insertion burn into {destination} orbit.",
+            f"Ready for orbital insertion, requesting authorization.",
+            f"Requesting permission for insertion maneuver into {destination} orbit.",
+            f"Request insertion burn clearance for {destination}.",
+            f"Approaching {destination}. Requesting clearance for insertion burn.",
         ]
     
     def get_counterexample(self) -> str:
@@ -296,11 +311,11 @@ class DeorbitRequest(PilotRequest):
         destination = self.nav_context.get("destination", "destination")
         
         return [
-            f"{recipient}, this is {sender}, requesting clearance for deorbit burn.",
-            f"{recipient}, {sender}. Ready for deorbit, requesting authorization.",
-            f"{recipient}, {sender} here. Requesting permission to deorbit for {destination}.",
-            f"{recipient}, {sender}. Request deorbit burn clearance.",
-            f"{recipient}, this is {sender}, orbit is stable. Requesting clearance to begin deorbit sequence.",
+            f"Requesting clearance for deorbit burn.",
+            f"Ready for deorbit, requesting authorization.",
+            f"Requesting permission to deorbit for {destination}.",
+            f"Request deorbit burn clearance.",
+            f"Orbit is stable. Requesting clearance to begin deorbit sequence.",
         ]
     
     def get_counterexample(self) -> str:
@@ -333,11 +348,11 @@ class LandingRequest(PilotRequest):
         destination = self.nav_context.get("destination", "destination")
         
         return [
-            f"{recipient}, this is {sender}, requesting clearance for landing on {destination}.",
-            f"{recipient}, {sender}. Ready for landing approach, requesting authorization.",
-            f"{recipient}, {sender} here. Requesting permission to land on {destination}.",
-            f"{recipient}, {sender}. Request landing clearance.",
-            f"{recipient}, this is {sender}, deorbit complete. Requesting clearance for final approach and landing.",
+            f"Requesting clearance for landing on {destination}.",
+            f"Ready for landing approach, requesting authorization.",
+            f"Requesting permission to land on {destination}.",
+            f"Request landing clearance.",
+            f"Deorbit complete. Requesting clearance for final approach and landing.",
         ]
     
     def get_counterexample(self) -> str:
@@ -372,9 +387,9 @@ class GenericRequest(PilotRequest):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
-            f"{recipient}, this is {sender}, requesting clearance for {maneuver}.",
-            f"{recipient}, {sender}. Ready for {maneuver}, requesting authorization.",
-            f"{recipient}, {sender} here. Requesting clearance for {maneuver} maneuver.",
+            f"Requesting clearance for {maneuver}.",
+            f"Ready for {maneuver}, requesting authorization.",
+            f"Requesting clearance for {maneuver} maneuver.",
         ]
     
     def get_counterexample(self) -> str:
@@ -410,15 +425,6 @@ class RadioResponse(DialogueParticle):
         controller_name = self.actor.name
         return f"An anonymous space traffic controller at {controller_name}"
     
-    def get_format(self) -> DialogueFormat:
-        """
-        Return expected DialogueFormat for controller responses.
-        
-        Returns:
-            DialogueFormat.RESPONSE
-        """
-        return DialogueFormat.RESPONSE
-    
     def get_situation_description(self) -> str:
         """
         Return situation description for controller response.
@@ -435,6 +441,30 @@ class RadioResponse(DialogueParticle):
         
         return f"{recipient} has requested clearance for {maneuver}. {sender} is responding with specific appropriate details about the maneuver."
     
+    def generate_procedural_greeting(self) -> str:
+        """
+        Generate procedural greeting for controller responses.
+        
+        Protocol: "{recipient}, {sender}." (with weighted variants)
+        All RadioResponse subclasses inherit this method.
+        
+        Returns:
+            Greeting string to prepend to message content.
+        """
+        sender = self.get_sender_callsign()
+        recipient = self.recipient
+        
+        # Controller responses use simpler greeting pattern
+        # Default: "{recipient}, {sender}." (90%), variants (5% each)
+        greetings = [
+            f"{recipient}, {sender}.",            # Default (90%)
+            f"{recipient}, {sender} here.",       # Variant 1 (5%)
+            f"{recipient}, this is {sender}.",    # Variant 2 (5%)
+        ]
+        weights = [0.90, 0.05, 0.05]
+        
+        return random.choices(greetings, weights=weights, k=1)[0]
+    
     def get_examples(self) -> List[str]:
         """
         Return examples of controller responses.
@@ -447,11 +477,11 @@ class RadioResponse(DialogueParticle):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
-            f"{recipient}, {sender}. Cleared for {maneuver} maneuver.",
-            f"{recipient}, {sender}. Cleared, proceed as planned.",
-            f"{recipient}, {sender}. Authorization granted, you're cleared.",
-            f"{recipient}, {sender}. Cleared for {maneuver}, proceed when ready.",
-            f"{recipient}, {sender}. You're cleared, proceed.",
+            f"Cleared for {maneuver} maneuver.",
+            f"Cleared, proceed as planned.",
+            f"Authorization granted, you're cleared.",
+            f"Cleared for {maneuver}, proceed when ready.",
+            f"You're cleared, proceed.",
         ]
     
     def get_counterexample(self) -> str:
@@ -500,12 +530,12 @@ class LaunchResponse(RadioResponse):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
-            f"{recipient}, this is {sender}. We have your flight plan and your launch window is open. You are go.",
-            f"{recipient}, {sender}. We see you cleared to {altitude_km} kilometers, {inclination_deg} degrees. Permission for {maneuver} granted.",
-            f"{recipient}, this is {sender}. Don't let me stop you! Head on out. We're prepping your insertion at {inclination_deg} degrees now.",
-            f"{recipient}, {sender} here. Your {maneuver} burn is approved. Execute when ready.",
-            f"{recipient}, {sender}. You're cleared for launch, proceed.",
-            f"{recipient}, {sender}. Your {maneuver} burn is approved. You can head up to {altitude_km} kilometers, try to keep it near {inclination_deg} degrees, and check in when you get to orbit.",
+            f"We have your flight plan and your launch window is open. You are go.",
+            f"We see you cleared to {altitude_km} kilometers, {inclination_deg} degrees. Permission for {maneuver} granted.",
+            f"Don't let me stop you! Head on out. We're prepping your insertion at {inclination_deg} degrees now.",
+            f"Your {maneuver} burn is approved. Execute when ready.",
+            f"You're cleared for launch, proceed.",
+            f"Your {maneuver} burn is approved. You can head up to {altitude_km} kilometers, try to keep it near {inclination_deg} degrees, and check in when you get to orbit.",
         ]
     
     def get_counterexample(self) -> str:
@@ -544,12 +574,12 @@ class OrbitResponse(RadioResponse):
         altitude_km = self.nav_context.get("altitude_km", "altitude")
         
         return [
-            f"{recipient}, {sender}. Cleared for {maneuver}, proceed when ready.",
-            f"{recipient}, {sender}. Cleared for orbital {maneuver}, you're go. Make your own way, try to keep it near {inclination_deg} degrees.",
-            f"{recipient}, {sender}. {maneuver.capitalize()} clearance granted. You can have any achievable slot.",
-            f"{recipient}, {sender}. Approved for {maneuver} to {inclination_deg} degrees, {altitude_km} kilometers.",
-            f"{recipient}, {sender}. Bring it to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"{recipient}, {sender}. Cleared for {maneuver} burn to {altitude_km} kilometers, {inclination_deg} degrees.",
+            f"Cleared for {maneuver}, proceed when ready.",
+            f"Cleared for orbital {maneuver}, you're go. Make your own way, try to keep it near {inclination_deg} degrees.",
+            f"{maneuver.capitalize()} clearance granted. You can have any achievable slot.",
+            f"Approved for {maneuver} to {inclination_deg} degrees, {altitude_km} kilometers.",
+            f"Bring it to {altitude_km} kilometers, {inclination_deg} degrees.",
+            f"Cleared for {maneuver} burn to {altitude_km} kilometers, {inclination_deg} degrees.",
         ]
     
     def get_counterexample(self) -> str:
@@ -601,12 +631,12 @@ class DepartureResponse(RadioResponse):
         farewell = random.choice(farewells)
         
         return [
-            f"{recipient}, {sender}. You are go for {maneuver} to {destination}. {farewell}",
-            f"{recipient}, {sender}. Cleared for {maneuver} {action}.",
-            f"{recipient}, {sender}. {maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
-            f"{recipient}, {sender}. I've got a window for you; if you can {action} now, we can get you out right away. {farewell}",
-            f"{recipient}, {sender}. {maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
-            f"{recipient}, {sender}. Your {action} to {destination} is approved.",
+            f"You are go for {maneuver} to {destination}. {farewell}",
+            f"Cleared for {maneuver} {action}.",
+            f"{maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
+            f"I've got a window for you; if you can {action} now, we can get you out right away. {farewell}",
+            f"{maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
+            f"Your {action} to {destination} is approved.",
         ]
     
     def get_counterexample(self) -> str:
@@ -644,15 +674,6 @@ class RadioAcknowledgment(DialogueParticle):
         pilot_name = self.actor.name
         return f"{pilot_name}, the pilot of the {ship_name}"
     
-    def get_format(self) -> DialogueFormat:
-        """
-        Return expected DialogueFormat for acknowledgments.
-        
-        Returns:
-            DialogueFormat.ACKNOWLEDGMENT
-        """
-        return DialogueFormat.ACKNOWLEDGMENT
-    
     def get_situation_description(self) -> str:
         """
         Return situation description for acknowledgment.
@@ -679,11 +700,11 @@ class RadioAcknowledgment(DialogueParticle):
         recipient = self.recipient
         
         return [
-            f"{recipient}, {sender}. Roger, proceeding as directed.",
-            f"{recipient}, {sender}. Copy, understood.",
-            f"{recipient}, {sender}. Acknowledged, proceeding.",
-            f"{recipient}, {sender}. Roger that, thank you.",
-            f"{recipient}, {sender}. Understood, proceeding.",
+            f"Roger, proceeding as directed.",
+            f"Copy, understood.",
+            f"Acknowledged, proceeding.",
+            f"Roger that, thank you.",
+            f"Understood, proceeding.",
         ]
     
     def get_counterexample(self) -> str:
@@ -730,15 +751,6 @@ class RadioReadback(DialogueParticle):
         pilot_name = self.actor.name
         return f"{pilot_name}, the pilot of the {ship_name}"
     
-    def get_format(self) -> DialogueFormat:
-        """
-        Return expected DialogueFormat for readbacks.
-        
-        Returns:
-            DialogueFormat.READBACK
-        """
-        return DialogueFormat.READBACK
-    
     def get_situation_description(self) -> str:
         """
         Return situation description for readback.
@@ -765,11 +777,11 @@ class RadioReadback(DialogueParticle):
         recipient = self.recipient
         
         return [
-            f"{recipient}, {sender}. Cleared for orbital insertion, maintaining current vector.",
-            f"{recipient}, {sender}. 150km orbit, understood.",
-            f"{recipient}, {sender}. Azimuth seven zero, understood.",
-            f"{recipient}, {sender}. Cleared for launch on three two, copy.",
-            f"{recipient}, {sender}. Maintaining heading zero nine zero, understood.",
+            f"Cleared for orbital insertion, maintaining current vector.",
+            f"150km orbit, understood.",
+            f"Azimuth seven zero, understood.",
+            f"Cleared for launch on three two, copy.",
+            f"Maintaining heading zero nine zero, understood.",
         ]
     
     def get_counterexample(self) -> str:
@@ -781,7 +793,7 @@ class RadioReadback(DialogueParticle):
         """
         sender = self.get_sender_callsign()
         recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+        return f"[DON'T DO THIS!] Roger, {sender}, {recipient}, requesting clearance for launch. Over."
     
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
@@ -814,15 +826,15 @@ class HoldResponse(RadioResponse):
         roman_numeral = random.choice(["I", "II", "III", "IV", "V", "VI"])
         
         return [
-            f"{recipient}, {sender}. Negative, hold position. We've lost custody on a Class {roman_numeral} debris track. We'll clear you once we re-acquire and confirm your safety.",
-            f"{recipient}, this is {sender}. Hold on please. We have a ship with a flight emergency that needs priority. Stand by.",
-            f"{recipient}, {sender}. Negative, hold. Adjusting clearance parameters.",
-            f"{recipient}, {sender} here. Hold position, traffic conflict - we should clear you in a moment.",
-            f"{recipient}, {sender}. Stand by, hold your position. We're clearing you in a moment.",
-            f"{recipient}, this is {sender}. There's a flight emergency coming through. Stand by for your clearance and vector.",
-            f"{recipient}, {sender}. There's a derelict probe drifting through your window, you'll be clear to proceed in a moment. Stand by please.",
-            f"{recipient}, {sender}. There's some Class {roman_numeral} debris near your window. Probably nothing but we're going to let it go by. Hold for your clearance.",
-            f"{recipient}, this is {sender}. We have -- hang on -- okay, it's cleared up, let me get that approval for you. Apologies for the delay."
+            f"Negative, hold position. We've lost custody on a Class {roman_numeral} debris track. We'll clear you once we re-acquire and confirm your safety.",
+            f"Hold on please. We have a ship with a flight emergency that needs priority. Stand by.",
+            f"Negative, hold. Adjusting clearance parameters.",
+            f"Hold position, traffic conflict - we should clear you in a moment.",
+            f"Stand by, hold your position. We're clearing you in a moment.",
+            f"There's a flight emergency coming through. Stand by for your clearance and vector.",
+            f"There's a derelict probe drifting through your window, you'll be clear to proceed in a moment. Stand by please.",
+            f"There's some Class {roman_numeral} debris near your window. Probably nothing but we're going to let it go by. Hold for your clearance.",
+            f"We have -- hang on -- okay, it's cleared up, let me get that approval for you. Apologies for the delay."
         ]
     
     def get_counterexample(self) -> str:
@@ -892,15 +904,6 @@ class Holding(DialogueParticle):
         pilot_name = self.actor.name
         return f"{pilot_name}, the pilot of the {ship_name}"
     
-    def get_format(self) -> DialogueFormat:
-        """
-        Return expected DialogueFormat for holding acknowledgment.
-        
-        Returns:
-            DialogueFormat.ACKNOWLEDGMENT
-        """
-        return DialogueFormat.ACKNOWLEDGMENT
-    
     def get_situation_description(self) -> str:
         """
         Return situation description for holding.
@@ -928,13 +931,13 @@ class Holding(DialogueParticle):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
-            f"{recipient}, {sender}. Holding position and awaiting clearance for {maneuver}.",
-            f"{recipient}, {sender}. Roger, holding.",
-            f"{recipient}, {sender}. Glad we checked with you. Get that cleared up and let us know when it's safe, please.", 
-            f"{recipient}, {sender}. Copy, we're standing by.",
-            f"{recipient}, {sender}. Acknowledge your hold. We'll wait here for our {maneuver} clearance.",
-            f"{recipient}, {sender}. We're holding position for our {maneuver} clearance.",
-            f"{recipient}, {sender}. Understood, our {maneuver} clearance is on hold. We'll stand by.",
+            f"Holding position and awaiting clearance for {maneuver}.",
+            f"Roger, holding.",
+            f"Glad we checked with you. Get that cleared up and let us know when it's safe, please.", 
+            f"Copy, we're standing by.",
+            f"Acknowledge your hold. We'll wait here for our {maneuver} clearance.",
+            f"We're holding position for our {maneuver} clearance.",
+            f"Understood, our {maneuver} clearance is on hold. We'll stand by.",
         ]
     
     def get_counterexample(self) -> str:
@@ -981,11 +984,11 @@ class AdjustedResponse(RadioResponse):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
-            f"{recipient}, {sender}. Okay, adjust to azimuth seven zero, and launch. Sorry for the delay.",
-            f"{recipient}, {sender}. Cleared now, proceed with adjusted vector.",
-            f"{recipient}, {sender}. Traffic cleared, you're good to go.",
-            f"{recipient}, {sender}. Cleared for {maneuver}, proceed with adjusted parameters.",
-            f"{recipient}, {sender}. You're cleared now, proceed.",
+            f"Okay, adjust to azimuth seven zero, and launch. Sorry for the delay.",
+            f"Cleared now, proceed with adjusted vector.",
+            f"Traffic cleared, you're good to go.",
+            f"Cleared for {maneuver}, proceed with adjusted parameters.",
+            f"You're cleared now, proceed.",
         ]
     
     def get_counterexample(self) -> str:
