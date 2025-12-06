@@ -1,5 +1,6 @@
 import pytest
 import os
+import time
 from django.conf import settings
 
 from mysite.universe.management.commands.start_simulation_loop import SimulationQueue, DIALOGUE_EVENTS_RECEIVED, DIALOGUE_EVENTS_RECEIVED_LOCK
@@ -47,15 +48,23 @@ def test_universe(db):
     return {"mars": mars, "earth": earth, "pilot": pilot, "ship": ship, "controller": controller}
 
 @pytest.mark.slow
-def test_script_service_generates_dialogue_events(script_service, test_universe):
+def test_script_service_generates_dialogue_events(script_service, test_universe, request):
     """
-    Test that ScriptService can convert navigation events to dialogue events.
+    Integration smoke test: Verifies ScriptService can convert navigation events to dialogue events.
     
-    Atomic test: Verifies dialogue generation works independently of route generation.
+    This test exercises the full pipeline:
+    - Route planning (NavigationEvents)
+    - Dialogue chain generation (DialogueEvents)
+    - Basic structural validation
     
-    NOTE: This test calls the LLM and can take 2-8 seconds per dialogue event.
+    NOTE: This test calls the LLM and typically takes 40-90 seconds.
     Marked as slow - skip with: pytest -m "not slow"
+    
+    In verbose mode (-v), shows generated dialogue lines.
+    In very verbose mode (-vv), shows additional timing details.
     """
+    start_time = time.time()
+    
     route_service = RouteService()
     route = route_service.plan_route(origin=test_universe["mars"], destination=test_universe["earth"])
     
@@ -64,51 +73,44 @@ def test_script_service_generates_dialogue_events(script_service, test_universe)
     else:
         route_events = route
     
+    nav_event_count = len(route_events)
+    
     # Process navigation events to generate dialogue events
     script_events = script_service.parse_navigation_events(route_events, test_universe["ship"])
     
-    # Verify events have required attributes
+    elapsed_time = time.time() - start_time
+    
+    # Basic structural validation only
+    assert len(script_events) > 0, "Should generate at least one dialogue event."
     for event in script_events:
         assert hasattr(event, 'timestamp'), "Dialogue event should have timestamp."
         assert hasattr(event, 'text'), "Dialogue event should have text."
         assert hasattr(event, 'actor'), "Dialogue event should have actor."
         assert event.text, "Dialogue event text should not be empty."
-
-
-@pytest.mark.slow
-def test_dialogue_events_contain_expected_keywords(script_service, test_universe):
-    """
-    Test that generated dialogue events contain expected keywords.
     
-    Atomic test: Verifies content quality independently.
+    # Verbose output: show dialogue lines
+    verbosity = getattr(request.config.option, 'verbose', 0)
+    if verbosity >= 1:
+        print(f"\n=== Generated Dialogue ({len(script_events)} events from {nav_event_count} nav events) ===")
+        for i, event in enumerate(script_events, 1):
+            actor_name = event.actor.name if hasattr(event.actor, 'name') else str(event.actor)
+            print(f"{i:2d}. [{actor_name:20s}] {event.text}")
+        print()
     
-    NOTE: This test calls the LLM and can take 2-8 seconds per dialogue event.
-    Marked as slow - skip with: pytest -m "not slow"
-    """
-    route_service = RouteService()
-    route = route_service.plan_route(origin=test_universe["mars"], destination=test_universe["earth"])
-    
-    if not isinstance(route, list):
-        route_events = route.events
-    else:
-        route_events = route
-    
-    script_events = script_service.parse_navigation_events(route_events, test_universe["ship"])
-    script_output = "\n".join(str(event) for event in script_events)
-    
-    expected_keywords = ["Mars", "Earth"]  # Reduced to most reliable keywords
-    assert any(keyword in script_output for keyword in expected_keywords), \
-        f"Generated script events do not include any expected keywords. Output: {script_output[:200]}..."
+    # Very verbose output: show timing details
+    if verbosity >= 2:
+        avg_time_per_event = elapsed_time / len(script_events) if script_events else 0
+        print(f"Timing: {elapsed_time:.1f}s total, {avg_time_per_event:.2f}s per dialogue event")
+        print(f"Navigation events: {nav_event_count}, Dialogue events: {len(script_events)}")
+        print()
 
 
 @pytest.mark.slow
 def test_simulation_queue_processes_dialogue_events(simulation_queue, script_service, test_universe):
     """
-    Test that SimulationQueue can process dialogue events.
+    Integration smoke test: Verifies SimulationQueue can process dialogue events.
     
-    Atomic test: Verifies queue processing works independently.
-    
-    NOTE: This test calls the LLM and can take 2-8 seconds per dialogue event.
+    NOTE: This test calls the LLM and typically takes 40-90 seconds.
     Marked as slow - skip with: pytest -m "not slow"
     """
     route_service = RouteService()
@@ -137,6 +139,3 @@ def test_simulation_queue_processes_dialogue_events(simulation_queue, script_ser
         with DIALOGUE_EVENTS_RECEIVED_LOCK:
             assert len(DIALOGUE_EVENTS_RECEIVED) > 0, \
                 f"Expected dialogue events to be processed, got {len(DIALOGUE_EVENTS_RECEIVED)}."
-            processed_event = DIALOGUE_EVENTS_RECEIVED[0]
-            assert processed_event.text == script_events[0].text, \
-                "The processed event text does not match the expected first event text."

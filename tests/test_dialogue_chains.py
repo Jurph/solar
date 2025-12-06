@@ -1,128 +1,444 @@
-"""Unit tests for dialogue chain selection and generation."""
+"""
+Unit tests for dialogue chain generation from navigation events.
+
+Tests that:
+1. ParticleFactory creates correct request particles for each maneuver type
+2. Each particle's get_next_particle_probabilities() produces valid chains
+3. Complete chains can be walked through without LLM calls
+"""
 import pytest
-from unittest.mock import Mock, MagicMock
-from mysite.universe.services.dialogue.chain import DialogueChain, ChainSelector
+from django.test import TestCase
+from mysite.universe.models.actor import Actor, Pilot, Controller
+from mysite.universe.models.ship import Ship
+from mysite.universe.models.navigation import ManeuverType
+from mysite.universe.services.dialogue.factory import ParticleFactory
+from mysite.universe.services.dialogue.particles import (
+    LaunchRequest,
+    CircularizationRequest,
+    InsertionRequest,
+    SublightRequest,
+    DeorbitRequest,
+    LandingRequest,
+    GenericRequest,
+    RadioResponse,
+    LaunchResponse,
+    OrbitResponse,
+    DepartureResponse,
+    RadioAcknowledgment,
+    RadioReadback,
+    HoldResponse,
+    Holding,
+    AdjustedResponse,
+)
 
 
-class TestDialogueChain:
-    """Test DialogueChain class methods."""
+class DialogueChainTest(TestCase):
+    """Base test class with common fixtures."""
     
-    def test_create_standard_chain(self):
-        """Test standard 3-step chain creation."""
-        chain = DialogueChain.create_standard_chain()
-        assert len(chain.steps) == 3
-        assert chain.steps == ["request", "response", "acknowledgment"]
-    
-    def test_create_readback_chain(self):
-        """Test 4-step chain with readback creation."""
-        chain = DialogueChain.create_readback_chain()
-        assert len(chain.steps) == 4
-        assert chain.steps == ["request", "response", "readback", "acknowledgment"]
-    
-    def test_create_extended_chain(self):
-        """Test 5-step extended chain creation."""
-        chain = DialogueChain.create_extended_chain()
-        assert len(chain.steps) == 5
-        assert chain.steps == ["request", "hold_response", "holding", "adjusted_response", "acknowledgment"]
-    
-    def test_custom_chain(self):
-        """Test creating a custom chain with specific steps."""
-        steps = ["request", "response", "acknowledgment"]
-        chain = DialogueChain(steps)
-        assert chain.steps == steps
-        assert len(chain.steps) == 3
-
-
-class TestChainSelector:
-    """Test ChainSelector weighted selection logic."""
-    
-    def test_select_chain_returns_valid_chain(self):
-        """Test that select_chain always returns a valid DialogueChain."""
-        chain = ChainSelector.select_chain("circularize")
-        assert isinstance(chain, DialogueChain)
-        assert len(chain.steps) >= 3  # All chains have at least 3 steps
-        assert len(chain.steps) <= 5  # All chains have at most 5 steps
-    
-    def test_select_chain_standard_maneuver(self):
-        """Test chain selection for standard maneuvers (non-launch)."""
-        # Run multiple times to test weighted selection
-        chains_selected = []
-        for _ in range(100):
-            chain = ChainSelector.select_chain("circularize")
-            chains_selected.append(len(chain.steps))
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data shared across all tests."""
+        from mysite.universe.models.base import Location
+        from mysite.universe.models.scale import Scale
         
-        # Should have mostly 3-step chains (70% probability)
-        three_step_count = chains_selected.count(3)
-        assert three_step_count > 50  # Should be majority
+        cls.location = Location.objects.create(name="Test Station", scale=Scale.STATION)
+        cls.ship = Ship.create(location=cls.location, name="TEST SHIP")
+        cls.pilot = Pilot.create(ship=cls.ship)
+        cls.pilot.name = "Test Pilot"
+        cls.pilot.role = Actor.Role.PILOT
+        cls.pilot.save()
         
-        # Should have some 4-step chains (20% probability)
-        four_step_count = chains_selected.count(4)
-        assert four_step_count > 5  # Should have some
+        cls.controller = Controller.create()
+        cls.controller.name = "Mars Control"
+        cls.controller.role = Actor.Role.CONTROLLER
+        cls.controller.save()
         
-        # Should have some 5-step chains (10% probability)
-        five_step_count = chains_selected.count(5)
-        assert five_step_count > 0  # Should have at least one
-    
-    def test_select_chain_launch_maneuver(self):
-        """Test chain selection for launch maneuvers (higher extended chain probability)."""
-        # Run multiple times to test weighted selection
-        chains_selected = []
-        for _ in range(100):
-            chain = ChainSelector.select_chain("launch")
-            chains_selected.append(len(chain.steps))
-        
-        # Should have mostly 3-step chains (60% probability for launch)
-        three_step_count = chains_selected.count(3)
-        assert three_step_count > 40  # Should be majority
-        
-        # Should have more 5-step chains than standard maneuvers (20% vs 10%)
-        five_step_count = chains_selected.count(5)
-        assert five_step_count > 5  # Should have more than standard
-    
-    def test_select_chain_takeoff_maneuver(self):
-        """Test that 'takeoff' is treated like 'launch'."""
-        chain = ChainSelector.select_chain("takeoff")
-        assert isinstance(chain, DialogueChain)
-        # Takeoff should use launch weights (higher extended chain probability)
-        # We can't test exact weights, but we can verify it returns a valid chain
-    
-    def test_select_chain_case_insensitive(self):
-        """Test that maneuver type matching is case-insensitive."""
-        chain1 = ChainSelector.select_chain("LAUNCH")
-        chain2 = ChainSelector.select_chain("launch")
-        chain3 = ChainSelector.select_chain("Launch")
-        
-        # All should return valid chains
-        assert isinstance(chain1, DialogueChain)
-        assert isinstance(chain2, DialogueChain)
-        assert isinstance(chain3, DialogueChain)
-    
-    def test_select_chain_unknown_maneuver(self):
-        """Test chain selection for unknown maneuver types."""
-        chain = ChainSelector.select_chain("unknown_maneuver_type")
-        assert isinstance(chain, DialogueChain)
-        assert len(chain.steps) >= 3
-        assert len(chain.steps) <= 5
-    
-    def test_chain_steps_are_valid_particle_types(self):
-        """Test that all chain steps are valid particle type strings."""
-        valid_particle_types = {
-            "request", "response", "acknowledgment", "readback",
-            "hold_response", "holding", "adjusted_response"
+        cls.base_nav_context = {
+            "current_location": "Mars",
+            "destination": "Earth",
+            "inclination_deg": "20",
+            "altitude_km": "150",
+            "azimuth": "55",
         }
-        
-        # Test all three chain types
-        standard = ChainSelector.select_chain("circularize")
-        readback = ChainSelector.select_chain("circularize")
-        extended = ChainSelector.select_chain("launch")
-        
-        # Collect all steps from multiple selections
-        all_steps = set()
-        for _ in range(50):
-            chain = ChainSelector.select_chain("circularize")
-            all_steps.update(chain.steps)
-        
-        # All steps should be valid particle types
-        for step in all_steps:
-            assert step in valid_particle_types, f"Invalid particle type: {step}"
 
+
+class TestParticleFactoryManeuverMapping(DialogueChainTest):
+    """Test that ParticleFactory creates correct particles for each ManeuverType."""
+    
+    def test_launch_creates_launch_request(self):
+        """LAUNCH maneuver creates LaunchRequest particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        particle = ParticleFactory.create_particle(
+            particle_type="launch",
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, LaunchRequest)
+    
+    def test_circularize_creates_circularization_request(self):
+        """CIRCULARIZE maneuver creates CircularizationRequest particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "circularize"}
+        particle = ParticleFactory.create_particle(
+            particle_type="circularize",
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, CircularizationRequest)
+    
+    def test_insertion_creates_insertion_request(self):
+        """INSERTION maneuver creates InsertionRequest particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "insertion"}
+        particle = ParticleFactory.create_particle(
+            particle_type="insertion",
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, InsertionRequest)
+    
+    def test_sublight_creates_sublight_request(self):
+        """SUBLIGHT maneuver creates SublightRequest particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "sublight"}
+        particle = ParticleFactory.create_particle(
+            particle_type="sublight",
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, SublightRequest)
+    
+    def test_deorbit_creates_deorbit_request(self):
+        """DEORBIT maneuver creates DeorbitRequest particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "deorbit"}
+        particle = ParticleFactory.create_particle(
+            particle_type="deorbit",
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, DeorbitRequest)
+    
+    def test_landing_creates_landing_request(self):
+        """LANDING maneuver creates LandingRequest particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "landing"}
+        particle = ParticleFactory.create_particle(
+            particle_type="landing",
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, LandingRequest)
+    
+    def test_unknown_maneuver_creates_generic_request(self):
+        """Unknown maneuver types fall back to GenericRequest."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "hyperspace"}
+        particle = ParticleFactory.create_particle(
+            particle_type="hyperspace",  # Not in REQUEST_PARTICLE_MAP
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, GenericRequest)
+
+
+class TestParticleFactoryResponseMapping(DialogueChainTest):
+    """Test that ParticleFactory creates correct response particles based on maneuver type."""
+    
+    def test_launch_response_for_launch_maneuver(self):
+        """LAUNCH maneuver gets LaunchResponse particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        particle = ParticleFactory.create_particle(
+            particle_type="response",
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, LaunchResponse)
+    
+    def test_orbit_response_for_circularize_maneuver(self):
+        """CIRCULARIZE maneuver gets OrbitResponse particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "circularize"}
+        particle = ParticleFactory.create_particle(
+            particle_type="response",
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, OrbitResponse)
+    
+    def test_orbit_response_for_insertion_maneuver(self):
+        """INSERTION maneuver gets OrbitResponse particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "insertion"}
+        particle = ParticleFactory.create_particle(
+            particle_type="response",
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, OrbitResponse)
+    
+    def test_departure_response_for_sublight_maneuver(self):
+        """SUBLIGHT maneuver gets DepartureResponse particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "sublight"}
+        particle = ParticleFactory.create_particle(
+            particle_type="response",
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, DepartureResponse)
+    
+    def test_departure_response_for_hyperspace_maneuver(self):
+        """HYPERSPACE maneuver gets DepartureResponse particle."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "hyperspace"}
+        particle = ParticleFactory.create_particle(
+            particle_type="response",
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, DepartureResponse)
+    
+    def test_generic_response_for_unknown_maneuver(self):
+        """Unknown maneuver types fall back to RadioResponse."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "dock"}
+        particle = ParticleFactory.create_particle(
+            particle_type="response",
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, RadioResponse)
+
+
+class TestChainStructure(DialogueChainTest):
+    """Test that particle chains flow correctly via get_next_particle_probabilities()."""
+    
+    def test_request_leads_to_response_or_hold(self):
+        """All request particles lead to response or hold_response."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        request = LaunchRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        probs = request.get_next_particle_probabilities()
+        
+        # Request should lead to response or hold_response
+        self.assertTrue(
+            "response" in probs or "hold_response" in probs,
+            f"Request should lead to response or hold_response, got: {probs}"
+        )
+        # Probabilities should sum to ~1.0
+        self.assertAlmostEqual(sum(probs.values()), 1.0, places=2)
+    
+    def test_response_leads_to_readback(self):
+        """Response particles lead to readback (approval requires confirmation)."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        response = LaunchResponse(
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        probs = response.get_next_particle_probabilities()
+        
+        # Response should lead to readback
+        self.assertIn("readback", probs)
+        self.assertEqual(probs["readback"], 1.0)
+    
+    def test_readback_ends_chain(self):
+        """Readback particles end the chain (empty probabilities)."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        readback = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        probs = readback.get_next_particle_probabilities()
+        
+        # Readback should end chain
+        self.assertEqual(probs, {})
+    
+    def test_hold_response_leads_to_holding(self):
+        """HoldResponse leads to Holding acknowledgment."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        hold = HoldResponse(
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        probs = hold.get_next_particle_probabilities()
+        
+        self.assertIn("holding", probs)
+        self.assertEqual(probs["holding"], 1.0)
+    
+    def test_holding_leads_to_adjusted_response(self):
+        """Holding acknowledgment leads to adjusted response."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        holding = Holding(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        probs = holding.get_next_particle_probabilities()
+        
+        self.assertIn("adjusted_response", probs)
+        self.assertEqual(probs["adjusted_response"], 1.0)
+    
+    def test_adjusted_response_leads_to_readback(self):
+        """AdjustedResponse leads to readback (same as regular approval)."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        adjusted = AdjustedResponse(
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        probs = adjusted.get_next_particle_probabilities()
+        
+        self.assertIn("readback", probs)
+        self.assertEqual(probs["readback"], 1.0)
+
+
+class TestCompleteChainWalk(DialogueChainTest):
+    """Test that we can walk through complete chains without LLM calls."""
+    
+    def _walk_chain(self, initial_particle, max_steps=10):
+        """
+        Walk through a chain using get_next_particle_probabilities().
+        Returns list of particle classes encountered.
+        """
+        chain = [type(initial_particle).__name__]
+        current = initial_particle
+        
+        for _ in range(max_steps):
+            probs = current.get_next_particle_probabilities()
+            if not probs:
+                break  # Chain ends
+            
+            # Pick first available next particle type (deterministic for testing)
+            next_type = list(probs.keys())[0]
+            
+            # Determine actor for next particle
+            if next_type in ["response", "hold_response", "adjusted_response"]:
+                actor = self.controller
+                recipient = "TEST SHIP"
+            else:
+                actor = self.pilot
+                recipient = "MARS CONTROL"
+            
+            current = ParticleFactory.create_particle(
+                particle_type=next_type,
+                actor=actor,
+                recipient=recipient,
+                nav_context=current.nav_context
+            )
+            chain.append(type(current).__name__)
+        
+        return chain
+    
+    def test_standard_launch_chain(self):
+        """Standard launch chain: LaunchRequest → LaunchResponse → RadioReadback."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        request = LaunchRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        
+        chain = self._walk_chain(request)
+        
+        # Should have 3 steps: request, response, readback
+        self.assertEqual(len(chain), 3)
+        self.assertEqual(chain[0], "LaunchRequest")
+        self.assertEqual(chain[1], "LaunchResponse")
+        self.assertEqual(chain[2], "RadioReadback")
+    
+    def test_standard_circularize_chain(self):
+        """Standard circularize chain: CircularizationRequest → OrbitResponse → RadioReadback."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "circularize"}
+        request = CircularizationRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        
+        chain = self._walk_chain(request)
+        
+        self.assertEqual(len(chain), 3)
+        self.assertEqual(chain[0], "CircularizationRequest")
+        self.assertEqual(chain[1], "OrbitResponse")
+        self.assertEqual(chain[2], "RadioReadback")
+    
+    def test_standard_sublight_chain(self):
+        """Standard sublight chain: SublightRequest → DepartureResponse → RadioReadback."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "sublight"}
+        request = SublightRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=nav_context
+        )
+        
+        chain = self._walk_chain(request)
+        
+        self.assertEqual(len(chain), 3)
+        self.assertEqual(chain[0], "SublightRequest")
+        self.assertEqual(chain[1], "DepartureResponse")
+        self.assertEqual(chain[2], "RadioReadback")
+    
+    def test_hold_chain_structure(self):
+        """Hold chain: Request → HoldResponse → Holding → AdjustedResponse → RadioReadback."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
+        
+        # Start with HoldResponse (simulating controller deciding to hold)
+        hold = HoldResponse(
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context
+        )
+        
+        chain = self._walk_chain(hold)
+        
+        # Should have 4 steps from HoldResponse
+        self.assertEqual(len(chain), 4)
+        self.assertEqual(chain[0], "HoldResponse")
+        self.assertEqual(chain[1], "Holding")
+        self.assertEqual(chain[2], "AdjustedResponse")
+        self.assertEqual(chain[3], "RadioReadback")
+
+
+class TestAllManeuverTypesGenerateChains(DialogueChainTest):
+    """Test that every ManeuverType can generate a valid dialogue chain."""
+    
+    def test_all_maneuver_types_produce_valid_chains(self):
+        """Every ManeuverType enum value produces a valid chain structure."""
+        for maneuver_type in ManeuverType:
+            maneuver_str = maneuver_type.value.replace(" ", "_").lower()
+            nav_context = {**self.base_nav_context, "maneuver_type": maneuver_str}
+            
+            with self.subTest(maneuver=maneuver_type.name):
+                # Create initial request particle
+                particle = ParticleFactory.create_particle(
+                    particle_type=maneuver_str,
+                    actor=self.pilot,
+                    recipient="MARS CONTROL",
+                    nav_context=nav_context
+                )
+                
+                # Particle should be some kind of request
+                self.assertTrue(
+                    hasattr(particle, 'get_next_particle_probabilities'),
+                    f"Particle for {maneuver_type} should have get_next_particle_probabilities()"
+                )
+                
+                # Should have valid probabilities
+                probs = particle.get_next_particle_probabilities()
+                self.assertIsInstance(probs, dict)
+                
+                # If probabilities exist, they should sum to ~1.0
+                if probs:
+                    self.assertAlmostEqual(
+                        sum(probs.values()), 1.0, places=2,
+                        msg=f"Probabilities for {maneuver_type} should sum to 1.0"
+                    )

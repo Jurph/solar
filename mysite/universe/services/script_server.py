@@ -252,7 +252,6 @@ class ScriptService:
                     }
                 },
                 "dialogue_message": msg.model_dump(),
-                "requires_readback": msg.requires_readback,
             }
             
             # Remove None values from metadata
