@@ -6,9 +6,8 @@ Tests that:
 2. Each particle's get_next_particle_probabilities() produces valid chains
 3. Complete chains can be walked through without LLM calls
 """
-import pytest
 from django.test import TestCase
-from mysite.universe.models.actor import Actor, Pilot, Controller
+from mysite.universe.models.actor import Pilot, Controller
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.navigation import ManeuverType
 from mysite.universe.services.dialogue.factory import ParticleFactory
@@ -21,14 +20,9 @@ from mysite.universe.services.dialogue.particles import (
     LandingRequest,
     GenericRequest,
     RadioResponse,
-    LaunchResponse,
-    OrbitResponse,
-    DepartureResponse,
-    RadioAcknowledgment,
     RadioReadback,
     HoldResponse,
     Holding,
-    AdjustedResponse,
 )
 
 
@@ -45,12 +39,10 @@ class DialogueChainTest(TestCase):
         cls.ship = Ship.create(location=cls.location, name="TEST SHIP")
         cls.pilot = Pilot.create(ship=cls.ship)
         cls.pilot.name = "Test Pilot"
-        cls.pilot.role = Actor.Role.PILOT
         cls.pilot.save()
         
         cls.controller = Controller.create()
         cls.controller.name = "Mars Control"
-        cls.controller.role = Actor.Role.CONTROLLER
         cls.controller.save()
         
         cls.base_nav_context = {
@@ -144,10 +136,10 @@ class TestParticleFactoryManeuverMapping(DialogueChainTest):
 
 
 class TestParticleFactoryResponseMapping(DialogueChainTest):
-    """Test that ParticleFactory creates correct response particles based on maneuver type."""
+    """Test that ParticleFactory creates RadioResponse for all maneuver types."""
     
-    def test_launch_response_for_launch_maneuver(self):
-        """LAUNCH maneuver gets LaunchResponse particle."""
+    def test_response_for_launch_maneuver(self):
+        """LAUNCH maneuver gets RadioResponse particle with launch-specific examples."""
         nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
         particle = ParticleFactory.create_particle(
             particle_type="response",
@@ -155,10 +147,13 @@ class TestParticleFactoryResponseMapping(DialogueChainTest):
             recipient="TEST SHIP",
             nav_context=nav_context
         )
-        self.assertIsInstance(particle, LaunchResponse)
+        self.assertIsInstance(particle, RadioResponse)
+        examples = particle.get_examples()
+        # Examples should be launch-specific
+        self.assertTrue(any("launch" in ex.lower() or "burn" in ex.lower() for ex in examples))
     
-    def test_orbit_response_for_circularize_maneuver(self):
-        """CIRCULARIZE maneuver gets OrbitResponse particle."""
+    def test_response_for_circularize_maneuver(self):
+        """CIRCULARIZE maneuver gets RadioResponse with orbital examples."""
         nav_context = {**self.base_nav_context, "maneuver_type": "circularize"}
         particle = ParticleFactory.create_particle(
             particle_type="response",
@@ -166,10 +161,13 @@ class TestParticleFactoryResponseMapping(DialogueChainTest):
             recipient="TEST SHIP",
             nav_context=nav_context
         )
-        self.assertIsInstance(particle, OrbitResponse)
+        self.assertIsInstance(particle, RadioResponse)
+        examples = particle.get_examples()
+        # Examples should be orbital-specific
+        self.assertTrue(any("circularize" in ex.lower() or "orbit" in ex.lower() for ex in examples))
     
-    def test_orbit_response_for_insertion_maneuver(self):
-        """INSERTION maneuver gets OrbitResponse particle."""
+    def test_response_for_insertion_maneuver(self):
+        """INSERTION maneuver gets RadioResponse with orbital examples."""
         nav_context = {**self.base_nav_context, "maneuver_type": "insertion"}
         particle = ParticleFactory.create_particle(
             particle_type="response",
@@ -177,32 +175,41 @@ class TestParticleFactoryResponseMapping(DialogueChainTest):
             recipient="TEST SHIP",
             nav_context=nav_context
         )
-        self.assertIsInstance(particle, OrbitResponse)
+        self.assertIsInstance(particle, RadioResponse)
+        examples = particle.get_examples()
+        # Examples should be insertion-specific
+        self.assertTrue(any("insertion" in ex.lower() or "orbit" in ex.lower() for ex in examples))
     
-    def test_departure_response_for_sublight_maneuver(self):
-        """SUBLIGHT maneuver gets DepartureResponse particle."""
-        nav_context = {**self.base_nav_context, "maneuver_type": "sublight"}
+    def test_response_for_sublight_maneuver(self):
+        """SUBLIGHT maneuver gets RadioResponse with departure examples."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "sublight", "destination": "Mars"}
         particle = ParticleFactory.create_particle(
             particle_type="response",
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=nav_context
         )
-        self.assertIsInstance(particle, DepartureResponse)
+        self.assertIsInstance(particle, RadioResponse)
+        examples = particle.get_examples()
+        # Examples should be departure-specific
+        self.assertTrue(any("sublight" in ex.lower() or "burn" in ex.lower() or "Mars" in ex for ex in examples))
     
-    def test_departure_response_for_hyperspace_maneuver(self):
-        """HYPERSPACE maneuver gets DepartureResponse particle."""
-        nav_context = {**self.base_nav_context, "maneuver_type": "hyperspace"}
+    def test_response_for_hyperspace_maneuver(self):
+        """HYPERSPACE maneuver gets RadioResponse with departure examples."""
+        nav_context = {**self.base_nav_context, "maneuver_type": "hyperspace", "destination": "Jupiter"}
         particle = ParticleFactory.create_particle(
             particle_type="response",
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=nav_context
         )
-        self.assertIsInstance(particle, DepartureResponse)
+        self.assertIsInstance(particle, RadioResponse)
+        examples = particle.get_examples()
+        # Examples should be departure-specific
+        self.assertTrue(any("hyperspace" in ex.lower() or "jump" in ex.lower() or "Jupiter" in ex for ex in examples))
     
-    def test_generic_response_for_unknown_maneuver(self):
-        """Unknown maneuver types fall back to RadioResponse."""
+    def test_response_for_unknown_maneuver(self):
+        """Unknown maneuver types get RadioResponse with generic examples."""
         nav_context = {**self.base_nav_context, "maneuver_type": "dock"}
         particle = ParticleFactory.create_particle(
             particle_type="response",
@@ -237,7 +244,7 @@ class TestChainStructure(DialogueChainTest):
     def test_response_leads_to_readback(self):
         """Response particles lead to readback (approval requires confirmation)."""
         nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
-        response = LaunchResponse(
+        response = RadioResponse(
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=nav_context
@@ -288,9 +295,9 @@ class TestChainStructure(DialogueChainTest):
         self.assertEqual(probs["adjusted_response"], 1.0)
     
     def test_adjusted_response_leads_to_readback(self):
-        """AdjustedResponse leads to readback (same as regular approval)."""
+        """Adjusted response (after hold) leads to readback (same as regular approval)."""
         nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
-        adjusted = AdjustedResponse(
+        adjusted = RadioResponse(
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=nav_context
@@ -339,7 +346,7 @@ class TestCompleteChainWalk(DialogueChainTest):
         return chain
     
     def test_standard_launch_chain(self):
-        """Standard launch chain: LaunchRequest → LaunchResponse → RadioReadback."""
+        """Standard launch chain: LaunchRequest → RadioResponse → RadioReadback."""
         nav_context = {**self.base_nav_context, "maneuver_type": "launch"}
         request = LaunchRequest(
             actor=self.pilot,
@@ -352,11 +359,11 @@ class TestCompleteChainWalk(DialogueChainTest):
         # Should have 3 steps: request, response, readback
         self.assertEqual(len(chain), 3)
         self.assertEqual(chain[0], "LaunchRequest")
-        self.assertEqual(chain[1], "LaunchResponse")
+        self.assertEqual(chain[1], "RadioResponse")
         self.assertEqual(chain[2], "RadioReadback")
     
     def test_standard_circularize_chain(self):
-        """Standard circularize chain: CircularizationRequest → OrbitResponse → RadioReadback."""
+        """Standard circularize chain: CircularizationRequest → RadioResponse → RadioReadback."""
         nav_context = {**self.base_nav_context, "maneuver_type": "circularize"}
         request = CircularizationRequest(
             actor=self.pilot,
@@ -368,7 +375,7 @@ class TestCompleteChainWalk(DialogueChainTest):
         
         self.assertEqual(len(chain), 3)
         self.assertEqual(chain[0], "CircularizationRequest")
-        self.assertEqual(chain[1], "OrbitResponse")
+        self.assertEqual(chain[1], "RadioResponse")
         self.assertEqual(chain[2], "RadioReadback")
     
     def test_standard_sublight_chain(self):
@@ -384,7 +391,7 @@ class TestCompleteChainWalk(DialogueChainTest):
         
         self.assertEqual(len(chain), 3)
         self.assertEqual(chain[0], "SublightRequest")
-        self.assertEqual(chain[1], "DepartureResponse")
+        self.assertEqual(chain[1], "RadioResponse")
         self.assertEqual(chain[2], "RadioReadback")
     
     def test_hold_chain_structure(self):
@@ -404,7 +411,7 @@ class TestCompleteChainWalk(DialogueChainTest):
         self.assertEqual(len(chain), 4)
         self.assertEqual(chain[0], "HoldResponse")
         self.assertEqual(chain[1], "Holding")
-        self.assertEqual(chain[2], "AdjustedResponse")
+        self.assertEqual(chain[2], "RadioResponse")
         self.assertEqual(chain[3], "RadioReadback")
 
 

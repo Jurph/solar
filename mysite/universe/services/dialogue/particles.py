@@ -455,20 +455,94 @@ class RadioResponse(DialogueParticle):
     
     def get_examples(self) -> List[str]:
         """
-        Return examples of controller responses.
+        Return examples of controller responses with detailed instructions.
+        
+        Generates context-aware examples based on maneuver type and nav_context.
+        All approvals must include specific technical details (altitude, inclination, etc.)
+        as required by the design.
         
         Returns:
             List of example dialogue strings.
         """
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
+        inclination_deg = self.nav_context.get("inclination_deg", "")
+        altitude_km = self.nav_context.get("altitude_km", "")
+        destination = self.nav_context.get("destination", "")
         
-        return [
-            f"Cleared for {maneuver} maneuver.",
-            f"Cleared, proceed as planned.",
-            f"Authorization granted, you're cleared.",
-            f"Cleared for {maneuver}, proceed when ready.",
-            f"You're cleared, proceed.",
-        ]
+        # Build examples based on maneuver type
+        examples = []
+        
+        # Launch/direct ascent examples
+        if maneuver in ["launch", "direct_ascent"]:
+            if altitude_km and inclination_deg:
+                examples.extend([
+                    f"Your {maneuver} burn is approved. You can head up to {altitude_km} kilometers, try to keep it near {inclination_deg} degrees, and check in when you get to orbit.",
+                    f"We see you cleared to {altitude_km} kilometers, {inclination_deg} degrees. Permission for {maneuver} granted.",
+                    f"Your {maneuver} burn is approved. Execute when ready.",
+                    f"We have your flight plan and your launch window is open. You are go.",
+                ])
+            else:
+                examples.extend([
+                    f"Your {maneuver} burn is approved. Execute when ready.",
+                    f"You're cleared for launch, proceed.",
+                ])
+        
+        # Orbital maneuvers (insertion, circularization)
+        elif maneuver in ["insertion", "circularization"]:
+            if altitude_km and inclination_deg:
+                examples.extend([
+                    f"Cleared for {maneuver} burn to {altitude_km} kilometers, {inclination_deg} degrees.",
+                    f"Approved for {maneuver} to {inclination_deg} degrees, {altitude_km} kilometers.",
+                    f"Cleared for orbital {maneuver}, you're go. Make your own way, try to keep it near {inclination_deg} degrees.",
+                    f"{maneuver.capitalize()} clearance granted. You can have any achievable slot.",
+                    f"Bring it to {altitude_km} kilometers, {inclination_deg} degrees.",
+                ])
+            else:
+                examples.extend([
+                    f"Cleared for {maneuver}, proceed when ready.",
+                    f"{maneuver.capitalize()} clearance granted.",
+                ])
+        
+        # Departure maneuvers (sublight, hyperspace)
+        elif maneuver in ["sublight", "hyperspace"]:
+            action = "burn" if maneuver == "sublight" else "jump"
+            farewells = ["Safe travels.", "Good luck.", "See you again soon.", "Take care.", "Fly safe."]
+            farewell = random.choice(farewells)
+            
+            if destination:
+                examples.extend([
+                    f"You are go for {maneuver} to {destination}. {farewell}",
+                    f"{maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
+                    f"Cleared for {maneuver} {action}.",
+                    f"{maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
+                ])
+            else:
+                examples.extend([
+                    f"Cleared for {maneuver} {action}.",
+                    f"{maneuver.capitalize()} clearance granted.",
+                ])
+        
+        # Generic fallback
+        else:
+            examples.extend([
+                f"Cleared for {maneuver} maneuver.",
+                f"Cleared, proceed as planned.",
+                f"Authorization granted, you're cleared.",
+                f"Cleared for {maneuver}, proceed when ready.",
+            ])
+        
+        # Check if this is an adjusted response (after a hold)
+        # If nav_context indicates a hold occurred, add adjusted clearance examples
+        if self.nav_context.get("after_hold", False) or "adjusted" in str(self.nav_context.get("maneuver_type", "")).lower():
+            examples.extend([
+                f"Okay, adjust to azimuth seven zero, and {maneuver}. Sorry for the delay.",
+                f"Cleared now, proceed with adjusted vector.",
+                f"Traffic cleared, you're good to go.",
+                f"Cleared for {maneuver}, proceed with adjusted parameters.",
+                f"You're cleared now, proceed.",
+            ])
+        
+        return examples
     
     def get_counterexample(self) -> str:
         """
@@ -495,221 +569,6 @@ class RadioResponse(DialogueParticle):
         return {
             "readback": 1.0,  # Approvals always require readback
         }
-
-
-class LaunchResponse(RadioResponse):
-    """
-    Controller responding to launch or direct ascent requests.
-    
-    Used when controller grants clearance for launch maneuvers.
-    """
-    
-    def get_examples(self) -> List[str]:
-        """
-        Return examples of launch clearance responses.
-        
-        Returns:
-            List of example dialogue strings.
-        """
-        inclination_deg = self.nav_context.get("inclination_deg", "inclination")
-        altitude_km = self.nav_context.get("altitude_km", "altitude")
-        maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
-        
-        return [
-            f"We have your flight plan and your launch window is open. You are go.",
-            f"We see you cleared to {altitude_km} kilometers, {inclination_deg} degrees. Permission for {maneuver} granted.",
-            f"Don't let me stop you! Head on out. We're prepping your insertion at {inclination_deg} degrees now.",
-            f"Your {maneuver} burn is approved. Execute when ready.",
-            f"You're cleared for launch, proceed.",
-            f"Your {maneuver} burn is approved. You can head up to {altitude_km} kilometers, try to keep it near {inclination_deg} degrees, and check in when you get to orbit.",
-        ]
-    
-    def get_counterexample(self) -> str:
-        """
-        Return counterexample showing what NOT to do.
-        
-        Returns:
-            Counterexample string.
-        """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
-    
-    # Inherits get_next_particle_probabilities() from RadioResponse
-    # (100% readback - approvals always require readback)
-
-
-class OrbitResponse(RadioResponse):
-    """
-    Controller responding to insertion or circularization requests.
-    
-    Used when controller grants clearance for orbital maneuvers.
-    """
-    
-    def get_examples(self) -> List[str]:
-        """
-        Return examples of orbital maneuver clearance responses.
-        
-        Returns:
-            List of example dialogue strings.
-        """
-
-        maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
-        inclination_deg = self.nav_context.get("inclination_deg", "inclination")
-        altitude_km = self.nav_context.get("altitude_km", "altitude")
-        
-        return [
-            f"Cleared for {maneuver}, proceed when ready.",
-            f"Cleared for orbital {maneuver}, you're go. Make your own way, try to keep it near {inclination_deg} degrees.",
-            f"{maneuver.capitalize()} clearance granted. You can have any achievable slot.",
-            f"Approved for {maneuver} to {inclination_deg} degrees, {altitude_km} kilometers.",
-            f"Bring it to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"Cleared for {maneuver} burn to {altitude_km} kilometers, {inclination_deg} degrees.",
-        ]
-    
-    def get_counterexample(self) -> str:
-        """
-        Return counterexample showing what NOT to do.
-        
-        Returns:
-            Counterexample string.
-        """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
-
-
-class DepartureResponse(RadioResponse):
-    """
-    Controller responding to sublight or hyperspace departure requests.
-    
-    Used when controller grants clearance for departure maneuvers.
-    """
-    
-    def get_examples(self) -> List[str]:
-        """
-        Return examples of departure clearance responses.
-        
-        Returns:
-            List of example dialogue strings.
-        """
-
-        maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
-        destination = self.nav_context.get("destination", "destination")
-        if maneuver == "sublight":
-            action = "burn"
-        elif maneuver == "hyperspace":
-            action = "jump"
-        else:
-            action = ""
-        
-        farewells = [
-            "Safe travels.",
-            "Good luck.",
-            "See you again soon.",
-            "Take care.",
-            "Fly safe.",
-            "Stay safe out there."
-        ]
-        
-        farewell = random.choice(farewells)
-        
-        return [
-            f"You are go for {maneuver} to {destination}. {farewell}",
-            f"Cleared for {maneuver} {action}.",
-            f"{maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
-            f"I've got a window for you; if you can {action} now, we can get you out right away. {farewell}",
-            f"{maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
-            f"Your {action} to {destination} is approved.",
-        ]
-    
-    def get_counterexample(self) -> str:
-        """
-        Return counterexample showing what NOT to do.
-        
-        Returns:
-            Counterexample string.
-        """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
-    
-    # Inherits get_next_particle_probabilities() from RadioResponse
-    # (100% readback - approvals always require readback)
-
-
-class RadioAcknowledgment(DialogueParticle):
-    """
-    Pilot acknowledging controller approval.
-    
-    Used when pilot confirms receipt of clearance or instructions.
-    """
-    
-    def get_role_description(self) -> str:
-        """
-        Return role description for pilot.
-        
-        Format: "{pilot_name}, the pilot of the {ship_name}"
-        
-        Returns:
-            Role description string.
-        """
-        ship_name = self.get_sender_callsign()
-        pilot_name = self.actor.name
-        return f"{pilot_name}, the pilot of the {ship_name}"
-    
-    def get_situation_description(self) -> str:
-        """
-        Return situation description for acknowledgment.
-        
-        Builds description like: "{sender} has received clearance from {recipient}
-        and is acknowledging receipt."
-        
-        Returns:
-            Situation description string.
-        """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        
-        return f"{sender} has received clearance from {recipient} and is acknowledging receipt."
-    
-    def get_examples(self) -> List[str]:
-        """
-        Return examples of pilot acknowledgments.
-        
-        Returns:
-            List of example dialogue strings.
-        """
-     
-        return [
-            f"Roger, proceeding as directed.",
-            f"Copy, understood.",
-            f"Acknowledged, proceeding.",
-            f"Roger that, thank you.",
-            f"Understood, proceeding.",
-        ]
-    
-    def get_counterexample(self) -> str:
-        """
-        Return counterexample showing what NOT to do.
-        
-        Returns:
-            Counterexample string.
-        """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
-    
-    def get_next_particle_probabilities(self) -> Dict[str, float]:
-        """
-        Return probabilities for what can follow an acknowledgment.
-        
-        Acknowledgments typically end the chain.
-        
-        Returns:
-            Empty dict - chain ends after acknowledgment.
-        """
-        return {}  # Chain ends after acknowledgment
 
 
 class RadioReadback(DialogueParticle):
@@ -969,40 +828,4 @@ class Holding(DialogueParticle):
         return {
             "adjusted_response": 1.0  # Controller provides adjusted clearance
         }
-
-
-class AdjustedResponse(RadioResponse):
-    """
-    Controller providing adjusted clearance after hold.
-    
-    Used when controller provides new clearance after a hold instruction.
-    """
-    
-    def get_examples(self) -> List[str]:
-        """
-        Return examples of adjusted responses.
-        
-        Returns:
-            List of example dialogue strings.
-        """
-        maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
-        
-        return [
-            f"Okay, adjust to azimuth seven zero, and launch. Sorry for the delay.",
-            f"Cleared now, proceed with adjusted vector.",
-            f"Traffic cleared, you're good to go.",
-            f"Cleared for {maneuver}, proceed with adjusted parameters.",
-            f"You're cleared now, proceed.",
-        ]
-    
-    def get_counterexample(self) -> str:
-        """
-        Return counterexample showing what NOT to do.
-        
-        Returns:
-            Counterexample string.
-        """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
 

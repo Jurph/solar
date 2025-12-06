@@ -11,7 +11,7 @@ from mysite.universe.management.commands.start_simulation_loop import (
     DIALOGUE_EVENTS_RECEIVED,
     SimulationQueue,
 )
-from mysite.universe.models.actor import Actor, Pilot, Controller
+from mysite.universe.models.actor import Pilot, Controller, Satellite
 from mysite.universe.models.base import Location
 from mysite.universe.models.event import DialogueEvent, NavigationEvent
 from mysite.universe.models.ship import Ship
@@ -34,16 +34,14 @@ class TestSimulationQueue(TestCase):
             current_location=self.origin
         )
         
-        # Create test actors (using standard create method)
-        self.pilot = Actor.objects.create(
-            name="Test Pilot",
-            role="pilot"
-        )
+        # Create test actors using the correct classes
+        self.pilot = Pilot.create(ship=self.ship)
+        self.pilot.name = "Test Pilot"
+        self.pilot.save()
         
-        self.controller = Actor.objects.create(
-            name="Test Controller",
-            role="controller"
-        )
+        self.controller = Controller.create()
+        self.controller.name = "Test Controller"
+        self.controller.save()
         
         # Create a queue
         self.queue = SimulationQueue()
@@ -453,8 +451,10 @@ def test_pilot_satellite_dialogue():
     # Create the ship with the dummy location
     ship = Ship.objects.create(name="Test Ship", current_location=location)
     
-    pilot = Pilot.objects.create(name="Test Pilot", ship=ship)
-    satellite = Actor.objects.create(name="Nav Beacon J5", role="satellite")
+    pilot = Pilot.create(ship=ship)
+    pilot.name = "Test Pilot"
+    pilot.save()
+    satellite = Satellite.create(name="Nav Beacon J5")
     
     # Create the queue
     queue = SimulationQueue()

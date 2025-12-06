@@ -1,6 +1,6 @@
 """Unit tests for dialogue particle classes."""
 from django.test import TestCase
-from mysite.universe.models.actor import Actor, Pilot, Controller
+from mysite.universe.models.actor import Pilot, Controller
 from mysite.universe.models.ship import Ship
 from mysite.universe.services.dialogue.particles import (
     LaunchRequest,
@@ -8,14 +8,9 @@ from mysite.universe.services.dialogue.particles import (
     InsertionRequest,
     GenericRequest,
     RadioResponse,
-    LaunchResponse,
-    OrbitResponse,
-    DepartureResponse,
-    RadioAcknowledgment,
     RadioReadback,
     HoldResponse,
     Holding,
-    AdjustedResponse,
 )
 
 
@@ -39,13 +34,11 @@ class DialogueParticleTest(TestCase):
         # Create test pilot with ship
         cls.pilot = Pilot.create(ship=cls.ship)
         cls.pilot.name = "Test Pilot"
-        cls.pilot.role = Actor.Role.PILOT
         cls.pilot.save()
         
         # Create test controller
         cls.controller = Controller.create()
         cls.controller.name = "Mars Control"
-        cls.controller.role = Actor.Role.CONTROLLER
         cls.controller.save()
         
         # Standard nav_context for testing
@@ -196,9 +189,11 @@ class TestControllerResponseParticles(DialogueParticleTest):
         self.assertIn("requested clearance", situation.lower())
         self.assertIn("MARS CONTROL", situation)
     
-    def test_launch_response_examples(self):
-        """Test LaunchResponse examples are launch-specific."""
-        particle = LaunchResponse(
+    def test_radio_response_examples_are_context_aware(self):
+        """Test RadioResponse generates context-aware examples based on maneuver type."""
+        # Test launch examples
+        self.nav_context["maneuver_type"] = "launch"
+        particle = RadioResponse(
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=self.nav_context
@@ -206,44 +201,39 @@ class TestControllerResponseParticles(DialogueParticleTest):
         examples = particle.get_examples()
         self.assertGreater(len(examples), 0)
         # Examples should reference launch
-        launch_keywords = ["launch", "takeoff", "departure", "go"]
+        launch_keywords = ["launch", "burn", "approved", "go"]
         found_keyword = any(
             keyword in example.lower() 
             for example in examples 
             for keyword in launch_keywords
         )
-        self.assertTrue(found_keyword, "Examples should reference launch")
-    
-    def test_orbit_response_examples(self):
-        """Test OrbitResponse examples include orbital keywords."""
+        self.assertTrue(found_keyword, "Launch examples should reference launch")
+        
+        # Test orbital examples
         self.nav_context["maneuver_type"] = "insertion"
-        particle = OrbitResponse(
+        particle = RadioResponse(
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=self.nav_context
         )
         examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should reference orbital keywords
-        orbit_keywords = ["orbit", "insertion", "cleared", "degrees", "kilometers"]
+        orbit_keywords = ["insertion", "cleared", "orbit", "degrees", "kilometers"]
         found_keyword = any(
             keyword in example.lower()
             for example in examples
             for keyword in orbit_keywords
         )
-        self.assertTrue(found_keyword, "Examples should reference orbital parameters")
-    
-    def test_departure_response_examples_use_dynamic_destination(self):
-        """Test that DepartureResponse examples use nav_context destination, not hardcoded."""
+        self.assertTrue(found_keyword, "Orbital examples should reference orbital parameters")
+        
+        # Test departure examples with destination
         self.nav_context["maneuver_type"] = "sublight"
         self.nav_context["destination"] = "Neptune"
-        particle = DepartureResponse(
+        particle = RadioResponse(
             actor=self.controller,
             recipient="TEST SHIP",
             nav_context=self.nav_context
         )
         examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
         # Examples should use the actual destination from nav_context
         destination_found = any("Neptune" in ex for ex in examples)
         self.assertTrue(destination_found, "Examples should use nav_context destination dynamically")
@@ -265,39 +255,6 @@ class TestControllerResponseParticles(DialogueParticleTest):
             for keyword in hold_keywords
         )
         self.assertTrue(found_keyword, "Examples should reference holding")
-    
-    def test_adjusted_response_examples(self):
-        """Test AdjustedResponse examples indicate adjustment."""
-        particle = AdjustedResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
-        )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should reference adjustment or clearing
-        adjust_keywords = ["adjust", "cleared", "okay", "sorry"]
-        found_keyword = any(
-            keyword in example.lower() 
-            for example in examples 
-            for keyword in adjust_keywords
-        )
-        self.assertTrue(found_keyword, "Examples should reference adjustment")
-
-
-class TestPilotAcknowledgmentParticles(DialogueParticleTest):
-    """Test pilot acknowledgment particle classes."""
-    
-    def test_radio_acknowledgment_role_description(self):
-        """Test RadioAcknowledgment returns pilot role description."""
-        particle = RadioAcknowledgment(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
-        )
-        role_desc = particle.get_role_description()
-        self.assertIn("Test Pilot", role_desc)
-        self.assertIn("TEST SHIP", role_desc)
     
     def test_select_examples_returns_different_selections(self):
         """Test that select_examples() returns different examples when called multiple times."""
@@ -374,15 +331,6 @@ class TestParticleSenderCallsign(DialogueParticleTest):
         sender = particle.get_sender_callsign()
         self.assertEqual(sender, "MARS CONTROL")
     
-    def test_pilot_acknowledgment_sender_callsign(self):
-        """Test pilot acknowledgment uses ship name as sender."""
-        particle = RadioAcknowledgment(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
-        )
-        sender = particle.get_sender_callsign()
-        self.assertEqual(sender, "TEST SHIP")
 
 
 class TestParticlePromptBuilding(DialogueParticleTest):
