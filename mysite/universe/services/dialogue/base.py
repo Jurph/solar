@@ -175,6 +175,59 @@ After the rigid opening, you will need to be creative in constructing a valid an
         """
         pass
     
+    def get_duration(self) -> float:
+        """
+        Return duration of this dialogue event (for event scheduling).
+        
+        Default: 2.0 seconds. Override in subclasses for longer events
+        (e.g., hold responses might take 60 seconds).
+        
+        Returns:
+            Duration in seconds.
+        """
+        return 2.0
+    
+    @abstractmethod
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what particle types can follow this one.
+        
+        Each particle defines what can come next and with what probability.
+        Probabilities should sum to <= 1.0. If sum < 1.0, remaining probability
+        represents chance that chain ends here.
+        
+        Returns:
+            Dict mapping particle type strings to probabilities.
+            Empty dict means chain always ends here.
+            
+        Example:
+            {
+                "response": 0.85,      # 85% chance of response
+                "hold_response": 0.10,  # 10% chance of hold
+                "gratitude": 0.05       # 5% chance of casual gratitude
+            }
+            # Sum = 1.0, so chain always continues
+        """
+        pass
+    
+    def get_delay_until_next(self) -> Optional[float]:
+        """
+        Return time delay until next event should occur.
+        
+        This is the gap/delay between this event and the next event.
+        Default: 5.0 seconds. Override in subclasses for different timing
+        (e.g., hold responses might have longer delays).
+        
+        Returns:
+            Seconds until next event, or None if chain ends here.
+            None is returned automatically if get_next_particle_probabilities()
+            returns empty dict or probabilities sum to 0.
+        """
+        probs = self.get_next_particle_probabilities()
+        if not probs or sum(probs.values()) == 0:
+            return None
+        return 5.0  # Default 5-second delay
+    
     def select_examples(self, count: int = 3) -> List[str]:
         """
         Select N random examples from available examples.

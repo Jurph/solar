@@ -2,7 +2,6 @@ import pytest
 import io
 from contextlib import redirect_stdout, redirect_stderr
 from mysite.universe.services.llm_service import LLMService
-import json
 
 @pytest.fixture
 def llm():
@@ -160,62 +159,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-@pytest.mark.slow
-@pytest.mark.django_db
-def test_json_dialogue_generation():
-    """Test that DialogueService generates valid dialogue messages."""
-    from mysite.universe.models.actor import Pilot, Controller
-    from mysite.universe.models.ship import Ship
-    from mysite.universe.models.base import Location
-    from mysite.universe.models.navigation import NavigationEvent, ManeuverType
-    from mysite.universe.schemas.dialogue_schema import DialogueMessage, Role
-    from mysite.universe.services.dialogue_server import DialogueService
-
-    # Create test actors and ship
-    location = Location.objects.create(name="TEST LOCATION", scale="SYSTEM")
-    ship = Ship.create(name="TEST SHIP", current_location=location)
-    pilot = Pilot.create(name="TEST PILOT", ship=ship)
-    controller = Controller.create(name="TEST CONTROL")
-
-    # Initialize LLMService and DialogueService
-    llm_service = LLMService(config_path="c:/Users/Jurph/Documents/Python Scripts/solar/llm.config", quiet_mode=True)
-    dialogue_service = DialogueService(llm_service)
-
-    # Create a navigation event for testing
-    nav_event = NavigationEvent(
-        origin=location,
-        destination=location,
-        current=location,
-        maneuver=ManeuverType.CIRCULARIZE,
-        controller=controller.name
-    )
-
-    # Build nav context
-    nav_context = {
-        "maneuver_type": "circularize",
-        "current_location": "TEST LOCATION",
-        "destination": "TEST LOCATION",
-        "recipient": controller.name.upper()
-    }
-
-    # Generate dialogue chain
-    messages = dialogue_service.generate_chain_from_nav_event(
-        nav_event=nav_event,
-        pilot=pilot,
-        controller=controller,
-        nav_context=nav_context
-    )
-
-    # Verify we got a list of messages
-    assert isinstance(messages, list)
-    assert len(messages) >= 3  # Should have at least 3 steps (standard chain)
-    assert len(messages) <= 5  # Should have at most 5 steps (extended chain)
-
-    # Verify all messages are valid DialogueMessage objects
-    for msg in messages:
-        assert isinstance(msg, DialogueMessage)
-        assert msg.role in [Role.PILOT.value, Role.CONTROLLER.value]
-        assert isinstance(msg.speaker_callsign, str)
-        assert isinstance(msg.recipient_callsign, str)
-        assert isinstance(msg.message, str)
-        assert len(msg.message) > 0

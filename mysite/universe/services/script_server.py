@@ -1,5 +1,5 @@
 from mysite.universe.services.dictionary import DictionaryService
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 # Import our navigation models
 from mysite.universe.models.navigation import NavigationEvent
@@ -81,7 +81,7 @@ class ScriptService:
         
         # Convert messages to events with sequential timestamps
         events = self._convert_messages_to_events(
-            messages=messages,
+            messages_with_timing=messages,
             nav_event=nav_event,
             ship=ship
         )
@@ -181,28 +181,29 @@ class ScriptService:
     
     def _convert_messages_to_events(
         self,
-        messages: List[DialogueMessage],
+        messages_with_timing: List[Tuple[DialogueMessage, float]],
         nav_event: NavigationEvent,
         ship: Ship,
     ) -> List[DialogueEvent]:
         """
-        Convert DialogueMessage list to DialogueEvent list with sequential timestamps.
+        Convert (DialogueMessage, time_offset) tuples to DialogueEvent list with timestamps.
         
         Sets up proper timing, actors, and metadata for each event in the chain.
-        The first event starts at nav_event.duration, subsequent events are spaced
-        by 5 seconds (typical radio delay).
+        Times are relative to chain start (0.0), then mapped to absolute timestamps
+        starting at nav_event.duration.
         
         Args:
-            messages: List of DialogueMessage instances from chain generation
+            messages_with_timing: List of (DialogueMessage, cumulative_time_offset) tuples.
+                Times are relative to chain start (0.0).
             nav_event: Original NavigationEvent for context
             ship: Ship performing the maneuver
             
         Returns:
-            List of DialogueEvent instances with sequential timestamps
+            List of DialogueEvent instances with absolute timestamps
         """
         events: List[DialogueEvent] = []
+        # Base timestamp: navigation event duration (when nav event completes)
         base_timestamp = nav_event.duration if hasattr(nav_event, 'duration') else 0.0
-        time_spacing = 5.0  # 5 seconds between dialogue exchanges
         
         pilot = ship.pilot if ship and hasattr(ship, 'pilot') and ship.pilot else None
         controller = self._get_controller(nav_event)
@@ -212,7 +213,10 @@ class ScriptService:
                 return location.name
             return "Unknown"
         
-        for i, msg in enumerate(messages):
+        # Default duration (TODO: get actual particle duration)
+        default_duration = 2.0
+        
+        for i, (msg, relative_time_offset) in enumerate(messages_with_timing):
             # Determine actor based on role
             if msg.role == Role.PILOT:
                 actor = pilot
@@ -262,15 +266,18 @@ class ScriptService:
             
             # Determine if this event expects a reply
             # Last event in chain doesn't expect reply, others do
-            expect_reply = (i < len(messages) - 1)
+            expect_reply = (i < len(messages_with_timing) - 1)
+            
+            # Calculate absolute timestamp: base (nav event completion) + relative offset
+            absolute_timestamp = base_timestamp + relative_time_offset
             
             event = DialogueEvent(
-                timestamp=base_timestamp + (i * time_spacing),
+                timestamp=absolute_timestamp,
                 actor=actor,
                 text=msg.message,  # Natural language message text
                 expect_reply=expect_reply,
                 expected_reply_actor=expected_reply_actor if expect_reply else None,
-                duration=RouteService().get_event_duration(nav_event),
+                duration=default_duration,  # TODO: Get actual particle duration
                 event_type="dialogue",
                 metadata=metadata
             )

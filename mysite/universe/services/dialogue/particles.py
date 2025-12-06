@@ -6,7 +6,7 @@ examples, counterexamples, and prompt structure. Particles inherit from
 DialogueParticle and implement the abstract methods.
 """
 import random
-from typing import List
+from typing import List, Dict, Optional
 from .base import DialogueParticle
 from mysite.universe.schemas.dialogue_schema import DialogueFormat
 
@@ -61,6 +61,21 @@ class PilotRequest(DialogueParticle):
         current = self.nav_context.get("current_location", "current location")
         
         return f"{sender} is a ship intending to fly to {destination} from {current}. The {sender} needs permission from {self.recipient} to {maneuver.lower()}."
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a pilot request.
+        
+        Default: Requests are usually approved, but can sometimes result in holds.
+        Subclasses can override for maneuver-specific behavior.
+        
+        Returns:
+            Dict mapping particle types to probabilities.
+        """
+        return {
+            "response": 0.95,      # Usually approved quickly
+            "hold_response": 0.05,  # Sometimes held (traffic, hazards)
+        }
 
 
 # ============================================================================
@@ -111,6 +126,35 @@ class LaunchRequest(PilotRequest):
             Counterexample string.
         """
         return "[DON'T DO THIS!] Earth Control, we want to launch the STELLAR HORIZON to Earth please."
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a launch request.
+        
+        Requests always get a response: 95% routine approval, 5% hold.
+        
+        Returns:
+            Dict mapping particle types to probabilities.
+        """
+        return {
+            "response": 0.95,      # 95% routine positive approval
+            "hold_response": 0.05,  # 5% hold (traffic, hazards)
+        }
+    
+    def get_delay_until_next(self) -> Optional[float]:
+        """
+        Return delay until next event.
+        
+        Launch requests typically get quick responses (3 seconds).
+        Future: Could be longer if altitude_km is very high.
+        
+        Returns:
+            Seconds until next event.
+        """
+        # Future: Could calculate based on altitude_km
+        # altitude = float(self.nav_context.get("altitude_km", 150))
+        # return 3.0 + (altitude / 100.0)  # Longer for higher altitudes
+        return 3.0
 
 
 class CircularizationRequest(PilotRequest):
@@ -420,6 +464,19 @@ class RadioResponse(DialogueParticle):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a controller response.
+        
+        Approvals always require a readback (not just acknowledgment).
+        
+        Returns:
+            Dict mapping particle types to probabilities.
+        """
+        return {
+            "readback": 1.0,  # Approvals always require readback
+        }
 
 
 class LaunchResponse(RadioResponse):
@@ -461,6 +518,9 @@ class LaunchResponse(RadioResponse):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+    
+    # Inherits get_next_particle_probabilities() from RadioResponse
+    # (100% readback - approvals always require readback)
 
 
 class OrbitResponse(RadioResponse):
@@ -559,6 +619,9 @@ class DepartureResponse(RadioResponse):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+    
+    # Inherits get_next_particle_probabilities() from RadioResponse
+    # (100% readback - approvals always require readback)
 
 
 class RadioAcknowledgment(DialogueParticle):
@@ -633,6 +696,17 @@ class RadioAcknowledgment(DialogueParticle):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow an acknowledgment.
+        
+        Acknowledgments typically end the chain.
+        
+        Returns:
+            Empty dict - chain ends after acknowledgment.
+        """
+        return {}  # Chain ends after acknowledgment
 
 
 class RadioReadback(DialogueParticle):
@@ -708,6 +782,17 @@ class RadioReadback(DialogueParticle):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a readback.
+        
+        Readbacks typically end the chain (acknowledgment is implicit).
+        
+        Returns:
+            Empty dict - chain ends after readback.
+        """
+        return {}  # Chain ends after readback
 
 
 class HoldResponse(RadioResponse):
@@ -750,6 +835,41 @@ class HoldResponse(RadioResponse):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, the hold is okay. We're going to route you around a new cleared jump window."
+    
+    def get_duration(self) -> float:
+        """
+        Return duration for hold response.
+        
+        Hold responses take longer (controller checking traffic, hazards, etc.).
+        
+        Returns:
+            Duration in seconds.
+        """
+        return 60.0  # Hold takes longer
+    
+    def get_delay_until_next(self) -> Optional[float]:
+        """
+        Return delay until next event.
+        
+        Pilot needs time to acknowledge hold.
+        
+        Returns:
+            Seconds until next event.
+        """
+        return 5.0
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a hold response.
+        
+        Hold responses must be followed by holding acknowledgment.
+        
+        Returns:
+            Dict mapping particle types to probabilities.
+        """
+        return {
+            "holding": 1.0  # Must acknowledge hold
+        }
 
 
 class Holding(DialogueParticle):
@@ -827,6 +947,19 @@ class Holding(DialogueParticle):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         return f"[DON'T DO THIS!] {sender}, {recipient}, My hold request is getting cold, I want to speak to the manager. Over."
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a holding acknowledgment.
+        
+        After acknowledging hold, controller provides adjusted clearance.
+        
+        Returns:
+            Dict mapping particle types to probabilities.
+        """
+        return {
+            "adjusted_response": 1.0  # Controller provides adjusted clearance
+        }
 
 
 class AdjustedResponse(RadioResponse):
