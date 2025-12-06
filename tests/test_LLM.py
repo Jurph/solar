@@ -163,59 +163,59 @@ if __name__ == "__main__":
 @pytest.mark.slow
 @pytest.mark.django_db
 def test_json_dialogue_generation():
-    """Test that the JSON dialogue path works correctly."""
+    """Test that DialogueService generates valid dialogue messages."""
     from mysite.universe.models.actor import Pilot, Controller
-    from mysite.universe.schemas.dialogue_schema import DialogueMessage, DialogueFormat, Role
+    from mysite.universe.models.ship import Ship
+    from mysite.universe.models.base import Location
+    from mysite.universe.models.navigation import NavigationEvent, ManeuverType
+    from mysite.universe.schemas.dialogue_schema import DialogueMessage, Role
+    from mysite.universe.services.dialogue_server import DialogueService
 
-    # Create test actors
-    pilot = Pilot.create(name="TEST PILOT")
+    # Create test actors and ship
+    location = Location.objects.create(name="TEST LOCATION", scale="SYSTEM")
+    ship = Ship.create(name="TEST SHIP", current_location=location)
+    pilot = Pilot.create(name="TEST PILOT", ship=ship)
     controller = Controller.create(name="TEST CONTROL")
 
-    # Initialize unified LLMService (replaces LLMJSONService)
-    service = LLMService(config_path="c:/Users/Jurph/Documents/Python Scripts/solar/llm.config", quiet_mode=True)
+    # Initialize LLMService and DialogueService
+    llm_service = LLMService(config_path="c:/Users/Jurph/Documents/Python Scripts/solar/llm.config", quiet_mode=True)
+    dialogue_service = DialogueService(llm_service)
 
-    # Create a proper DialogueMessage for the context
-    initial_message = DialogueMessage(
-        role=Role.PILOT,
-        speaker_callsign="TEST PILOT",
-        recipient_callsign="TEST CONTROL",
-        format=DialogueFormat.INITIAL_CONTACT,
-        message="TEST CONTROL, this is TEST PILOT, requesting clearance for plane change maneuver.",
-        requires_readback=False
+    # Create a navigation event for testing
+    nav_event = NavigationEvent(
+        origin=location,
+        destination=location,
+        current=location,
+        maneuver=ManeuverType.CIRCULARIZE,
+        controller=controller.name
     )
 
-    # Test pilot -> controller dialogue with structured context
-    context = [initial_message]  # Pass the DialogueMessage object directly
-    nav_ctx = {
-        "maneuver_type": "PLANE_CHANGE",
-        "current_location": "EARTH ORBIT",
-        "destination": "MARS",
-        "recipient": "TEST CONTROL"
+    # Build nav context
+    nav_context = {
+        "maneuver_type": "circularize",
+        "current_location": "TEST LOCATION",
+        "destination": "TEST LOCATION",
+        "recipient": controller.name.upper()
     }
 
-    # Generate response
-    response = service.get_actor_json_response(
-        line="",
-        actor=controller,
-        context=context,
-        navigation_context=nav_ctx
+    # Generate dialogue chain
+    messages = dialogue_service.generate_chain_from_nav_event(
+        nav_event=nav_event,
+        pilot=pilot,
+        controller=controller,
+        nav_context=nav_context
     )
 
-    # Verify response is valid JSON and matches schema
-    assert isinstance(response, str)
-    assert response.strip().startswith('{')
-    
-    # Should parse without error
-    msg_obj = None
-    try:
-        msg_obj = DialogueMessage(**json.loads(response))
-    except Exception as e:
-        pytest.fail(f"Failed to parse JSON response: {e}")
+    # Verify we got a list of messages
+    assert isinstance(messages, list)
+    assert len(messages) >= 3  # Should have at least 3 steps (standard chain)
+    assert len(messages) <= 5  # Should have at most 5 steps (extended chain)
 
-    # Verify required fields
-    assert msg_obj.role == Role.CONTROLLER.value
-    assert msg_obj.speaker_callsign == controller.name
-    assert msg_obj.recipient_callsign == pilot.name
-    assert isinstance(msg_obj.format, DialogueFormat)
-    assert isinstance(msg_obj.message, str)
-    assert isinstance(msg_obj.requires_readback, bool)
+    # Verify all messages are valid DialogueMessage objects
+    for msg in messages:
+        assert isinstance(msg, DialogueMessage)
+        assert msg.role in [Role.PILOT.value, Role.CONTROLLER.value]
+        assert isinstance(msg.speaker_callsign, str)
+        assert isinstance(msg.recipient_callsign, str)
+        assert isinstance(msg.message, str)
+        assert len(msg.message) > 0

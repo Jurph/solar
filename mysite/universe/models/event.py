@@ -143,15 +143,15 @@ class DialogueEvent(Event):
             reply_text = "BEEP BOOP"
             expect_reply = False
         elif getattr(reply_actor, 'role', None) == Actor.Role.CONTROLLER:
-            # Pilot -> Controller: Use ScriptService to generate controller approval
-            from mysite.universe.services.script_server import ScriptService
-            reply_event = ScriptService.get_instance().parse_dialogue_event(self)
-            return reply_event
+            # Pilot -> Controller: Chains are now generated upfront, so this should not happen
+            # If expect_reply=True on a chain event, the next event is already in the chain
+            # Return None to indicate no dynamic reply needed
+            return None
         elif getattr(self.actor, 'role', None) == Actor.Role.CONTROLLER and getattr(reply_actor, 'role', None) == Actor.Role.PILOT:
-            # Controller -> Pilot: Use ScriptService to generate pilot acknowledgment
-            from mysite.universe.services.script_server import ScriptService
-            reply_event = ScriptService.get_instance().parse_dialogue_event(self)
-            return reply_event
+            # Controller -> Pilot: Chains are now generated upfront, so this should not happen
+            # If expect_reply=True on a chain event, the next event is already in the chain
+            # Return None to indicate no dynamic reply needed
+            return None
         else:
             # Use expected_reply from metadata if provided, otherwise generate a generic reply
             reply_text = (
