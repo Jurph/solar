@@ -6,7 +6,7 @@ from typing import Optional, Dict
 from django.db import models
 
 # Import the Actor model to associate events with an actor.
-from mysite.universe.models.actor import Actor, Controller
+from mysite.universe.models.actor import Actor
 from mysite.universe.models.base import Location
 from mysite.universe.models.navigation import ManeuverType
 
@@ -104,7 +104,8 @@ class DialogueEvent(Event):
                 reply_actor = qs.first() if qs.exists() else None
             else:
                 # If no specific reply actor is found, check if this is a pilot-controller dialogue
-                if getattr(self.actor, 'role', None) == Actor.Role.PILOT:
+                from mysite.universe.models.actor import Pilot, Controller
+                if isinstance(self.actor, Pilot):
                     # Get the controller name from metadata
                     control_name = self.metadata.get("control_name") if self.metadata else None
                     if control_name:
@@ -112,7 +113,7 @@ class DialogueEvent(Event):
                         reply_actor = Controller.objects.filter(name=control_name).first()
                     else:
                         reply_actor = None
-                elif getattr(self.actor, 'role', None) == Actor.Role.CONTROLLER:
+                elif isinstance(self.actor, Controller):
                     # Get the ship name from metadata to find the pilot
                     ship_name = self.metadata.get("ship_name") if self.metadata else None
                     if ship_name:
@@ -139,15 +140,16 @@ class DialogueEvent(Event):
             reply_actor = self.actor
 
         # Determine the reply text based on actor role
-        if getattr(reply_actor, 'role', None) == Actor.Role.SATELLITE:
+        from mysite.universe.models.actor import Satellite, Controller, Pilot
+        if isinstance(reply_actor, Satellite):
             reply_text = "BEEP BOOP"
             expect_reply = False
-        elif getattr(reply_actor, 'role', None) == Actor.Role.CONTROLLER:
+        elif isinstance(reply_actor, Controller):
             # Pilot -> Controller: Chains are now generated upfront, so this should not happen
             # If expect_reply=True on a chain event, the next event is already in the chain
             # Return None to indicate no dynamic reply needed
             return None
-        elif getattr(self.actor, 'role', None) == Actor.Role.CONTROLLER and getattr(reply_actor, 'role', None) == Actor.Role.PILOT:
+        elif isinstance(self.actor, Controller) and isinstance(reply_actor, Pilot):
             # Controller -> Pilot: Chains are now generated upfront, so this should not happen
             # If expect_reply=True on a chain event, the next event is already in the chain
             # Return None to indicate no dynamic reply needed
@@ -215,7 +217,7 @@ class DialogueEventLog(models.Model):
     """
     timestamp = models.FloatField(help_text="Simulation time when event occurred")
     actor_name = models.CharField(max_length=200, help_text="Name of the speaking actor")
-    text = models.TextField(help_text="The dialogue message (natural language only, never JSON)")
+    text = models.TextField(help_text="The dialogue message")
     created_at = models.DateTimeField(auto_now_add=True, help_text="Database insertion time")
     
     class Meta:

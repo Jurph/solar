@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from django.db import models
 from typing import TYPE_CHECKING
-from enum import Enum
 from mysite.universe.services.dictionary import DictionaryService
 
 if TYPE_CHECKING:
@@ -21,17 +20,11 @@ class Actor(models.Model):
     """
     Base class for all actors in the simulation.
     
-    Actors have names and roles that can be used to generate appropriate
-    dialogue and behavior in the simulation.
+    Actors have names and are subclassed by Pilot, Controller, and Satellite.
+    The class type itself determines the role - no redundant role field needed.
     """
-    class Role(str, Enum):
-        PILOT = "PILOT"
-        CONTROLLER = "CONTROLLER"
-        SATELLITE = "SATELLITE"
-        
     # Basic information
     name = models.CharField(max_length=100)
-    role = models.CharField(max_length=20, choices=[(r.value, r.name) for r in Role])
     
     # Voice template for TTS (if implemented)
     voice_template = models.CharField(max_length=100, blank=True)
@@ -40,11 +33,15 @@ class Actor(models.Model):
         app_label = 'universe'
 
     def __str__(self):
-        return f"{self.name} ({self.role})"
+        # Use class name as role identifier
+        role_name = self.__class__.__name__
+        return f"{self.name} ({role_name})"
 
     def get_identity_prompt(self) -> str:
         """Return a basic identity prompt for this actor."""
-        return f"You are {self.name}, a {self.role}."
+        # Use class name as role identifier for LLM prompts
+        role_name = self.__class__.__name__.lower()
+        return f"You are {self.name}, a {role_name}."
 
     def get_instruction_prompt(self) -> str:
         """Return role-specific instructions for this actor."""
@@ -121,7 +118,7 @@ Remember: Ships are metal - they don't speak. You, {self.name}, are the one spea
             name = cls.generate_name()
             
         # Create and save the pilot
-        pilot = cls(name=name, role=Actor.Role.PILOT)
+        pilot = cls(name=name)
         pilot.save()
         
         # Associate with ship if provided
@@ -202,7 +199,7 @@ CRITICAL SAFETY RULES:
             name = "Space Traffic Control"  # Default fallback for tests
             
         # Create and save the controller
-        controller = cls(name=name, role=Actor.Role.CONTROLLER, location=location)
+        controller = cls(name=name, location=location)
         controller.save()
         
         return controller
@@ -251,7 +248,7 @@ CRITICAL SAFETY RULES:
         if name is None:
             name = cls.generate_name()
             
-        satellite = cls(name=name, role=Actor.Role.SATELLITE)
+        satellite = cls(name=name)
         satellite.save()
         
         return satellite

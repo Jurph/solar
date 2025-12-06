@@ -115,7 +115,8 @@ class ScriptService:
         # Get controller name
         controller_name = None
         if hasattr(nav_event, 'controller') and nav_event.controller:
-            if hasattr(nav_event.controller, 'role') and nav_event.controller.role == 'CONTROLLER':
+            from mysite.universe.models.actor import Controller
+            if isinstance(nav_event.controller, Controller):
                 controller_name = nav_event.controller.name
             elif hasattr(nav_event.controller, 'name'):
                 controller_name = nav_event.controller.name
@@ -155,7 +156,8 @@ class ScriptService:
         controller_location = None
         
         if hasattr(nav_event, 'controller') and nav_event.controller:
-            if hasattr(nav_event.controller, 'role') and nav_event.controller.role == 'CONTROLLER':
+            from mysite.universe.models.actor import Controller
+            if isinstance(nav_event.controller, Controller):
                 controller_name = nav_event.controller.name
                 controller_location = nav_event.controller
             elif hasattr(nav_event.controller, 'name'):

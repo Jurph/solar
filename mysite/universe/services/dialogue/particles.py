@@ -116,8 +116,6 @@ class LaunchRequest(PilotRequest):
         Returns:
             List of example launch request dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         origin = self.nav_context.get("current_location", "current location")
         destination = self.nav_context.get("destination", "destination")
         azimuth = self.nav_context.get("azimuth", "five five")
@@ -188,8 +186,6 @@ class CircularizationRequest(PilotRequest):
         Returns:
             List of example circularization request dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         altitude_km = 200
         inclination_deg = 20
         
@@ -269,8 +265,6 @@ class InsertionRequest(PilotRequest):
         Returns:
             List of example insertion request dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         destination = self.nav_context.get("destination", "destination")
         
         return [
@@ -306,8 +300,6 @@ class DeorbitRequest(PilotRequest):
         Returns:
             List of example deorbit request dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         destination = self.nav_context.get("destination", "destination")
         
         return [
@@ -343,8 +335,6 @@ class LandingRequest(PilotRequest):
         Returns:
             List of example landing request dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         destination = self.nav_context.get("destination", "destination")
         
         return [
@@ -382,8 +372,6 @@ class GenericRequest(PilotRequest):
         Returns:
             List of generic example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
@@ -472,8 +460,6 @@ class RadioResponse(DialogueParticle):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
@@ -488,12 +474,14 @@ class RadioResponse(DialogueParticle):
         """
         Return counterexample showing what NOT to do.
         
+        Counterexample shows controller incorrectly requesting clearance (controllers grant, not request).
+        
         Returns:
             Counterexample string.
         """
         sender = self.get_sender_callsign()
         recipient = self.recipient
-        return f"[DON'T DO THIS!] {sender}, {recipient}, requesting clearance for launch. Over."
+        return f"[DON'T DO THIS!] {recipient}, {sender} here - I am requesting clearance for launch. Over."
     
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
@@ -523,8 +511,6 @@ class LaunchResponse(RadioResponse):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         inclination_deg = self.nav_context.get("inclination_deg", "inclination")
         altitude_km = self.nav_context.get("altitude_km", "altitude")
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
@@ -567,8 +553,7 @@ class OrbitResponse(RadioResponse):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
+
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         inclination_deg = self.nav_context.get("inclination_deg", "inclination")
         altitude_km = self.nav_context.get("altitude_km", "altitude")
@@ -608,8 +593,7 @@ class DepartureResponse(RadioResponse):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
+
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         destination = self.nav_context.get("destination", "destination")
         if maneuver == "sublight":
@@ -696,9 +680,7 @@ class RadioAcknowledgment(DialogueParticle):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
-        
+     
         return [
             f"Roger, proceeding as directed.",
             f"Copy, understood.",
@@ -764,7 +746,7 @@ class RadioReadback(DialogueParticle):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         
-        return f"{sender} has received specific instructions from {recipient} and is reading them back for confirmation."
+        return f"{sender} has received specific instructions from {recipient}. {sender} reads back a concise summary of any technical details from the last dialogue line." 
     
     def get_examples(self) -> List[str]:
         """
@@ -773,15 +755,38 @@ class RadioReadback(DialogueParticle):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         
+        maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
+        if not maneuver:
+            maneuver = "maneuver"
+        inclination_deg = self.nav_context.get("inclination_deg", "inclination")
+        if not inclination_deg:
+            inclination_deg = "45"
+        altitude_km = self.nav_context.get("altitude_km", "altitude")
+        if not altitude_km:
+            altitude_km = "150"
+            
+        if maneuver in ["launch", "direct_ascent"]:
+            verb = "launch"
+        elif maneuver in ["insertion", "circularization"]:
+            verb = "burn"
+        elif maneuver in ["sublight", "hyperspace"]:
+            verb = "jump"
+        else:
+            verb = "maneuver"
+        
+        heading = random.randint(1, 360)
+        number = random.randint(1, 100)
+                
         return [
-            f"Cleared for orbital insertion, maintaining current vector.",
-            f"150km orbit, understood.",
-            f"Azimuth seven zero, understood.",
-            f"Cleared for launch on three two, copy.",
-            f"Maintaining heading zero nine zero, understood.",
+            f"Roger, {verb}ing on heading {heading}.",
+            f"Copy, {maneuver} {verb} on bearing {heading} degrees.",
+            f"Got it, {altitude_km} kilometers, we'll {verb} now.",
+            f"Locking in your instructions... {inclination_deg} degrees, {altitude_km} kilometers. Okay, {verb}ing now.",
+            f"Copy, {maneuver} {verb} to {altitude_km} kilometers, {inclination_deg} degrees.",
+            f"Wilco, starting {verb}, setting heading to {heading} as directed.",
+            f"Okay, {verb}ing on {number} degrees.",
+            f"We copy. Proceeding with {maneuver} {verb} to {altitude_km} kilometers, {inclination_deg} degrees, bearing {heading} degrees.",
         ]
     
     def get_counterexample(self) -> str:
@@ -793,8 +798,12 @@ class RadioReadback(DialogueParticle):
         """
         sender = self.get_sender_callsign()
         recipient = self.recipient
-        return f"[DON'T DO THIS!] Roger, {sender}, {recipient}, requesting clearance for launch. Over."
-    
+        return f"""
+            "[DON'T DO THIS!] Roger, {sender}, {recipient}, I am saying 'YES' but I'm not echoing back your detailed instructions."
+            "[DON'T DO THIS!] Roger, now you can proceed." [You only echo back - you don't tell Control what to do!]
+            "[DON'T DO THIS!] Copy, sounds good {sender}, you should go ahead and do it. [Pilots "do", Controllers "tell"]
+            """
+
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
         Return probabilities for what can follow a readback.
@@ -821,8 +830,7 @@ class HoldResponse(RadioResponse):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
+
         roman_numeral = random.choice(["I", "II", "III", "IV", "V", "VI"])
         
         return [
@@ -926,8 +934,6 @@ class Holding(DialogueParticle):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
@@ -979,8 +985,6 @@ class AdjustedResponse(RadioResponse):
         Returns:
             List of example dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [

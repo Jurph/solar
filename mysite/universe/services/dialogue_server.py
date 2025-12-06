@@ -11,7 +11,6 @@ import random
 from typing import List, Dict, Any, Optional, Tuple
 from .dialogue.base import DialogueParticle
 from .dialogue.factory import ParticleFactory
-from .dialogue.particles import PilotRequest
 from mysite.universe.models.actor import Actor
 from mysite.universe.models.event import NavigationEvent
 from mysite.universe.schemas.dialogue_schema import DialogueMessage
@@ -109,20 +108,40 @@ class DialogueService:
         # Generate procedural greeting prefix (inherited from base class or overridden)
         greeting = particle.generate_procedural_greeting()
         
-        # Get JSON schema for structured outputs
-        format_schema = DialogueMessage.model_json_schema()
+        # Get known values from particle - don't let LLM guess these
+        sender_callsign = particle.get_sender_callsign()
+        recipient_callsign = particle.recipient
+        role = particle.get_role()
+        
+        # Minimal schema - only ask LLM for the message content
+        # We already know role, sender, and recipient from the particle
+        format_schema = {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "The dialogue content (no callsigns or greetings)"
+                }
+            },
+            "required": ["message"]
+        }
         
         # Build prompts (LLM will generate just the message content, no greeting)
         system_prompt, user_prompt = self.build_prompt(particle, previous_dialogue)
         
-        # Modify prompts to indicate greeting is procedural
-        system_prompt_modified = system_prompt + "\n\nIMPORTANT: The greeting protocol is handled procedurally. The message will start with a greeting that includes both callsigns - you only need to generate the message content that follows the greeting."
-        user_prompt_modified = user_prompt + f"\n\nNOTE: The procedural greeting '{greeting}' will be prepended automatically. Generate ONLY the message content (do not include callsigns or greeting in your message field)."
+        
+        # You might be tempted to make amendments to the system or user prompt here.
+        # But that would be terrible, because the developer is expecting to find the 
+        # ENTIRE system prompt in its authoritative home location, without the Good Idea Fairy
+        # coming along and sprinkling lard all over it, bloating the prompt, and misinforming 
+        # the developer - who is reading the authoritative system_prompt assignment block - 
+        # about the actual system prompt. We don't create secondary code paths! We make the intended
+        # primary code path work as intended, in one place. 
         
         # Prepare messages for LLM
         messages = [
-            {"role": "system", "content": system_prompt_modified},
-            {"role": "user", "content": user_prompt_modified},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
         ]
         
         # Retry loop for validation failures
@@ -135,14 +154,28 @@ class DialogueService:
                 format=format_schema,
             )
             
-            # Parse response into DialogueMessage
+            # Parse response and build DialogueMessage with known values
             try:
                 response_dict = json.loads(response_json)
-                # Prepend procedural greeting to message
                 message_content = response_dict.get("message", "").strip()
+                
+                # Strip any callsigns LLM might have included despite instructions
+                if sender_callsign in message_content.upper():
+                    message_content = message_content.replace(sender_callsign, "").replace(sender_callsign.lower(), "")
+                if recipient_callsign.upper() in message_content.upper():
+                    message_content = message_content.replace(recipient_callsign, "").replace(recipient_callsign.lower(), "")
+                message_content = " ".join(message_content.split())
+                
+                # Build full message with procedural greeting
                 full_message = f"{greeting} {message_content}"
-                response_dict["message"] = full_message
-                dialogue_msg = DialogueMessage.model_validate(response_dict)
+                
+                # Build DialogueMessage with known values from particle
+                dialogue_msg = DialogueMessage(
+                    role=role,
+                    speaker_callsign=sender_callsign,
+                    recipient_callsign=recipient_callsign,
+                    message=full_message,
+                )
                 return dialogue_msg
             except Exception as e:
                 # Validation error - retry if attempts remaining
@@ -211,6 +244,9 @@ class DialogueService:
         Returns:
             Tuple of (actor, recipient_callsign)
         """
+        # Normalize to lowercase for consistent matching
+        particle_type = particle_type.lower() if particle_type else ""
+        
         # Requests, acknowledgments, readbacks, holding come from pilot
         if particle_type in ["request", "holding", "acknowledgment", "readback"]:
             actor = pilot
