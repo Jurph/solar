@@ -15,14 +15,9 @@ from .particles import (
     LandingRequest,
     GenericRequest,
     RadioResponse,
-    LaunchResponse,
-    OrbitResponse,
-    DepartureResponse,
-    RadioAcknowledgment,
     RadioReadback,
     HoldResponse,
     Holding,
-    AdjustedResponse,
 )
 from mysite.universe.models.actor import Actor
 
@@ -57,29 +52,13 @@ class ParticleFactory:
         "generic": GenericRequest,
     }
     
-    # Map maneuver types to response particle classes
-    RESPONSE_PARTICLE_MAP: Dict[str, Type[DialogueParticle]] = {
-        "launch": LaunchResponse,
-        "direct_ascent": LaunchResponse,  # Direct ascent uses launch response
-        "insertion": OrbitResponse,
-        "circularize": OrbitResponse,
-        "sublight": DepartureResponse,
-        "hyperspace": DepartureResponse,  # Hyperspace uses departure response
-        "hyperdrive": DepartureResponse,  # Hyperdrive uses departure response
-        # "reentry": ReentryResponse,
-        # "deorbit": DeorbitResponse,
-        # "landing": LandingResponse,
-        # Fallback for unspecified maneuvers
-    }
-    
     # Map generic particle types to particle classes
     PARTICLE_MAP: Dict[str, Type[DialogueParticle]] = {
-        "response": RadioResponse,  # Fallback if maneuver type not found
-        "acknowledgment": RadioAcknowledgment,
+        "response": RadioResponse,  # Used for all approvals (including after holds)
         "readback": RadioReadback,
         "hold_response": HoldResponse,
         "holding": Holding,
-        "adjusted_response": AdjustedResponse,
+        "adjusted_response": RadioResponse,  # Same as response, just after a hold
     }
     
     @classmethod
@@ -120,13 +99,8 @@ class ParticleFactory:
             particle_class = cls.REQUEST_PARTICLE_MAP[particle_type]
             return particle_class(actor=actor, recipient=recipient, nav_context=nav_context)
         
-        # For "response" type, check maneuver-specific response map
+        # For "response" type, always use RadioResponse (handles all maneuver types via nav_context)
         if particle_type == "response":
-            maneuver_type = nav_context.get("maneuver_type", "").lower()
-            if maneuver_type in cls.RESPONSE_PARTICLE_MAP:
-                particle_class = cls.RESPONSE_PARTICLE_MAP[maneuver_type]
-                return particle_class(actor=actor, recipient=recipient, nav_context=nav_context)
-            # Fallback to generic RadioResponse if maneuver not found
             return RadioResponse(actor=actor, recipient=recipient, nav_context=nav_context)
         
         # Check generic particle map (acknowledgment, readback, etc.)

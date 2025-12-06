@@ -247,12 +247,13 @@ class DialogueService:
         # Normalize to lowercase for consistent matching
         particle_type = particle_type.lower() if particle_type else ""
         
-        # Requests, acknowledgments, readbacks, holding come from pilot
-        if particle_type in ["request", "holding", "acknowledgment", "readback"]:
+        # Requests, readbacks, holding come from pilot
+        if particle_type in ["request", "holding", "readback"]:
             actor = pilot
             recipient = controller.name.upper()
         # Responses come from controller
         elif particle_type in ["response", "hold_response", "adjusted_response"]:
+            # Note: adjusted_response is just a response after a hold, handled by RadioResponse
             actor = controller
             recipient = pilot.ship.name.upper() if hasattr(pilot, 'ship') and pilot.ship else pilot.name.upper()
         else:

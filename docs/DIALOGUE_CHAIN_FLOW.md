@@ -349,12 +349,25 @@ mysite/universe/services/
     └── builder.py             # Prompt building utilities (or in dialogue_server)
 ```
 
-## Generation approach 
+## The flow of conversations and particles in a chain: 
 
-TODO: Discuss with my co-developers whether a Particle ought to contain its own probabilities. 
-For instance, everything in the PilotRequest should always generate either an Approval or a Hold; all 
-Approvals should always generate basically 100% readbacks, with maybe a low probability of also generating 
-a follow-on request for e.g. a change of course. Inspection requests from Control should always generate
-an acknowledgement (although I guess if "is_pirate==True" maybe we generate a "screw you copper!" reply?!)
+1. A pilot request always leads to either a hold, or an approval 
+2. A hold leads to an acknowledgement, and then an approval 
+3. An approval always contains detailed instructions derived from the planet's physics model 
+4. For safety purposes, it's critical that every approval gets a readback 
 
-We'll cover this later. 
+5. A pilot can request a Comms Check from a satellite 
+6. The satellite should respond with its Quindar tone (BEEP BOOP or similar)
+7. The pilot can respond with a Gratitude particle ("Thanks, little robot" or "Appreciate your help")
+
+Right now, that's it! The whole shebang. Later on we'll add: 
+
+5. A controller can order a ship to orient in a particular direction to be scanned 
+6. The ship will read back the orientation and make the rotation 
+7. The controller will acknowledge the rotation and commence scanning 
+8. The ship might PASS its scan, and be permitted to continue on its way 
+9. A pass will lead to an acknowledgement 
+10. The ship might FAIL its scan, and be ordered to hold position longer for boarding and inspection 
+11. This leads to a bunch of stuff like changing destinations, so we won't go too far there. 
+
+Given this design, I think many of our particles and branching probabilities are redundant or incorrect. 
