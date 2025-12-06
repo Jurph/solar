@@ -7,9 +7,9 @@ Orchestrates dialogue generation by:
 3. Generating dialogue messages using LLM with structured outputs
 4. Converting messages to DialogueEvents
 """
+import random
 from typing import List, Dict, Any, Optional, Tuple
 from .dialogue.base import DialogueParticle
-from .dialogue.chain import DialogueChain, ChainSelector
 from .dialogue.factory import ParticleFactory
 from mysite.universe.models.actor import Actor
 from mysite.universe.models.event import NavigationEvent
@@ -43,7 +43,6 @@ class DialogueService:
             llm_service: LLMService instance for generating dialogue
         """
         self.llm_service: LLMService = llm_service
-        self.chain_selector: ChainSelector = ChainSelector()
         self.particle_factory: ParticleFactory = ParticleFactory()
     
     def build_prompt(
@@ -148,66 +147,147 @@ class DialogueService:
                     )
                     raise
     
-    def generate_chain(
+    def _select_next_particle_type(self, probabilities: Dict[str, float]) -> Optional[str]:
+        """
+        Select next particle type based on probabilities.
+        
+        Uses weighted random selection. If probabilities sum to < 1.0,
+        remaining probability represents chance that chain ends.
+        
+        Args:
+            probabilities: Dict mapping particle types to probabilities
+            
+        Returns:
+            Selected particle type string, or None if chain ends
+        """
+        if not probabilities:
+            return None
+        
+        # Normalize probabilities (handle case where sum < 1.0)
+        total = sum(probabilities.values())
+        if total == 0:
+            return None
+        
+        # Random selection
+        r = random.random() * total
+        cumulative = 0.0
+        
+        for particle_type, prob in probabilities.items():
+            cumulative += prob
+            if r <= cumulative:
+                return particle_type
+        
+        # If we get here, probabilities sum to < 1.0 and random value exceeded sum
+        # This means chain ends (no next particle)
+        return None
+    
+    def _determine_actor_and_recipient(
         self,
-        chain: DialogueChain,
+        particle_type: str,
+        pilot: Actor,
+        controller: Actor,
+    ) -> Tuple[Actor, str]:
+        """
+        Determine actor and recipient for a particle type.
+        
+        Args:
+            particle_type: Particle type string (e.g., "request", "response")
+            pilot: Pilot actor
+            controller: Controller actor
+            
+        Returns:
+            Tuple of (actor, recipient_callsign)
+        """
+        # Requests, acknowledgments, readbacks, holding come from pilot
+        if particle_type in ["request", "holding", "acknowledgment", "readback"]:
+            actor = pilot
+            recipient = controller.name.upper()
+        # Responses come from controller
+        elif particle_type in ["response", "hold_response", "adjusted_response"]:
+            actor = controller
+            recipient = pilot.ship.name.upper() if hasattr(pilot, 'ship') and pilot.ship else pilot.name.upper()
+        else:
+            # Fallback: assume pilot
+            actor = pilot
+            recipient = controller.name.upper()
+        
+        return (actor, recipient)
+    
+    def generate_chain_iteratively(
+        self,
+        initial_particle: DialogueParticle,
         pilot: Actor,
         controller: Actor,
         nav_context: Dict[str, Any],
         temperature: Optional[float] = None,
-    ) -> List[DialogueMessage]:
+    ) -> List[Tuple[DialogueMessage, float]]:
         """
-        Generate a complete dialogue chain from a DialogueChain.
+        Generate a dialogue chain iteratively using particle-driven probabilities.
         
-        Iterates through chain steps, creates appropriate particles,
-        and generates dialogue messages in sequence.
+        Starts with an initial particle, then uses each particle's probabilities
+        to determine the next step. Continues until a particle signals chain end
+        (empty probabilities or delay_until_next returns None).
         
         Args:
-            chain: DialogueChain defining the sequence of particle types
+            initial_particle: Starting DialogueParticle instance
             pilot: Pilot actor
             controller: Controller actor
             nav_context: Navigation context dictionary
             temperature: Optional temperature override
             
         Returns:
-            List of DialogueMessage instances in chain order
+            List of (DialogueMessage, cumulative_time_offset) tuples.
+            Times are relative to chain start (0.0).
         """
-        messages: List[DialogueMessage] = []
+        messages_with_timing: List[Tuple[DialogueMessage, float]] = []
+        cumulative_time = 0.0
+        current_particle: Optional[DialogueParticle] = initial_particle
         previous_dialogue: Optional[DialogueMessage] = None
         
-        for step_type in chain.steps:
-            # Determine actor based on step type
-            # Requests come from pilot, responses from controller
-            if step_type in ["request", "holding", "acknowledgment", "readback"]:
-                actor = pilot
-                recipient = controller.name.upper()
-            elif step_type in ["response", "hold_response", "adjusted_response"]:
-                actor = controller
-                recipient = pilot.ship.name.upper() if hasattr(pilot, 'ship') and pilot.ship else pilot.name.upper()
-            else:
-                # Fallback: assume pilot
-                actor = pilot
-                recipient = controller.name.upper()
+        while current_particle:
+            # Generate dialogue message from current particle
+            dialogue_msg = self.generate_dialogue(
+                particle=current_particle,
+                previous_dialogue=previous_dialogue,
+                temperature=temperature,
+            )
             
-            # Create particle for this step
-            particle = self.particle_factory.create_particle(
-                particle_type=step_type,
+            # Store with cumulative time offset
+            messages_with_timing.append((dialogue_msg, cumulative_time))
+            
+            # Get delay until next event
+            delay = current_particle.get_delay_until_next()
+            if delay is None:
+                break  # Chain ends here
+            
+            # Advance cumulative time
+            cumulative_time += delay
+            
+            # Get probabilities for next particle
+            probabilities = current_particle.get_next_particle_probabilities()
+            next_particle_type = self._select_next_particle_type(probabilities)
+            
+            if next_particle_type is None:
+                break  # Chain ends (probabilities sum to < 1.0)
+            
+            # Determine actor and recipient for next particle
+            actor, recipient = self._determine_actor_and_recipient(
+                next_particle_type,
+                pilot,
+                controller,
+            )
+            
+            # Create next particle
+            current_particle = self.particle_factory.create_particle(
+                particle_type=next_particle_type,
                 actor=actor,
                 recipient=recipient,
                 nav_context=nav_context,
             )
             
-            # Generate dialogue message
-            dialogue_msg = self.generate_dialogue(
-                particle=particle,
-                previous_dialogue=previous_dialogue,
-                temperature=temperature,
-            )
-            
-            messages.append(dialogue_msg)
             previous_dialogue = dialogue_msg
         
-        return messages
+        return messages_with_timing
     
     def generate_chain_from_nav_event(
         self,
@@ -216,12 +296,12 @@ class DialogueService:
         controller: Actor,
         nav_context: Dict[str, Any],
         temperature: Optional[float] = None,
-    ) -> List[DialogueMessage]:
+    ) -> List[Tuple[DialogueMessage, float]]:
         """
-        Generate a dialogue chain from a NavigationEvent.
+        Generate a dialogue chain from a NavigationEvent using iterative particle-driven generation.
         
-        Entry point for chain generation. Selects appropriate chain based on
-        maneuver type, then generates the complete dialogue sequence.
+        Creates an initial request particle based on maneuver type, then generates
+        the complete dialogue sequence iteratively using particle probabilities.
         
         Args:
             nav_event: NavigationEvent to generate dialogue for
@@ -231,17 +311,23 @@ class DialogueService:
             temperature: Optional temperature override
             
         Returns:
-            List of DialogueMessage instances in chain order
+            List of (DialogueMessage, cumulative_time_offset) tuples.
+            Times are relative to chain start (0.0).
         """
         # Get maneuver type from nav_event
         maneuver_type = nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else str(nav_event.maneuver)
         
-        # Select chain based on maneuver type
-        chain = self.chain_selector.select_chain(maneuver_type)
+        # Create initial request particle based on maneuver type
+        initial_particle = self.particle_factory.create_particle(
+            particle_type=maneuver_type,  # e.g., "launch", "circularize"
+            actor=pilot,
+            recipient=controller.name.upper(),
+            nav_context=nav_context,
+        )
         
-        # Generate chain
-        return self.generate_chain(
-            chain=chain,
+        # Generate chain iteratively
+        return self.generate_chain_iteratively(
+            initial_particle=initial_particle,
             pilot=pilot,
             controller=controller,
             nav_context=nav_context,

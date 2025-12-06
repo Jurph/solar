@@ -102,33 +102,62 @@ class TestPilotRequestParticles(DialogueParticleTest):
         self.assertIn("launch", situation.lower())
         self.assertIn("MARS CONTROL", situation)
     
-    def test_launch_request_examples(self):
-        """Test LaunchRequest returns examples with correct callsigns."""
+    def test_launch_request_examples_use_dynamic_callsigns(self):
+        """Test that examples use the actual callsigns passed in, not hardcoded ones."""
+        # Use different callsigns to verify dynamic substitution
+        particle = LaunchRequest(
+            actor=self.pilot,
+            recipient="JUPITER CONTROL",
+            nav_context=self.nav_context
+        )
+        examples = particle.get_examples()
+        self.assertGreater(len(examples), 0)
+        # All examples should use the actual recipient we passed
+        for example in examples:
+            self.assertIn("JUPITER CONTROL", example)
+            self.assertIn("TEST SHIP", example)
+            # Should NOT contain the default callsign
+            self.assertNotIn("MARS CONTROL", example)
+    
+    def test_launch_request_examples_integrate_context_values(self):
+        """Test that examples incorporate nav_context values when provided."""
+        self.nav_context["destination"] = "Saturn"
+        self.nav_context["azimuth"] = "ninety"
         particle = LaunchRequest(
             actor=self.pilot,
             recipient="MARS CONTROL",
             nav_context=self.nav_context
         )
         examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        for example in examples:
-            self.assertIn("MARS CONTROL", example)
-            self.assertIn("TEST SHIP", example)
+        # At least some examples should reference the context values
+        destination_found = any("Saturn" in ex for ex in examples)
+        azimuth_found = any("ninety" in ex.lower() for ex in examples)
+        self.assertTrue(destination_found, "Examples should incorporate destination from nav_context")
+        self.assertTrue(azimuth_found, "Examples should incorporate azimuth from nav_context")
     
-    def test_launch_request_counterexample(self):
-        """Test LaunchRequest counterexample shows wrong order."""
+    def test_examples_are_diverse(self):
+        """Test that examples are not all identical templates."""
         particle = LaunchRequest(
             actor=self.pilot,
             recipient="MARS CONTROL",
             nav_context=self.nav_context
         )
-        counter = particle.get_counterexample()
-        self.assertIn("DON'T DO THIS", counter)
+        examples = particle.get_examples()
+        self.assertGreater(len(examples), 1)
+        # Remove callsigns and check examples are different
+        normalized = [ex.replace("MARS CONTROL", "").replace("TEST SHIP", "").strip() 
+                     for ex in examples]
+        unique_examples = set(normalized)
+        # Should have at least 3 unique examples (we have 8 total)
+        self.assertGreaterEqual(len(unique_examples), 3, 
+                               "Examples should be diverse, not identical templates")
 
     
-    def test_circularization_request_examples(self):
-        """Test CircularizationRequest examples are appropriate."""
+    def test_circularization_request_examples_integrate_context(self):
+        """Test that CircularizationRequest examples use nav_context values."""
         self.nav_context["maneuver_type"] = "circularize"
+        self.nav_context["altitude_km"] = "200"
+        self.nav_context["inclination_deg"] = "45"
         particle = CircularizationRequest(
             actor=self.pilot,
             recipient="MARS CONTROL",
@@ -136,6 +165,7 @@ class TestPilotRequestParticles(DialogueParticleTest):
         )
         examples = particle.get_examples()
         self.assertGreater(len(examples), 0)
+        # Examples should reference circularization
         for example in examples:
             self.assertIn("circulariz", example.lower())
     
@@ -235,10 +265,10 @@ class TestControllerResponseParticles(DialogueParticleTest):
             self.assertIn("TEST SHIP", example)
             self.assertIn("MARS CONTROL", example)
     
-    def test_departure_response_examples(self):
-        """Test DepartureResponse examples include destination."""
+    def test_departure_response_examples_use_dynamic_destination(self):
+        """Test that DepartureResponse examples use nav_context destination, not hardcoded."""
         self.nav_context["maneuver_type"] = "sublight"
-        self.nav_context["destination"] = "Earth"
+        self.nav_context["destination"] = "Neptune"
         particle = DepartureResponse(
             actor=self.controller,
             recipient="TEST SHIP",
@@ -246,9 +276,9 @@ class TestControllerResponseParticles(DialogueParticleTest):
         )
         examples = particle.get_examples()
         self.assertGreater(len(examples), 0)
-        # At least some examples should reference destination
-        destination_found = any("Earth" in ex for ex in examples)
-        self.assertTrue(destination_found, "Examples should reference destination")
+        # Examples should use the actual destination from nav_context
+        destination_found = any("Neptune" in ex for ex in examples)
+        self.assertTrue(destination_found, "Examples should use nav_context destination dynamically")
     
     def test_hold_response_examples(self):
         """Test HoldResponse examples indicate holding."""
@@ -310,23 +340,20 @@ class TestPilotAcknowledgmentParticles(DialogueParticleTest):
         )
         self.assertEqual(particle.get_format(), DialogueFormat.ACKNOWLEDGMENT)
     
-    def test_radio_acknowledgment_examples(self):
-        """Test RadioAcknowledgment examples are acknowledgment phrases."""
-        particle = RadioAcknowledgment(
+    def test_select_examples_returns_different_selections(self):
+        """Test that select_examples() returns different examples when called multiple times."""
+        particle = LaunchRequest(
             actor=self.pilot,
             recipient="MARS CONTROL",
             nav_context=self.nav_context
         )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should be acknowledgment phrases
-        ack_keywords = ["roger", "copy", "understood", "acknowledged"]
-        found_keyword = any(
-            keyword in example.lower() 
-            for example in examples 
-            for keyword in ack_keywords
-        )
-        self.assertTrue(found_keyword, "Examples should be acknowledgments")
+        # Call select_examples multiple times
+        selections = [particle.select_examples(3) for _ in range(10)]
+        # Should get different combinations (not all identical)
+        unique_selections = set(tuple(sel) for sel in selections)
+        # With 8 examples and selecting 3, we should get some variety
+        self.assertGreater(len(unique_selections), 1, 
+                          "select_examples() should return different selections")
     
     def test_radio_readback_format(self):
         """Test RadioReadback returns READBACK format."""
