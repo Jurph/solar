@@ -1,0 +1,337 @@
+<?xml version="1.0" ?>
+<universe seed="12345">
+  <galaxy>
+    <name>Galactus</name>
+    <type>SP</type>
+    <size>L</size>
+    <system>
+      <name>Sol System</name>
+      <galactic_x_ly>27000</galactic_x_ly>
+      <galactic_y_ly>0</galactic_y_ly>
+      <galactic_z_ly>65</galactic_z_ly>
+      <system_age_years>4.6e9</system_age_years>
+      <star>
+        <name>Sol</name>
+        <type>G2V</type>
+        <magnitude>4.83</magnitude>
+        <mass_kg>1.989e30</mass_kg>
+        <radius_km>696340</radius_km>
+        <temperature_k>5778</temperature_k>
+        <luminosity_solar>1.0</luminosity_solar>
+        <planet>
+          <name>Earth</name>
+          <type>TE</type>
+          <mass_kg>5.972e24</mass_kg>
+          <radius_km>6371</radius_km>
+          <orbital_distance_au>1.0</orbital_distance_au>
+          <orbital_period_days>365.25</orbital_period_days>
+          <rotation_period_hours>23.93</rotation_period_hours>
+          <axial_tilt_deg>23.44</axial_tilt_deg>
+          <albedo>0.306</albedo>
+          <atmosphere>
+            <atmosphere_type>N2_O2</atmosphere_type>
+            <atmosphere_height_km>100</atmosphere_height_km>
+            <surface_pressure_bar>1.013</surface_pressure_bar>
+          </atmosphere>
+          <composition>
+            <iron_content>0.32</iron_content>
+            <ice_content>0.0</ice_content>
+            <has_methane>false</has_methane>
+            <has_sulfur>false</has_sulfur>
+            <water_coverage>0.71</water_coverage>
+            <carbon_content>0.0</carbon_content>
+            <organic_haze>0.0</organic_haze>
+          </composition>
+          <moon>
+            <name>Moon</name>
+            <variety>R</variety>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+            <station>
+              <name>Moon Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Luna</name>
+            <variety>R</variety>
+            <mass_kg>7.342e22</mass_kg>
+            <radius_km>1737.4</radius_km>
+            <orbital_distance_km>384400</orbital_distance_km>
+            <orbital_period_hours>655.7</orbital_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+            <station>
+              <name>Luna Orbital Control</name>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>3</small_berths>
+            </station>
+            <station>
+              <name>Luna Secondary Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Earth Orbital Control</name>
+            <large_berths>5</large_berths>
+            <medium_berths>10</medium_berths>
+            <small_berths>20</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Mars</name>
+          <type>SI</type>
+          <mass_kg>6.39e23</mass_kg>
+          <radius_km>3389.5</radius_km>
+          <orbital_distance_au>1.524</orbital_distance_au>
+          <orbital_period_days>687</orbital_period_days>
+          <rotation_period_hours>24.62</rotation_period_hours>
+          <axial_tilt_deg>25.19</axial_tilt_deg>
+          <albedo>0.25</albedo>
+          <atmosphere>
+            <atmosphere_type>CO2_THIN</atmosphere_type>
+            <surface_pressure_bar>0.006</surface_pressure_bar>
+          </atmosphere>
+          <composition>
+            <iron_content>0.25</iron_content>
+            <ice_content>0.05</ice_content>
+            <has_methane>false</has_methane>
+            <has_sulfur>true</has_sulfur>
+            <water_coverage>0.0</water_coverage>
+            <carbon_content>0.0</carbon_content>
+            <organic_haze>0.0</organic_haze>
+          </composition>
+          <moon>
+            <name>Phobos</name>
+            <variety>R</variety>
+            <mass_kg>1.066e16</mass_kg>
+            <radius_km>11.267</radius_km>
+            <orbital_distance_km>9376</orbital_distance_km>
+            <orbital_period_hours>7.66</orbital_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+            <station>
+              <name>Phobos Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Deimos</name>
+            <variety>R</variety>
+            <mass_kg>1.476e15</mass_kg>
+            <radius_km>6.2</radius_km>
+            <orbital_distance_km>23463</orbital_distance_km>
+            <orbital_period_hours>30.3</orbital_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+            <station>
+              <name>Deimos Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Mars Control</name>
+            <large_berths>3</large_berths>
+            <medium_berths>6</medium_berths>
+            <small_berths>12</small_berths>
+          </station>
+        </planet>
+        <moon>
+          <name>Ceres</name>
+          <variety>R</variety>
+          <mass_kg>9.39e20</mass_kg>
+          <radius_km>473</radius_km>
+          <orbital_distance_km>4.14e8</orbital_distance_km>
+          <orbital_period_hours>40368</orbital_period_hours>
+          <composition>
+            <iron_content>0.1</iron_content>
+            <ice_content>0.25</ice_content>
+            <has_methane>false</has_methane>
+            <has_sulfur>false</has_sulfur>
+            <water_coverage>0.0</water_coverage>
+            <carbon_content>0.0</carbon_content>
+            <organic_haze>0.0</organic_haze>
+          </composition>
+          <station>
+            <name>Ceres Control</name>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>4</small_berths>
+          </station>
+        </moon>
+      </star>
+    </system>
+    <system>
+      <name>Binary System</name>
+      <galactic_x_ly>27003</galactic_x_ly>
+      <galactic_y_ly>-3</galactic_y_ly>
+      <galactic_z_ly>65</galactic_z_ly>
+      <system_age_years>5.3e9</system_age_years>
+      <star>
+        <name>Alpha Centauri A</name>
+        <type>G2V</type>
+        <magnitude>0.01</magnitude>
+        <mass_kg>2.19e30</mass_kg>
+        <radius_km>854105</radius_km>
+        <temperature_k>5790</temperature_k>
+        <luminosity_solar>1.519</luminosity_solar>
+        <planet>
+          <name>Alpha Prime</name>
+          <type>TE</type>
+          <moon>
+            <name>Alpha Moon 1</name>
+            <variety>R</variety>
+            <station>
+              <name>Alpha Moon 1 Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Alpha Moon 2</name>
+            <variety>R</variety>
+            <station>
+              <name>Alpha Moon 2 Control</name>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>3</small_berths>
+            </station>
+            <station>
+              <name>Alpha Moon 2 Secondary Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Alpha Prime Orbital Control</name>
+            <large_berths>4</large_berths>
+            <medium_berths>8</medium_berths>
+            <small_berths>16</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Alpha Minor</name>
+          <type>SI</type>
+          <moon>
+            <name>Alpha Minor Moon</name>
+            <variety>R</variety>
+            <station>
+              <name>Alpha Minor Moon Control</name>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>4</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Alpha Minor Control</name>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+      </star>
+      <star>
+        <name>Alpha Centauri B</name>
+        <type>K1V</type>
+        <magnitude>1.33</magnitude>
+        <mass_kg>1.80e30</mass_kg>
+        <radius_km>602334</radius_km>
+        <temperature_k>5260</temperature_k>
+        <luminosity_solar>0.5</luminosity_solar>
+        <planet>
+          <name>Beta Major</name>
+          <type>TE</type>
+          <moon>
+            <name>Beta Moon 1</name>
+            <variety>R</variety>
+            <station>
+              <name>Beta Moon 1 Control</name>
+              <large_berths>0</large_berths>
+              <medium_berths>1</medium_berths>
+              <small_berths>2</small_berths>
+            </station>
+          </moon>
+          <moon>
+            <name>Beta Moon 2</name>
+            <variety>R</variety>
+          </moon>
+          <station>
+            <name>Beta Major Orbital Control</name>
+            <large_berths>3</large_berths>
+            <medium_berths>6</medium_berths>
+            <small_berths>12</small_berths>
+          </station>
+          <station>
+            <name>Beta Major Secondary Control</name>
+            <large_berths>1</large_berths>
+            <medium_berths>2</medium_berths>
+            <small_berths>3</small_berths>
+          </station>
+        </planet>
+        <planet>
+          <name>Beta Minor</name>
+          <type>SI</type>
+          <moon>
+            <name>Beta Minor Moon</name>
+            <variety>R</variety>
+            <station>
+              <name>Beta Minor Moon Control</name>
+              <large_berths>1</large_berths>
+              <medium_berths>2</medium_berths>
+              <small_berths>4</small_berths>
+            </station>
+          </moon>
+          <station>
+            <name>Beta Minor Control</name>
+            <large_berths>2</large_berths>
+            <medium_berths>4</medium_berths>
+            <small_berths>8</small_berths>
+          </station>
+        </planet>
+      </star>
+    </system>
+  </galaxy>
+</universe>
+
