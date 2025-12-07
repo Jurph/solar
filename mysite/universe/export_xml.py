@@ -80,7 +80,7 @@ class UniverseExporter:
         # Export moons
         for moon in star.moons.all():
             self.export_moon(moon, star_elem)
-          
+
         # Export stations orbiting the star
         self.export_stations(star, star_elem)
             
