@@ -258,13 +258,13 @@ STAR_TYPE_TEMPERATURE_RANGES = {
 }
 
 STAR_TYPE_MASS_RANGES = {  # In solar masses
-    'O': (16, 90),      # Baraffe et al. 2015
+    'O': (16, 200),     # Main sequence upper limit ~120-200 M☉ (not Baraffe!)
     'B': (2.1, 16),
     'A': (1.4, 2.1),
     'F': (1.04, 1.4),
-    'G': (0.8, 1.04),   # Sun is 1.0
-    'K': (0.45, 0.8),
-    'M': (0.08, 0.45),  # Lower limit is hydrogen burning threshold
+    'G': (0.8, 1.04),   # Sun is 1.0 - Baraffe et al. 2015 appropriate here
+    'K': (0.45, 0.8),   # Baraffe et al. 2015
+    'M': (0.08, 0.45),  # Baraffe et al. 2015 - Lower limit is hydrogen burning threshold
 }
 
 STAR_TYPE_DENSITY_RANGES = {  # In kg/m³ (average bulk density)
@@ -415,7 +415,7 @@ PLANET_TYPE_WEIGHTS_BY_DISTANCE = {
     },
 }
 
-# Mass and radius ranges based on Seager et al. 2007 composition curves
+# Mass and radius ranges based on Otegi et al. 2020 (planets below 120 M⊕)
 # and observational data from exoplanet surveys
 PLANET_PROPERTIES_BY_TYPE = {
     'SI': {  # Silicate planets (pure rock, no volatiles)
@@ -423,14 +423,14 @@ PLANET_PROPERTIES_BY_TYPE = {
         'radius_range_earth': (0.3, 1.3),  # Below Earth radius
         # Density calculated from composition (typically 3000-5500 kg/m³)
     },
-    'TE': {  # Terrestrial (Earth-like: rock + some iron core)
-        'mass_range_earth': (0.3, 3.0),  # Mercury to ~2x Earth
+    'TE': {  # Terrestrial (Otegi 2020: rocky population below 5 M⊕)
+        'mass_range_earth': (0.3, 5.0),  # CHANGED from (0.3, 3.0)
         'radius_range_earth': (0.4, 1.5),  # Data shows <1.5 R_E is rocky
         # Density calculated from composition (typically 4000-6000 kg/m³, Earth ~5500)
     },
-    'SE': {  # Super-Earths (rocky but larger, possible thin H/He envelope)
-        'mass_range_earth': (2.0, 10.0),  # Data shows peak at 1.4-2.8 R_E
-        'radius_range_earth': (1.5, 2.5),  # Above radius gap, below mini-Neptunes
+    'SE': {  # Super-Earths (Otegi 2020: rocky ends at ~25 M⊕)
+        'mass_range_earth': (5.0, 25.0),  # CHANGED from (2.0, 10.0)
+        'radius_range_earth': (1.5, 3.0),  # CHANGED from (1.5, 2.5)
         # Density calculated from composition (typically 3500-5500 kg/m³)
     },
     'CT': {  # Cthonian planets (stripped gas giant cores)
@@ -438,8 +438,8 @@ PLANET_PROPERTIES_BY_TYPE = {
         'radius_range_earth': (1.0, 2.0),  # Dense, compact
         # Density calculated from composition (typically 8000-15000 kg/m³, very high)
     },
-    'IG': {  # Ice giants (rock/ice core + H/He envelope)
-        'mass_range_earth': (10.0, 50.0),  # Neptune ~17, Uranus ~14.5 Earth masses
+    'IG': {  # Ice giants (Mini-Neptunes to Neptune-size)
+        'mass_range_earth': (5.0, 120.0),  # CHANGED from (10.0, 50.0)
         'radius_range_earth': (2.5, 6.0),  # Data shows 3-6 R_E range
         # Density calculated from composition (typically 1000-2000 kg/m³, mostly gas)
     },
