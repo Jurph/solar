@@ -167,6 +167,11 @@ class StarSystem(Location):
         on_delete=models.CASCADE,
         related_name='star_systems'
     )
+    system_age_years = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="System age in years (derived from seed, shared by all bodies in system)"
+    )
 
     def save(self, *args, **kwargs):
         if not self.scale:
@@ -202,6 +207,11 @@ class Star(PhysicalBody):
         decimal_places=2,
         default=4.31
     )
+    temperature_k = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Surface temperature in Kelvin"
+    )
 
     def save(self, *args, **kwargs):
         if not self.scale:
@@ -228,6 +238,11 @@ class Planet(Location):
         max_length=2,
         choices=planetType.choices,
         default=planetType.TERRESTRIAL
+    )
+    orbital_distance_au = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Semi-major axis in AU"
     )
 
     def save(self, *args, **kwargs):
