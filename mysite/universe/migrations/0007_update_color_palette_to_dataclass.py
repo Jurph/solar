@@ -10,10 +10,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='star',
-            name='pattern_type',
-        ),
         migrations.AlterField(
             model_name='star',
             name='color_palette',

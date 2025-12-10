@@ -328,6 +328,41 @@ def calculate_star_radius_from_mass_density(mass_kg: float, density_kg_m3: float
     return radius_km
 
 
+def calculate_star_luminosity_solar(radius_km: float, temperature_k: float) -> float:
+    """
+    Calculate star luminosity using Stefan-Boltzmann law.
+    
+    L = 4πR²σT⁴
+    
+    Where:
+    - L = luminosity (W)
+    - R = radius (m)
+    - σ = Stefan-Boltzmann constant = 5.670374419e-8 W/(m²·K⁴)
+    - T = temperature (K)
+    
+    Returns luminosity in solar units (L_sun = 3.828e26 W).
+    
+    Args:
+        radius_km: Star radius in kilometers
+        temperature_k: Star surface temperature in Kelvin
+    
+    Returns:
+        Luminosity in solar units (L/L_sun)
+    """
+    STEFAN_BOLTZMANN = 5.670374419e-8  # W/(m²·K⁴)
+    SOLAR_LUMINOSITY_W = 3.828e26  # W
+    
+    radius_m = radius_km * 1000
+    
+    # L = 4πR²σT⁴
+    luminosity_w = 4 * math.pi * (radius_m ** 2) * STEFAN_BOLTZMANN * (temperature_k ** 4)
+    
+    # Convert to solar units
+    luminosity_solar = luminosity_w / SOLAR_LUMINOSITY_W
+    
+    return luminosity_solar
+
+
 # Planet Type Generation Based on Exoplanet Observations
 # 
 # References:
@@ -568,7 +603,7 @@ COMPOSITION_RANGES_BY_TYPE = {
 
 def generate_composition(rng: SeededRandom, planet_type: str) -> Dict[str, Any]:
     """
-    Generate composition values for a planet/moon based on type.
+    Generate composition values for a planet based on type.
     
     Args:
         rng: SeededRandom instance
@@ -620,7 +655,6 @@ def calculate_density_from_composition(rng: SeededRandom, composition: Dict[str,
     DENSITY_IRON = 7800
     DENSITY_ROCK = 3250  # Average silicate rock
     DENSITY_ICE = 950
-    DENSITY_WATER = 1000
     DENSITY_CARBON = 2100  # Graphite/organic
     
     iron_content = composition.get('iron_content', 0.0)
@@ -644,18 +678,28 @@ def calculate_density_from_composition(rng: SeededRandom, composition: Dict[str,
         bulk_density = (0.85 * base_density + 0.15 * core_density)
     else:
         # Rocky planets: calculate from material fractions
-        # Remaining fraction after iron/ice/water/carbon is rock
-        total_volatile = ice_content + water_coverage + carbon_content
+        # Note: water_coverage is SURFACE coverage (0.71 = 71% ocean), not volume fraction
+        # Oceans are thin (~4km) compared to planet radius (~6371km), so volume fraction is negligible
+        # Remaining fraction after iron/ice/carbon is rock
+        total_volatile = ice_content + carbon_content
         rock_fraction = max(0.0, 1.0 - iron_content - total_volatile)
         
-        # Weighted average density
+        # Weighted average density from volume fractions
         bulk_density = (
             iron_content * DENSITY_IRON +
             rock_fraction * DENSITY_ROCK +
             ice_content * DENSITY_ICE +
-            water_coverage * DENSITY_WATER +
             carbon_content * DENSITY_CARBON
         )
+        
+        # Water coverage (surface) has minimal effect on bulk density
+        # High water coverage slightly reduces density (water < rock), but effect is tiny
+        # For Earth (71% coverage), oceans are ~0.06% of volume, so effect is <0.1%
+        # We'll apply a tiny reduction for high water coverage planets
+        if water_coverage > 0.5:
+            # High water coverage: reduce density by up to 0.5% (oceans are less dense than rock)
+            water_effect = (water_coverage - 0.5) * 0.01  # Max 0.5% reduction at 100% coverage
+            bulk_density *= (1.0 - water_effect)
         
         # If has methane, add some gas component (reduces density)
         if has_methane:
@@ -682,6 +726,160 @@ def calculate_density_from_composition(rng: SeededRandom, composition: Dict[str,
     return max(min_density, min(max_density, density))
 
 
+def generate_albedo(rng: SeededRandom, composition: Dict[str, Any], 
+                    planet_type: str = None, has_atmosphere: bool = False) -> float:
+    """
+    Generate Bond albedo for a planet or moon based on composition and surface properties.
+    
+    Bond albedo is the fraction of total incident radiation reflected back to space.
+    Typical values:
+    - Ice/clouds: 0.6-0.9 (high albedo)
+    - Rock/soil: 0.1-0.3 (low albedo)
+    - Water: 0.05-0.1 (very low, absorbs most light)
+    - Gas giants: 0.3-0.5 (clouds reflect)
+    
+    Real examples:
+    - Earth: ~0.306 (oceans + clouds)
+    - Venus: ~0.76 (thick clouds)
+    - Mars: ~0.25 (dusty surface)
+    - Jupiter: ~0.34 (clouds)
+    - Enceladus: ~0.99 (icy, very high)
+    - Moon: ~0.12 (dark rock)
+    
+    Args:
+        rng: SeededRandom instance
+        composition: Dictionary with composition values
+        planet_type: Optional planet type for special cases
+        has_atmosphere: Whether the body has an atmosphere (clouds increase albedo)
+    
+    Returns:
+        Bond albedo (0.0 to 1.0)
+    """
+    ice_content = composition.get('ice_content', 0.0)
+    water_coverage = composition.get('water_coverage', 0.0)
+    iron_content = composition.get('iron_content', 0.0)
+    carbon_content = composition.get('carbon_content', 0.0)
+    organic_haze = composition.get('organic_haze', 0.0)
+    
+    # Base albedo from surface composition
+    # Ice has very high albedo (0.6-0.9)
+    # Water has very low albedo (0.05-0.1)
+    # Rock has moderate albedo (0.1-0.3)
+    # Iron-rich surfaces are darker (0.1-0.2)
+    # Carbon/organic materials are very dark (0.05-0.15)
+    
+    # Weighted average based on surface coverage
+    # For planets, water_coverage is surface coverage, ice_content is bulk
+    # For simplicity, assume ice on surface contributes to albedo
+    
+    # Ice contribution (high albedo)
+    ice_albedo = 0.75  # Typical for ice
+    ice_weight = min(1.0, ice_content * 2.0)  # Ice content can be bulk, scale it
+    
+    # Water contribution (low albedo)
+    water_albedo = 0.08  # Ocean water is very dark
+    water_weight = water_coverage
+    
+    # Rock contribution (moderate albedo)
+    rock_fraction = max(0.0, 1.0 - ice_weight - water_weight - iron_content - carbon_content)
+    rock_albedo = 0.2  # Typical rocky surface
+    
+    # Iron contribution (low albedo, dark)
+    iron_albedo = 0.15  # Iron-rich surfaces are darker
+    iron_weight = iron_content
+    
+    # Carbon/organic contribution (very low albedo, very dark)
+    carbon_albedo = 0.1  # Carbon and organic materials are very dark
+    carbon_weight = carbon_content + organic_haze
+    
+    # Calculate weighted average
+    total_weight = ice_weight + water_weight + rock_fraction + iron_weight + carbon_weight
+    if total_weight > 0:
+        base_albedo = (
+            ice_weight * ice_albedo +
+            water_weight * water_albedo +
+            rock_fraction * rock_albedo +
+            iron_weight * iron_albedo +
+            carbon_weight * carbon_albedo
+        ) / total_weight
+    else:
+        base_albedo = 0.2  # Default rocky
+    
+    # Special cases for gas/ice giants
+    if planet_type == 'GG':
+        # Gas giants: clouds dominate, moderate-high albedo
+        base_albedo = 0.35 + rng.uniform(-0.05, 0.15)  # 0.3-0.5
+    elif planet_type == 'IG':
+        # Ice giants: clouds + ice, higher albedo
+        base_albedo = 0.45 + rng.uniform(-0.1, 0.15)  # 0.35-0.6
+    
+    # Atmosphere increases albedo (clouds reflect)
+    if has_atmosphere:
+        # Clouds can significantly increase albedo
+        # Thick atmospheres (like Venus) have very high albedo
+        atmosphere_boost = rng.uniform(0.05, 0.25)  # 5-25% increase
+        base_albedo = min(0.95, base_albedo + atmosphere_boost)
+    
+    # Add some random variation (±10%)
+    variation = rng.uniform(-0.1, 0.1)
+    albedo = base_albedo * (1.0 + variation)
+    
+    # Clamp to physical limits
+    return max(0.01, min(0.99, albedo))
+
+
+def calculate_equilibrium_temperature(star_temperature_k: float, star_radius_km: float,
+                                     orbital_distance_au: float, albedo: float) -> float:
+    """
+    Calculate equilibrium temperature for a planet or moon.
+    
+    Uses the formula:
+    T_eq = T_star * sqrt(R_star / (2 * a)) * (1 - A)^(1/4)
+    
+    Where:
+    - T_star = star surface temperature (K)
+    - R_star = star radius (km, converted to AU for calculation)
+    - a = orbital distance (AU)
+    - A = Bond albedo (0.0 to 1.0)
+    
+    This assumes:
+    - Planet is a blackbody radiator
+    - No greenhouse effect
+    - Uniform temperature (no day/night variation)
+    
+    Real planets will be warmer due to greenhouse effect, but this gives
+    a baseline equilibrium temperature.
+    
+    Args:
+        star_temperature_k: Star surface temperature in Kelvin
+        star_radius_km: Star radius in kilometers
+        orbital_distance_au: Orbital distance in AU
+        albedo: Bond albedo (0.0 to 1.0)
+    
+    Returns:
+        Equilibrium temperature in Kelvin
+    """
+    # Convert star radius from km to AU
+    # 1 AU = 1.496e8 km
+    AU_TO_KM = 1.496e8
+    star_radius_au = star_radius_km / AU_TO_KM
+    
+    # T_eq = T_star * sqrt(R_star / (2 * a)) * (1 - A)^(1/4)
+    # For circular orbits, we use semi-major axis (orbital_distance_au)
+    
+    # Calculate sqrt(R_star / (2 * a))
+    radius_distance_ratio = star_radius_au / (2 * orbital_distance_au)
+    sqrt_term = math.sqrt(radius_distance_ratio)
+    
+    # Calculate (1 - A)^(1/4)
+    albedo_term = (1.0 - albedo) ** (1/4)
+    
+    # Final temperature
+    equilibrium_temp_k = star_temperature_k * sqrt_term * albedo_term
+    
+    return equilibrium_temp_k
+
+
 # Moon Variety Generation
 MOON_VARIETY_WEIGHTS = {
     'R': 0.6,  # Rocky (most common)
@@ -694,6 +892,438 @@ MOON_VARIETY_WEIGHTS = {
 def generate_moon_variety(rng: SeededRandom) -> str:
     """Generate moon variety based on weighted distribution."""
     return weighted_choice_dict(rng, MOON_VARIETY_WEIGHTS)
+
+
+# Moon Composition Generation
+# Moons have different composition ranges than planets because they're smaller
+# and don't form large iron cores. Luna has ~10-15% iron vs typical silicate planets (30-60%).
+MOON_COMPOSITION_RANGES_BY_VARIETY = {
+    'R': {  # Rocky (Luna-like)
+        'iron_content': (0.08, 0.18),  # Lower than planets - small moons don't form large cores
+        'ice_content': (0.0, 0.05),
+        'has_methane': False,
+        'has_sulfur': (0.0, 0.1),
+        'water_coverage': (0.0, 0.0),
+        'carbon_content': (0.0, 0.05),
+        'organic_haze': (0.0, 0.0),
+    },
+    'I': {  # Icy (Europa-like)
+        'iron_content': (0.05, 0.15),
+        'ice_content': (0.4, 0.8),  # High ice content
+        'has_methane': False,
+        'has_sulfur': (0.0, 0.1),
+        'water_coverage': (0.0, 0.0),
+        'carbon_content': (0.0, 0.1),
+        'organic_haze': (0.0, 0.0),
+    },
+    'O': {  # Organic (Titan-like)
+        'iron_content': (0.05, 0.15),
+        'ice_content': (0.2, 0.5),
+        'has_methane': True,  # Organic moons often have methane
+        'has_sulfur': (0.0, 0.05),
+        'water_coverage': (0.0, 0.0),
+        'carbon_content': (0.1, 0.3),  # High carbon/organic content
+        'organic_haze': (0.1, 0.3),  # Organic haze common
+    },
+    'T': {  # Terrestrial (habitable moon, rare)
+        'iron_content': (0.1, 0.25),  # Still lower than planets
+        'ice_content': (0.0, 0.1),
+        'has_methane': False,
+        'has_sulfur': (0.0, 0.2),
+        'water_coverage': (0.0, 0.8),  # Can have surface water
+        'carbon_content': (0.0, 0.1),
+        'organic_haze': (0.0, 0.1),
+    },
+}
+
+
+def generate_moon_composition(rng: SeededRandom, moon_variety: str) -> Dict[str, Any]:
+    """
+    Generate composition values for a moon based on variety.
+    
+    Args:
+        rng: SeededRandom instance
+        moon_variety: Moon variety code (R, I, O, T)
+    
+    Returns:
+        Dictionary with composition values
+    """
+    ranges = MOON_COMPOSITION_RANGES_BY_VARIETY.get(moon_variety, MOON_COMPOSITION_RANGES_BY_VARIETY['R'])
+    
+    composition = {}
+    for key, value in ranges.items():
+        if isinstance(value, bool):
+            composition[key] = value
+        elif isinstance(value, tuple):
+            min_val, max_val = value
+            composition[key] = rng.uniform(min_val, max_val)
+        else:
+            composition[key] = value
+    
+    return composition
+
+
+# Moon Generation System
+# =====================
+
+# Moon Quantity by Parent Type
+# Determines how many moons to generate around a parent body
+# Format: (min, max, most_likely) where most_likely is the mode of a triangular distribution
+MOON_QUANTITY_BY_PARENT = {
+    'STAR': (0, 10, 0),  # Stars rarely have moons (Pluto-type objects are usually classified as planets)
+    'TE': (0, 2, 0),  # Terrestrial planets: 0-2 moons (Earth: 1, Mars: 2, Venus: 0, Mercury: 0)
+    'SE': (0, 3, 1),  # Super-Earths: 0-3 moons, often 1
+    'SI': (0, 1, 0),  # Silicate planets: 0-1 moons
+    'MP': (0, 1, 0),  # Mesoplanets: 0-1 moons
+    'CT': (0, 0, 0),  # Cthonian planets: no moons (stripped cores)
+    'IG': (5, 30, 15),  # Ice giants: many moons (Uranus: 27, Neptune: 16)
+    'GG': (10, 100, 50),  # Gas giants: many moons (Jupiter: 95, Saturn: 146)
+    'AB': (0, 5, 1),  # Asteroid belts: 0-5 large asteroids (Ceres, Vesta, etc.)
+}
+
+
+def generate_moon_quantity(rng: SeededRandom, parent_type: str) -> int:
+    """
+    Generate number of moons for a parent body.
+    
+    Args:
+        rng: SeededRandom instance
+        parent_type: Parent type ('STAR', 'TE', 'SE', 'SI', 'MP', 'CT', 'IG', 'GG', 'AB')
+    
+    Returns:
+        Number of moons to generate
+    """
+    if parent_type not in MOON_QUANTITY_BY_PARENT:
+        # Default: no moons
+        return 0
+    
+    min_moons, max_moons, most_likely = MOON_QUANTITY_BY_PARENT[parent_type]
+    
+    if min_moons == max_moons:
+        return min_moons
+    
+    # Use triangular distribution centered on most_likely
+    # Simplified: generate between min and max, weighted toward most_likely
+    if rng.uniform(0, 1) < 0.5:
+        # 50% chance: use most_likely as center
+        center = most_likely
+        spread = max(most_likely - min_moons, max_moons - most_likely)
+    else:
+        # 50% chance: uniform across range
+        center = (min_moons + max_moons) / 2
+        spread = (max_moons - min_moons) / 2
+    
+    # Generate value near center
+    value = center + rng.uniform(-spread, spread)
+    return max(min_moons, min(max_moons, int(round(value))))
+
+
+# Moon Type Weights by Parent and Distance
+# Determines probability of each moon variety (R, I, O, T) based on parent type and orbital distance
+# Distance ranges are in AU from parent
+MOON_TYPE_WEIGHTS_BY_PARENT_AND_DISTANCE = {
+    'STAR': {
+        # Stars can have distant "Pluto-type" objects
+        (0.0, 10.0): {'R': 0.7, 'I': 0.2, 'O': 0.08, 'T': 0.02},  # Inner: mostly rocky
+        (10.0, 50.0): {'R': 0.4, 'I': 0.5, 'O': 0.08, 'T': 0.02},  # Middle: more icy
+        (50.0, float('inf')): {'R': 0.2, 'I': 0.6, 'O': 0.15, 'T': 0.05},  # Outer: mostly icy
+    },
+    'TE': {  # Terrestrial planets
+        (0.0, float('inf')): {'R': 0.9, 'I': 0.05, 'O': 0.04, 'T': 0.01},  # Mostly rocky (Luna-like)
+    },
+    'SE': {  # Super-Earths
+        (0.0, float('inf')): {'R': 0.7, 'I': 0.15, 'O': 0.1, 'T': 0.05},  # More variety
+    },
+    'SI': {  # Silicate planets
+        (0.0, float('inf')): {'R': 0.95, 'I': 0.05, 'O': 0.0, 'T': 0.0},  # Almost always rocky
+    },
+    'MP': {  # Mesoplanets
+        (0.0, float('inf')): {'R': 1.0, 'I': 0.0, 'O': 0.0, 'T': 0.0},  # Always rocky
+    },
+    'CT': {  # Cthonian planets
+        (0.0, float('inf')): {'R': 1.0, 'I': 0.0, 'O': 0.0, 'T': 0.0},  # Always rocky (stripped cores)
+    },
+    'IG': {  # Ice giants
+        (0.0, 0.1): {'R': 0.6, 'I': 0.3, 'O': 0.08, 'T': 0.02},  # Close: rocky/icy mix
+        (0.1, 1.0): {'R': 0.3, 'I': 0.6, 'O': 0.08, 'T': 0.02},  # Medium: mostly icy
+        (1.0, float('inf')): {'R': 0.1, 'I': 0.7, 'O': 0.15, 'T': 0.05},  # Far: very icy
+    },
+    'GG': {  # Gas giants
+        (0.0, 0.1): {'R': 0.5, 'I': 0.4, 'O': 0.08, 'T': 0.02},  # Close: rocky/icy (Io, Europa)
+        (0.1, 0.5): {'R': 0.2, 'I': 0.6, 'O': 0.15, 'T': 0.05},  # Medium: icy/organic (Ganymede, Callisto)
+        (0.5, 2.0): {'R': 0.1, 'I': 0.5, 'O': 0.3, 'T': 0.1},  # Far: organic/terrestrial (Titan)
+        (2.0, float('inf')): {'R': 0.05, 'I': 0.7, 'O': 0.2, 'T': 0.05},  # Very far: mostly icy
+    },
+    'AB': {  # Asteroid belts
+        (0.0, float('inf')): {'R': 0.8, 'I': 0.15, 'O': 0.04, 'T': 0.01},  # Mostly rocky asteroids
+    },
+}
+
+
+def generate_moon_variety_by_parent(rng: SeededRandom, parent_type: str, 
+                                    orbital_distance_au: float) -> str:
+    """
+    Generate moon variety based on parent type and orbital distance.
+    
+    Args:
+        rng: SeededRandom instance
+        parent_type: Parent type ('STAR', 'TE', 'SE', 'SI', 'MP', 'CT', 'IG', 'GG', 'AB')
+        orbital_distance_au: Orbital distance from parent in AU
+    
+    Returns:
+        Moon variety code (R, I, O, T)
+    """
+    if parent_type not in MOON_TYPE_WEIGHTS_BY_PARENT_AND_DISTANCE:
+        # Default: rocky
+        return 'R'
+    
+    distance_ranges = MOON_TYPE_WEIGHTS_BY_PARENT_AND_DISTANCE[parent_type]
+    
+    # Find appropriate distance range
+    for (dist_min, dist_max), weights in distance_ranges.items():
+        if dist_min <= orbital_distance_au < dist_max:
+            return weighted_choice_dict(rng, weights)
+    
+    # Fallback: use last range (should be inf, but handle edge case)
+    if distance_ranges:
+        last_range = list(distance_ranges.items())[-1]
+        return weighted_choice_dict(rng, last_range[1])
+    
+    return 'R'  # Default to rocky
+
+
+# Moon Size and Composition by Type
+# Size ranges are in Earth masses (for mass) and Earth radii (for radius)
+# Maximum size is capped at a fraction of parent size or a fixed maximum for stars
+MOON_SIZE_AND_COMPOSITION_BY_TYPE = {
+    'R': {  # Rocky
+        'mass_range_earth': (0.0001, 0.02),  # Luna: 0.0123, largest rocky moon
+        'radius_range_earth': (0.1, 0.3),  # Luna: 0.27
+        'max_fraction_of_parent': 0.05,  # Max 5% of parent mass
+    },
+    'I': {  # Icy
+        'mass_range_earth': (0.0005, 0.025),  # Ganymede: 0.025, largest moon
+        'radius_range_earth': (0.15, 0.4),  # Ganymede: 0.41
+        'max_fraction_of_parent': 0.1,  # Max 10% of parent mass (icy moons can be larger)
+    },
+    'O': {  # Organic
+        'mass_range_earth': (0.0005, 0.02),  # Titan: 0.0225
+        'radius_range_earth': (0.15, 0.4),  # Titan: 0.40
+        'max_fraction_of_parent': 0.08,  # Max 8% of parent mass
+    },
+    'T': {  # Terrestrial (habitable)
+        'mass_range_earth': (0.001, 0.1),  # Can be larger, up to small planet size
+        'radius_range_earth': (0.2, 0.6),  # Can be larger
+        'max_fraction_of_parent': 0.15,  # Max 15% of parent mass (habitable moons can be substantial)
+    },
+}
+
+
+def generate_moon_size(rng: SeededRandom, moon_variety: str, parent_mass_kg: float,
+                       is_orbiting_star: bool = False) -> Dict[str, float]:
+    """
+    Generate moon mass and radius based on variety and parent constraints.
+    
+    Args:
+        rng: SeededRandom instance
+        moon_variety: Moon variety code (R, I, O, T)
+        parent_mass_kg: Parent body mass in kg
+        is_orbiting_star: If True, parent is a star (use fixed maximum instead of fraction)
+    
+    Returns:
+        Dictionary with 'mass_kg' and 'radius_km'
+    """
+    if moon_variety not in MOON_SIZE_AND_COMPOSITION_BY_TYPE:
+        moon_variety = 'R'  # Default to rocky
+    
+    size_params = MOON_SIZE_AND_COMPOSITION_BY_TYPE[moon_variety]
+    mass_range = size_params['mass_range_earth']
+    radius_range = size_params['radius_range_earth']
+    max_fraction = size_params['max_fraction_of_parent']
+    
+    # Generate mass in Earth masses
+    mass_earth = rng.uniform(mass_range[0], mass_range[1])
+    mass_kg = mass_earth * 5.972e24
+    
+    # Apply parent size constraint
+    if is_orbiting_star:
+        # For stars, use fixed maximum (Pluto is ~0.002 Earth masses)
+        max_mass_earth = 0.01  # Cap at 1% Earth mass for star-orbiting objects
+        mass_earth = min(mass_earth, max_mass_earth)
+        mass_kg = mass_earth * 5.972e24
+    else:
+        # For planets, use fraction of parent mass
+        max_mass_kg = parent_mass_kg * max_fraction
+        mass_kg = min(mass_kg, max_mass_kg)
+        mass_earth = mass_kg / 5.972e24
+    
+    # Generate radius in Earth radii (scales roughly as mass^(1/3) for similar density)
+    # But allow some variation
+    radius_earth = rng.uniform(radius_range[0], radius_range[1])
+    
+    # Apply constraint: radius should scale with mass
+    # If mass was capped, adjust radius accordingly
+    if mass_earth < mass_range[0] * 1.1:  # Close to minimum
+        radius_earth = max(radius_range[0], radius_earth * 0.9)
+    elif mass_earth > mass_range[1] * 0.9:  # Close to maximum
+        radius_earth = min(radius_range[1], radius_earth * 1.1)
+    
+    radius_km = radius_earth * 6371
+    
+    return {
+        'mass_kg': mass_kg,
+        'radius_km': radius_km,
+    }
+
+
+def generate_moon_properties(rng: SeededRandom, parent_type: str, parent_mass_kg: float,
+                            parent_radius_km: float, orbital_distance_au: float,
+                            star_temperature_k: float, star_radius_km: float,
+                            system_age_years: float, is_orbiting_star: bool = False) -> Dict[str, Any]:
+    """
+    Generate complete moon properties including variety, size, composition, density, and atmosphere.
+    
+    This is the main function for generating a single moon. It:
+    1. Determines moon variety based on parent type and distance
+    2. Generates size (mass/radius) based on variety and parent constraints
+    3. Generates composition based on variety
+    4. Calculates density from composition
+    5. Generates atmosphere for Terrestrial/Organic moons
+    
+    Args:
+        rng: SeededRandom instance
+        parent_type: Parent type ('STAR', 'TE', 'SE', 'SI', 'MP', 'CT', 'IG', 'GG', 'AB')
+        parent_mass_kg: Parent body mass in kg
+        parent_radius_km: Parent body radius in km
+        orbital_distance_au: Moon's orbital distance from parent in AU
+        star_temperature_k: Star temperature in K (for equilibrium temp calculation)
+        star_radius_km: Star radius in km (for equilibrium temp calculation)
+        system_age_years: System age in years
+        is_orbiting_star: If True, moon orbits a star directly (Pluto-type)
+    
+    Returns:
+        Dictionary with all moon properties:
+        - variety (str): Moon variety (R, I, O, T)
+        - mass_kg (float): Moon mass in kg
+        - radius_km (float): Moon radius in km
+        - composition (dict): Composition values
+        - density_kg_m3 (float): Bulk density in kg/m³
+        - albedo (float): Bond albedo
+        - equilibrium_temperature_k (float): Equilibrium temperature
+        - atmosphere (dict): Atmosphere properties (if applicable)
+    """
+    # 1. Determine moon variety based on parent and distance
+    variety = generate_moon_variety_by_parent(rng, parent_type, orbital_distance_au)
+    
+    # 2. Generate size (mass and radius)
+    size = generate_moon_size(rng, variety, parent_mass_kg, is_orbiting_star)
+    mass_kg = size['mass_kg']
+    radius_km = size['radius_km']
+    
+    # 3. Generate composition
+    composition = generate_moon_composition(rng, variety)
+    
+    # 4. Calculate density from composition
+    # For moons, we don't pass a planet_type since they use moon-specific composition
+    density_kg_m3 = calculate_density_from_composition(rng, composition, planet_type=None)
+    
+    # 5. Generate albedo
+    # Determine if moon has atmosphere (for albedo calculation)
+    has_atmosphere = False
+    if variety in ['T', 'O']:
+        # Terrestrial and Organic moons can have atmospheres
+        # Use similar logic to planets but adjusted for moons
+        escape_velocity_km_s = calculate_escape_velocity_km_s(mass_kg, radius_km)
+        # For moons, we need to calculate equilibrium temp from parent
+        # If orbiting star, use star properties; if orbiting planet, approximate
+        if is_orbiting_star:
+            equilibrium_temp = calculate_equilibrium_temperature(
+                star_temperature_k, star_radius_km, orbital_distance_au, 0.3  # Approx albedo
+            )
+        else:
+            # Moon orbiting planet: use planet's equilibrium temp as base
+            # Simplified: assume moon temp is similar to planet temp
+            equilibrium_temp = 200  # Default, will be refined
+        # Check if atmosphere can be retained (simplified check)
+        if escape_velocity_km_s > 2.0:  # Moons need >2 km/s to retain atmosphere
+            # Roll dice: 30% chance for T, 50% for O
+            if variety == 'T':
+                has_atmosphere = rng.uniform(0, 1) < 0.3
+            elif variety == 'O':
+                has_atmosphere = rng.uniform(0, 1) < 0.5
+    
+    albedo = generate_albedo(rng, composition, planet_type=None, has_atmosphere=has_atmosphere)
+    
+    # 6. Calculate equilibrium temperature
+    if is_orbiting_star:
+        equilibrium_temp = calculate_equilibrium_temperature(
+            star_temperature_k, star_radius_km, orbital_distance_au, albedo
+        )
+    else:
+        # Moon orbiting planet: approximate based on planet's distance from star
+        # This is simplified - in reality we'd need planet's orbital distance
+        # For now, use a default that will be refined when we have planet context
+        equilibrium_temp = 150  # Default for moons orbiting planets
+    
+    # 7. Generate atmosphere for T/O moons if applicable
+    atmosphere = None
+    if has_atmosphere and variety in ['T', 'O']:
+        # Use planet atmosphere generation logic, but with moon-specific parameters
+        # For moons, we'll use a simplified version
+        if is_orbiting_star:
+            # Moon orbiting star: use star properties
+            atmosphere = generate_atmosphere(
+                rng, 'TE' if variety == 'T' else 'SE',  # Approximate planet types
+                mass_kg, radius_km, orbital_distance_au, equilibrium_temp,
+                star_type='G'  # Default, should be passed in
+            )
+        else:
+            # Moon orbiting planet: simplified atmosphere generation
+            # Most moon atmospheres are thin (Titan is exception)
+            if variety == 'O':
+                # Organic moons like Titan can have thick atmospheres
+                atmosphere = generate_atmosphere(
+                    rng, 'SE', mass_kg, radius_km, orbital_distance_au * 10,  # Approx distance
+                    equilibrium_temp, star_type='G'
+                )
+            else:
+                # Terrestrial moons: thin atmospheres
+                atmosphere = generate_atmosphere(
+                    rng, 'TE', mass_kg, radius_km, orbital_distance_au * 10,
+                    equilibrium_temp, star_type='G'
+                )
+    
+    return {
+        'variety': variety,
+        'mass_kg': mass_kg,
+        'radius_km': radius_km,
+        'composition': composition,
+        'density_kg_m3': density_kg_m3,
+        'albedo': albedo,
+        'equilibrium_temperature_k': equilibrium_temp,
+        'atmosphere': atmosphere,
+    }
+
+
+def should_generate_moons_for_parent(parent_location) -> bool:
+    """
+    Check if we should generate moons for a parent body.
+    
+    Returns False if the parent already has moons (to avoid overwriting or duplicating).
+    This allows manual specification of moons in XML while still generating for empty parents.
+    
+    Args:
+        parent_location: Django Location model instance (Star, Planet, etc.)
+    
+    Returns:
+        True if we should generate moons, False if parent already has moons
+    """
+    # Check if parent already has any moons
+    if hasattr(parent_location, 'moons'):
+        existing_moon_count = parent_location.moons.count()
+        return existing_moon_count == 0
+    
+    return True  # Default: generate moons if we can't check
 
 
 # Orbital Properties
