@@ -21,18 +21,18 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Add objects like "Colony" or "Spaceport" for surface landings 
     - Planetary science and classification
         - Define taxonomy of planet types (terrestrial, gas giant, etc.) ✓
-        - Geological composition and features
+        - Geological composition and features 
         - Atmospheric conditions
         - Resource distributions
     - Procedurally generated via physics rules later 
         - Add orbital parameters to celestial bodies
-            - Mean orbital distance (AU) for basic sorting
+            - Mean orbital distance (AU) for basic sorting ✓
             - Full Keplerian elements (eccentricity, inclination)
-            - Orbital period calculations
-        - Automatic sorting of bodies by orbital distance
-        - Lagrange point calculations
+            - Orbital period calculations ✓
+        - Automatic sorting of bodies by orbital distance ✓
+        - Lagrange point calculations ✓
         - Transfer orbit planning
-        - Generate realistic planetary compositions
+        - Generate realistic planetary compositions ✓ 
     - Mission management
         - Commodity exports based on planetary minerals 
         - Commodity imports based on regional economy/scarcity 
@@ -81,7 +81,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Scripted or procedural at first ✓
     - Uses GPT-style generative dialogue eventually ✓
     - Text-to-voice? Pilot personalities? 
-    - Realistic static, Apollo-style BEEPs, modem noises 
+    - Realistic static, Apollo-style BEEPs, Quindar tones, modem noises 
 
 - Characters
     - Procedurally generated pilots and dispatchers 
@@ -99,7 +99,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Successfully populate a solar system data structure ✓
 - Randomly generate a solar system other than earth's ✓
 - Visualize a simple universe ✓
-- Generate realistic planets (type, composition, mass, radius)
+- Generate realistic planets (type, composition, mass, radius) ✓
 
 ### Two - First Flight ✓
 - Procedurally generate ship names for scripted events ✓
@@ -109,7 +109,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Develop time-based simulation loop (~0.1 second increments) ✓
 - Build Scheduler for time-stamped dialogue events ✓
 - Create scrolling terminal-like display for dialogue events ✓
-- Use planetary characteristics to inform safe altitudes & orbits 
+- Use planetary characteristics to inform safe altitudes & orbits ✓
 
 ### Three - Time and Narrative
 - Implement dialogue event generation from navigation events ✓
