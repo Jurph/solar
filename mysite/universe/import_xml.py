@@ -34,22 +34,31 @@ class UniverseImporter:
         """Import all station elements that are children of the given element."""
         for station_elem in element.findall("./station"):
             name = station_elem.findtext("name")
-            station = Station(
+            station, created = Station.objects.get_or_create(
                 name=name,
                 orbits=parent,
-                scale="SS",
-                large_berths=int(station_elem.findtext("large_berths") or 0),
-                medium_berths=int(station_elem.findtext("medium_berths") or 0),
-                small_berths=int(station_elem.findtext("small_berths") or 0),
+                defaults={
+                    "scale": "SS",
+                    "large_berths": int(station_elem.findtext("large_berths") or 0),
+                    "medium_berths": int(station_elem.findtext("medium_berths") or 0),
+                    "small_berths": int(station_elem.findtext("small_berths") or 0),
+                }
             )
-            station.save()
+            # Update fields if they exist in XML (in case station was already created)
+            if not created:
+                if station_elem.findtext("large_berths"):
+                    station.large_berths = int(station_elem.findtext("large_berths") or 0)
+                if station_elem.findtext("medium_berths"):
+                    station.medium_berths = int(station_elem.findtext("medium_berths") or 0)
+                if station_elem.findtext("small_berths"):
+                    station.small_berths = int(station_elem.findtext("small_berths") or 0)
+                station.save()
+            
             self.object_cache[station.name] = station
 
-            # Create a Controller actor for control stations
-            if "Control" in name:
-                from mysite.universe.models.actor import Controller
-                controller = Controller.create(name=name, location=station)
-                self.object_cache[f"{name}_controller"] = controller
+            # Create a Controller actor for control stations (only if newly created)
+            # Note: Controllers are deployed separately via ActorService.deploy_controllers()
+            # so we don't need to handle them here for idempotency
     
     @transaction.atomic
     def import_universe(self) -> None:
@@ -72,13 +81,23 @@ class UniverseImporter:
     
     def import_galaxy(self, element: ET.Element) -> Galaxy:
         """Import a galaxy and all its children."""
-        galaxy = Galaxy(
-            name=element.findtext("name"),
-            galaxy_type=element.findtext("type"),
-            galaxy_size=element.findtext("size"),
-            scale="GX",
+        name = element.findtext("name")
+        galaxy, created = Galaxy.objects.get_or_create(
+            name=name,
+            defaults={
+                "galaxy_type": element.findtext("type"),
+                "galaxy_size": element.findtext("size"),
+                "scale": "GX",
+            }
         )
-        galaxy.save()
+        # Update fields if they exist in XML (in case galaxy was already created)
+        if not created:
+            if element.findtext("type"):
+                galaxy.galaxy_type = element.findtext("type")
+            if element.findtext("size"):
+                galaxy.galaxy_size = element.findtext("size")
+            galaxy.save()
+        
         self.object_cache[galaxy.name] = galaxy
         
         for system_elem in element.findall("./system"):
@@ -88,12 +107,14 @@ class UniverseImporter:
     
     def import_system(self, element: ET.Element, galaxy: Galaxy) -> StarSystem:
         """Import a star system and its children."""
-        system = StarSystem(
-            name=element.findtext("name"),
+        name = element.findtext("name")
+        system, created = StarSystem.objects.get_or_create(
+            name=name,
             orbits=galaxy,
-            scale="SY",
+            defaults={
+                "scale": "SY",
+            }
         )
-        system.save()
         self.object_cache[system.name] = system
         
         for star_elem in element.findall("./star"):
@@ -103,14 +124,24 @@ class UniverseImporter:
     
     def import_star(self, element: ET.Element, system: StarSystem) -> Star:
         """Import a star and its children."""
-        star = Star(
-            name=element.findtext("name"),
-            star_type=element.findtext("type"),
-            star_magnitude=Decimal(element.findtext("magnitude") or "0"),
+        name = element.findtext("name")
+        star, created = Star.objects.get_or_create(
+            name=name,
             orbits=system,
-            scale="SR",
+            defaults={
+                "star_type": element.findtext("type"),
+                "star_magnitude": Decimal(element.findtext("magnitude") or "0"),
+                "scale": "SR",
+            }
         )
-        star.save()
+        # Update fields if they exist in XML (in case star was already created)
+        if not created:
+            if element.findtext("type"):
+                star.star_type = element.findtext("type")
+            if element.findtext("magnitude"):
+                star.star_magnitude = Decimal(element.findtext("magnitude") or "0")
+            star.save()
+        
         self.object_cache[star.name] = star
         
         for moon_elem in element.findall("./moon"):
@@ -123,13 +154,21 @@ class UniverseImporter:
     
     def import_planet(self, element: ET.Element, star: Star) -> Planet:
         """Import a planet and its children."""
-        planet = Planet(
-            name=element.findtext("name"),
-            planet_type=element.findtext("type"),
+        name = element.findtext("name")
+        planet, created = Planet.objects.get_or_create(
+            name=name,
             orbits=star,
-            scale="PL",
+            defaults={
+                "planet_type": element.findtext("type"),
+                "scale": "PL",
+            }
         )
-        planet.save()
+        # Update fields if they exist in XML (in case planet was already created)
+        if not created:
+            if element.findtext("type"):
+                planet.planet_type = element.findtext("type")
+            planet.save()
+        
         self.object_cache[planet.name] = planet
         
         for moon_elem in element.findall("./moon"):
@@ -140,13 +179,22 @@ class UniverseImporter:
     
     def import_moon(self, element: ET.Element, parent) -> Moon:
         """Import a moon and its stations."""
-        moon = Moon(
-            name=element.findtext("name"),
+        name = element.findtext("name")
+        variety = element.findtext("variety")
+        moon, created = Moon.objects.get_or_create(
+            name=name,
             orbits=parent,
-            scale="MN",
-            variety=element.findtext("variety"),
+            defaults={
+                "scale": "MN",
+                "variety": variety,
+            }
         )
-        moon.save()
+        # Update fields if they exist in XML (in case moon was already created)
+        if not created:
+            if variety:
+                moon.variety = variety
+            moon.save()
+        
         self.object_cache[moon.name] = moon
         
         self.import_stations(element, moon)
