@@ -109,7 +109,7 @@ class UniverseExporter:
         
         ET.SubElement(moon_elem, "name").text = moon.name
         ET.SubElement(moon_elem, "scale").text = moon.scale
-        ET.SubElement(moon_elem, "variety").text = moon.variety
+        ET.SubElement(moon_elem, "moon_type").text = moon.moon_type
         
         # Export stations orbiting this moon
         self.export_stations(moon, moon_elem)

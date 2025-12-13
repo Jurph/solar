@@ -20,6 +20,278 @@
             button.textContent = '+';
         }
     }
+    
+    // Baseball card functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const card = document.getElementById('baseball-card');
+        const cardName = document.getElementById('card-name');
+        const cardType = document.getElementById('card-type');
+        const cardBody = document.getElementById('card-body');
+        
+        // Add click handlers to all items with data attributes
+        document.querySelectorAll('.item-name[data-object-type][data-object-id]').forEach(function(item) {
+            item.style.cursor = 'pointer';
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                
+                // Remove previous selection
+                document.querySelectorAll('.item-name.selected').forEach(function(sel) {
+                    sel.classList.remove('selected');
+                });
+                
+                // Add selection to clicked item
+                item.classList.add('selected');
+                
+                const objectType = item.getAttribute('data-object-type');
+                const objectId = item.getAttribute('data-object-id');
+                
+                console.log('Clicked object:', objectType, objectId);
+                
+                // Show loading state
+                cardName.textContent = 'Loading...';
+                cardType.textContent = '';
+                cardBody.innerHTML = '<p>Loading details...</p>';
+                
+                const url = `/api/universe/${objectType}/${objectId}/`;
+                console.log('Fetching from URL:', url);
+                
+                // Fetch object details
+                fetch(url)
+                    .then(response => {
+                        console.log('Response status:', response.status, response.statusText);
+                        if (!response.ok) {
+                            return response.json().then(err => {
+                                throw new Error(`HTTP ${response.status}: ${err.error || response.statusText}`);
+                            }).catch(() => {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Received data:', data);
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+                        displayCard(data);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching object details:', error);
+                        cardName.textContent = 'Error';
+                        cardType.textContent = '';
+                        cardBody.innerHTML = '<p style="color: red;">Error loading details: ' + error.message + '</p>';
+                    });
+            });
+        });
+        
+        function formatNumber(num) {
+            if (num === null || num === undefined) return 'N/A';
+            if (num >= 1e24) return (num / 1e24).toFixed(2) + ' Yg';
+            if (num >= 1e21) return (num / 1e21).toFixed(2) + ' Zg';
+            if (num >= 1e18) return (num / 1e18).toFixed(2) + ' Eg';
+            if (num >= 1e15) return (num / 1e15).toFixed(2) + ' Pg';
+            if (num >= 1e12) return (num / 1e12).toFixed(2) + ' Tg';
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + ' Gg';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + ' Mg';
+            if (num >= 1e3) return (num / 1e3).toFixed(2) + ' kg';
+            return num.toFixed(2);
+        }
+        
+        function formatDistance(num) {
+            if (num === null || num === undefined) return 'N/A';
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + ' Gm';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + ' Mm';
+            if (num >= 1e3) return (num / 1e3).toFixed(2) + ' km';
+            return num.toFixed(2) + ' m';
+        }
+        
+        function displayCard(data) {
+            try {
+                console.log('displayCard called with data:', data);
+                cardName.textContent = data.name.toUpperCase();
+                cardType.textContent = data.type;
+                
+                let html = '<div class="card-properties">';
+                
+                // CLASSIFICATION SECTION
+                if (data.planet_type) {
+                    html += `<div class="property"><strong>Classification:</strong> ${data.planet_type}</div>`;
+                }
+                if (data.moon_type) {
+                    html += `<div class="property"><strong>Classification:</strong> ${data.moon_type} Moon</div>`;
+                }
+                if (data.star_type) {
+                    html += `<div class="property"><strong>Classification:</strong> ${data.star_type}</div>`;
+                }
+                if (data.galaxy_type) {
+                    html += `<div class="property"><strong>Type:</strong> ${data.galaxy_type}</div>`;
+                    if (data.galaxy_size) {
+                        html += `<div class="property"><strong>Size:</strong> ${data.galaxy_size}</div>`;
+                    }
+                }
+                
+                // PHYSICAL PROPERTIES SECTION - only show if we have at least one property
+                let hasPhysicalProps = false;
+                let physicalPropsHtml = '';
+                
+                if (data.radius_formatted) {
+                    physicalPropsHtml += `<div class="property"><strong>Radius:</strong> ${data.radius_formatted}</div>`;
+                    hasPhysicalProps = true;
+                }
+                if (data.radius_solar != null) {
+                    physicalPropsHtml += `<div class="property"><strong>Radius (Solar):</strong> ${data.radius_solar.toExponential(3)} R☉</div>`;
+                    hasPhysicalProps = true;
+                }
+                if (data.mass_formatted) {
+                    physicalPropsHtml += `<div class="property"><strong>Mass:</strong> ${data.mass_formatted}</div>`;
+                    hasPhysicalProps = true;
+                }
+                if (data.mass_solar != null) {
+                    physicalPropsHtml += `<div class="property"><strong>Mass (Solar):</strong> ${data.mass_solar.toExponential(3)} M☉</div>`;
+                    hasPhysicalProps = true;
+                }
+                if (data.density_formatted) {
+                    physicalPropsHtml += `<div class="property"><strong>Density:</strong> ${data.density_formatted}</div>`;
+                    hasPhysicalProps = true;
+                }
+                if (data.surface_gravity_formatted) {
+                    physicalPropsHtml += `<div class="property"><strong>Surface Gravity:</strong> ${data.surface_gravity_formatted}</div>`;
+                    hasPhysicalProps = true;
+                }
+                
+                if (hasPhysicalProps) {
+                    html += '<div class="property-section-header">Physical Properties</div>';
+                    html += physicalPropsHtml;
+                }
+            
+            // ATMOSPHERE SECTION
+            html += '<div class="property-section-header">Atmosphere</div>';
+            if (data.has_atmosphere !== undefined) {
+                if (data.has_atmosphere) {
+                    html += `<div class="property"><strong>Atmosphere:</strong> ${data.atmosphere_type || 'Present'}</div>`;
+                    if (data.atmosphere_height_formatted) {
+                        html += `<div class="property"><strong>Atmospheric Height:</strong> ${data.atmosphere_height_formatted}</div>`;
+                    }
+                    if (data.surface_pressure_formatted) {
+                        html += `<div class="property"><strong>Surface Pressure:</strong> ${data.surface_pressure_formatted}</div>`;
+                    }
+                } else {
+                    html += `<div class="property"><strong>Atmosphere:</strong> None</div>`;
+                }
+            } else {
+                html += `<div class="property"><strong>Atmosphere:</strong> N/A</div>`;
+            }
+            
+                // ORBITAL PROPERTIES SECTION (for planets and moons)
+                let hasOrbitalProps = false;
+                let orbitalPropsHtml = '';
+                
+                if (data.orbital_distance_au != null) {
+                    orbitalPropsHtml += `<div class="property"><strong>Orbital Distance:</strong> ${data.orbital_distance_au.toFixed(3)} AU</div>`;
+                    hasOrbitalProps = true;
+                }
+                if (data.orbital_distance_formatted) {
+                    orbitalPropsHtml += `<div class="property"><strong>Orbital Distance:</strong> ${data.orbital_distance_formatted}</div>`;
+                    hasOrbitalProps = true;
+                }
+                if (data.orbital_period_formatted) {
+                    orbitalPropsHtml += `<div class="property"><strong>Orbital Period:</strong> ${data.orbital_period_formatted}</div>`;
+                    hasOrbitalProps = true;
+                }
+                if (data.orbital_eccentricity_formatted) {
+                    orbitalPropsHtml += `<div class="property"><strong>Orbital Eccentricity:</strong> ${data.orbital_eccentricity_formatted}</div>`;
+                    hasOrbitalProps = true;
+                }
+                if (data.orbital_inclination_formatted) {
+                    orbitalPropsHtml += `<div class="property"><strong>Orbital Inclination:</strong> ${data.orbital_inclination_formatted}</div>`;
+                    hasOrbitalProps = true;
+                }
+                
+                if (hasOrbitalProps) {
+                    html += '<div class="property-section-header">Orbital Properties</div>';
+                    html += orbitalPropsHtml;
+                }
+                
+                // ROTATION PROPERTIES SECTION
+                let hasRotationProps = false;
+                let rotationPropsHtml = '';
+                
+                if (data.rotation_period_formatted) {
+                    rotationPropsHtml += `<div class="property"><strong>Day Length:</strong> ${data.rotation_period_formatted}</div>`;
+                    hasRotationProps = true;
+                }
+                if (data.axial_tilt_formatted) {
+                    rotationPropsHtml += `<div class="property"><strong>Axial Tilt:</strong> ${data.axial_tilt_formatted}</div>`;
+                    hasRotationProps = true;
+                }
+                if (data.is_tidally_locked != null) {
+                    rotationPropsHtml += `<div class="property"><strong>Tidally Locked:</strong> ${data.is_tidally_locked ? 'Yes' : 'No'}</div>`;
+                    hasRotationProps = true;
+                }
+                
+                if (hasRotationProps) {
+                    html += '<div class="property-section-header">Rotation Properties</div>';
+                    html += rotationPropsHtml;
+                }
+                
+                // THERMAL PROPERTIES SECTION
+                let hasThermalProps = false;
+                let thermalPropsHtml = '';
+                
+                if (data.temperature_k != null) {
+                    const temp_c = data.temperature_k - 273.15;
+                    thermalPropsHtml += `<div class="property"><strong>Temperature:</strong> ${data.temperature_k.toFixed(0)} K (${temp_c.toFixed(0)}°C)</div>`;
+                    hasThermalProps = true;
+                }
+                if (data.equilibrium_temperature_formatted) {
+                    thermalPropsHtml += `<div class="property"><strong>Equilibrium Temp:</strong> ${data.equilibrium_temperature_formatted}</div>`;
+                    hasThermalProps = true;
+                }
+                if (data.albedo_formatted) {
+                    thermalPropsHtml += `<div class="property"><strong>Albedo:</strong> ${data.albedo_formatted}</div>`;
+                    hasThermalProps = true;
+                }
+                
+                if (hasThermalProps) {
+                    html += '<div class="property-section-header">Thermal Properties</div>';
+                    html += thermalPropsHtml;
+                }
+            
+            // STAR-SPECIFIC PROPERTIES
+            if (data.star_magnitude !== null && data.star_magnitude !== undefined) {
+                html += '<div class="property-section-header">Stellar Properties</div>';
+                html += `<div class="property"><strong>Apparent Magnitude:</strong> ${data.star_magnitude}</div>`;
+            }
+            
+            // STATION PROPERTIES
+            if (data.large_berths !== null || data.medium_berths !== null || data.small_berths !== null) {
+                html += '<div class="property-section-header">Docking Facilities</div>';
+                if (data.large_berths !== null && data.large_berths !== undefined) {
+                    html += `<div class="property"><strong>Large Berths:</strong> ${data.large_berths}</div>`;
+                }
+                if (data.medium_berths !== null && data.medium_berths !== undefined) {
+                    html += `<div class="property"><strong>Medium Berths:</strong> ${data.medium_berths}</div>`;
+                }
+                if (data.small_berths !== null && data.small_berths !== undefined) {
+                    html += `<div class="property"><strong>Small Berths:</strong> ${data.small_berths}</div>`;
+                }
+            }
+            
+            // SYSTEM PROPERTIES
+            if (data.system_age_years !== null && data.system_age_years !== undefined) {
+                html += '<div class="property-section-header">System Information</div>';
+                html += `<div class="property"><strong>System Age:</strong> ${data.system_age_years.toExponential(2)} years</div>`;
+            }
+            
+                html += '</div>';
+                cardBody.innerHTML = html;
+                console.log('Card HTML generated, length:', html.length);
+            } catch (error) {
+                console.error('Error in displayCard:', error);
+                cardBody.innerHTML = '<p style="color: red;">Error displaying card: ' + error.message + '</p>';
+            }
+        }
+    });
     </script>
 </body>
 </html>

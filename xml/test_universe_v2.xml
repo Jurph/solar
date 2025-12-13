@@ -44,7 +44,7 @@
           </composition>
           <moon>
             <name>Moon</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <composition>
               <iron_content>0.1</iron_content>
               <ice_content>0.0</ice_content>
@@ -63,7 +63,7 @@
           </moon>
           <moon>
             <name>Luna</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>7.342e22</mass_kg>
             <radius_km>1737.4</radius_km>
             <orbital_distance_km>384400</orbital_distance_km>
@@ -123,7 +123,7 @@
           </composition>
           <moon>
             <name>Phobos</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>1.066e16</mass_kg>
             <radius_km>11.267</radius_km>
             <orbital_distance_km>9376</orbital_distance_km>
@@ -147,7 +147,7 @@
           </moon>
           <moon>
             <name>Deimos</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>1.476e15</mass_kg>
             <radius_km>6.2</radius_km>
             <orbital_distance_km>23463</orbital_distance_km>
@@ -178,7 +178,7 @@
         </planet>
         <moon>
           <name>Ceres</name>
-          <variety>R</variety>
+          <moon_type>R</moon_type>
           <mass_kg>9.39e20</mass_kg>
           <radius_km>473</radius_km>
           <orbital_distance_km>4.14e8</orbital_distance_km>
@@ -220,7 +220,7 @@
           <type>TE</type>
           <moon>
             <name>Alpha Moon 1</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Alpha Moon 1 Control</name>
               <large_berths>0</large_berths>
@@ -230,7 +230,7 @@
           </moon>
           <moon>
             <name>Alpha Moon 2</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Alpha Moon 2 Control</name>
               <large_berths>1</large_berths>
@@ -256,7 +256,7 @@
           <type>SI</type>
           <moon>
             <name>Alpha Minor Moon</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Alpha Minor Moon Control</name>
               <large_berths>1</large_berths>
@@ -285,7 +285,7 @@
           <type>TE</type>
           <moon>
             <name>Beta Moon 1</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Beta Moon 1 Control</name>
               <large_berths>0</large_berths>
@@ -295,7 +295,7 @@
           </moon>
           <moon>
             <name>Beta Moon 2</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
           </moon>
           <station>
             <name>Beta Major Orbital Control</name>
@@ -315,7 +315,7 @@
           <type>SI</type>
           <moon>
             <name>Beta Minor Moon</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Beta Minor Moon Control</name>
               <large_berths>1</large_berths>

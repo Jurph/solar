@@ -1,71 +1,89 @@
 {% extends 'universe/base.html' %}
 {% block content %}
-{% for galaxy in galaxies %}
-<div class="tree-item">
-    <button class="toggle-btn" onclick="toggleNode(this)">+</button>
-    <span class="item-name galaxy">🌌 {{ galaxy.name }}</span>
-    <div class="tree-content">
-        {% for system in galaxy.star_systems.all %}
-        <div class="tree-item">
-            <button class="toggle-btn" onclick="toggleNode(this)">+</button>
-            <span class="item-name system">⭐ {{ system.name }}</span>
-            <div class="tree-content">
-                {% for star in system.stars.all %}
-                <div class="tree-item">
-                    <button class="toggle-btn" onclick="toggleNode(this)">+</button>
-                    <span class="item-name star">☀️ {{ star.name }}</span>
-                    <div class="tree-content">
-                        {% for planet in star.planets.all %}
-                        <div class="tree-item">
-                            <button class="toggle-btn" onclick="toggleNode(this)">+</button>
-                            <span class="item-name planet">🌍 {{ planet.name }}</span>
-                            <div class="tree-content">
-                                {% for moon in planet.moons.all %}
-                                <div class="tree-item">
-                                    <button class="toggle-btn" onclick="toggleNode(this)">+</button>
-                                    <span class="item-name moon">🌑 {{ moon.name }}</span>
-                                    <div class="tree-content">
-                                        {% for station in moon.orbiting_stations.all %}
-                                        <div class="tree-item">
-                                            <span class="item-name station">🛸 {{ station.name }}</span>
+<div class="universe-container">
+    <div class="universe-tree-wrapper">
+        <div class="universe-tree">
+            {% for galaxy in galaxies %}
+            <div class="tree-item">
+                <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                <span class="item-name galaxy" data-object-type="galaxy" data-object-id="{{ galaxy.id }}">🌌 {{ galaxy.name }}</span>
+                <div class="tree-content">
+                    {% for system in galaxy.star_systems.all %}
+                    <div class="tree-item">
+                        <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                        <span class="item-name system" data-object-type="system" data-object-id="{{ system.id }}">⭐ {{ system.name }}</span>
+                        <div class="tree-content">
+                            {% for star in system.stars.all %}
+                            <div class="tree-item">
+                                <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                                <span class="item-name star" data-object-type="star" data-object-id="{{ star.id }}">☀️ {{ star.name }}</span>
+                                <div class="tree-content">
+                                    {% for planet in star.planets.all %}
+                                    <div class="tree-item">
+                                        <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                                        <span class="item-name planet" data-object-type="planet" data-object-id="{{ planet.id }}">🌍 {{ planet.name }}</span>
+                                        <div class="tree-content">
+                                            {% for moon in planet.moons.all %}
+                                            <div class="tree-item">
+                                                <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                                                <span class="item-name moon" data-object-type="moon" data-object-id="{{ moon.id }}">🌑 {{ moon.name }}</span>
+                                                <div class="tree-content">
+                                                    {% for station in moon.orbiting_stations.all %}
+                                                    <div class="tree-item">
+                                                        <span class="item-name station" data-object-type="station" data-object-id="{{ station.id }}">🛸 {{ station.name }}</span>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                            {% for station in planet.orbiting_stations.all %}
+                                            <div class="tree-item">
+                                                <span class="item-name station" data-object-type="station" data-object-id="{{ station.id }}">🛸 {{ station.name }}</span>
+                                            </div>
+                                            {% endfor %}
                                         </div>
-                                        {% endfor %}
                                     </div>
+                                    {% endfor %}
+                                    {% for moon in star.moons.all %}
+                                    <div class="tree-item">
+                                        <button class="toggle-btn" onclick="toggleNode(this)">+</button>
+                                        <span class="item-name moon" data-object-type="moon" data-object-id="{{ moon.id }}">🌑 {{ moon.name }} (Dwarf Planet)</span>
+                                        <div class="tree-content">
+                                            {% for station in moon.orbiting_stations.all %}
+                                            <div class="tree-item">
+                                                <span class="item-name station" data-object-type="station" data-object-id="{{ station.id }}">🛸 {{ station.name }}</span>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                    {% for station in star.orbiting_stations.all %}
+                                    <div class="tree-item">
+                                        <span class="item-name station" data-object-type="station" data-object-id="{{ station.id }}">🛸 {{ station.name }}</span>
+                                    </div>
+                                    {% endfor %}
                                 </div>
-                                {% endfor %}
-                                {% for station in planet.orbiting_stations.all %}
-                                <div class="tree-item">
-                                    <span class="item-name station">🛸 {{ station.name }}</span>
-                                </div>
-                                {% endfor %}
                             </div>
+                            {% endfor %}
                         </div>
-                        {% endfor %}
-                        {% for moon in star.moons.all %}
-                        <div class="tree-item">
-                            <button class="toggle-btn" onclick="toggleNode(this)">+</button>
-                            <span class="item-name moon">🌑 {{ moon.name }} (Dwarf Planet)</span>
-                            <div class="tree-content">
-                                {% for station in moon.orbiting_stations.all %}
-                                <div class="tree-item">
-                                    <span class="item-name station">🛸 {{ station.name }}</span>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                        {% for station in star.orbiting_stations.all %}
-                        <div class="tree-item">
-                            <span class="item-name station">🛸 {{ station.name }}</span>
-                        </div>
-                        {% endfor %}
                     </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <div class="baseball-card-wrapper">
+        <div class="baseball-card" id="baseball-card">
+            <div class="card-header">
+                <h2 id="card-name">Select an Object</h2>
+                <span class="card-type" id="card-type">-</span>
+            </div>
+            <div class="card-body" id="card-body" style="color: #ffffff;">
+                <p style="color: #ffffff; opacity: 0.8;">Click on any celestial object or station to view its details</p>
             </div>
         </div>
-        {% endfor %}
     </div>
 </div>
-{% endfor %}
 {% endblock %}

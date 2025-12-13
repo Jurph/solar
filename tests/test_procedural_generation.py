@@ -436,7 +436,7 @@ class TestProceduralGeneration(TestCase):
         moon = Moon.objects.create(
             name="Test Moon",
             orbits=planet,
-            variety=variety,
+            moon_type=variety,  # Function parameter is still "variety" for clarity
         )
         
         # Validate that all values are physically reasonable

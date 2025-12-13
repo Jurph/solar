@@ -1,7 +1,14 @@
 body {
     background-color: #111;
-    color: #000000;
+    color: #ffffff;
     font-family: 'Arial', sans-serif;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+* {
+    box-sizing: border-box;
 }
 
 .universe-tree {
@@ -45,3 +52,167 @@ body {
 .planet { color: #7ed321; }
 .moon { color: #9013fe; }
 .station { color: #bd10e0; }
+
+/* Selected item highlight */
+.item-name.selected {
+    background-color: #333;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid #4a90e2;
+}
+
+/* Universe container layout */
+.universe-container {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 20px;
+    max-width: 1600px;
+    margin: 0 auto;
+    align-items: flex-start;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.universe-tree-wrapper {
+    flex: 1 1 auto;
+    min-width: 400px;
+    max-width: calc(100% - 440px);
+    overflow-x: auto;
+    display: block;
+}
+
+.universe-tree {
+    min-width: 400px;
+    max-width: 100%;
+    display: block;
+}
+
+.baseball-card-wrapper {
+    flex: 0 0 420px;
+    position: sticky !important;
+    top: 20px !important;
+    align-self: flex-start !important;
+    width: 420px !important;
+    max-width: 420px !important;
+    min-width: 420px !important;
+    box-sizing: border-box;
+    display: block !important;
+    height: fit-content;
+}
+
+/* Baseball card styling */
+.baseball-card {
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    border: 2px solid #4a90e2;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    color: #ffffff !important;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    min-height: 200px;
+}
+
+.baseball-card,
+.baseball-card *,
+.baseball-card h2,
+.baseball-card p,
+.baseball-card span,
+.baseball-card div {
+    color: #ffffff !important;
+}
+
+.card-header {
+    border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+.card-header h2 {
+    margin: 0 0 5px 0;
+    font-size: 24px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ffffff !important;
+}
+
+.card-type {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card-body {
+    font-size: 14px;
+    color: #ffffff !important;
+}
+
+.card-body p {
+    color: #ffffff !important;
+}
+
+.card-properties {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.property {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.property:last-child {
+    border-bottom: none;
+}
+
+.property strong {
+    display: inline-block;
+    min-width: 160px;
+    color: #a8d5ff;
+    font-weight: 600;
+}
+
+.property-section-header {
+    margin-top: 16px;
+    margin-bottom: 8px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    font-weight: bold;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #ffffff;
+    opacity: 0.9;
+}
+
+.property-section-header:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+/* Scrollbar styling for card */
+.baseball-card::-webkit-scrollbar {
+    width: 8px;
+}
+
+.baseball-card::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.baseball-card::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.baseball-card::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}

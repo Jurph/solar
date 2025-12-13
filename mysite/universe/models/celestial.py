@@ -82,6 +82,75 @@ class PhysicalBody(Celestial):
         help_text="Radius in solar radii (calculated from radius_km)"
     )
     
+    # Density (can be calculated from mass/radius)
+    density_kg_m3 = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Density in kg/m³"
+    )
+    
+    # Thermal properties
+    albedo = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Bond albedo (0.0-1.0)"
+    )
+    
+    equilibrium_temperature_k = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Equilibrium temperature in Kelvin (calculated from star distance/albedo)"
+    )
+    
+    # Orbital properties (for Planet and Moon, null for Star)
+    orbital_distance_km = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Semi-major axis in km (for moons)"
+    )
+    
+    orbital_period_days = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Orbital period in Earth days"
+    )
+    
+    orbital_period_hours = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Orbital period in hours (for moons)"
+    )
+    
+    orbital_eccentricity = models.FloatField(
+        null=True,
+        blank=True,
+        default=0.0,
+        help_text="Orbital eccentricity (0.0=circular, 0.0-1.0=elliptical)"
+    )
+    
+    orbital_inclination_deg = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Orbital inclination in degrees (tilt relative to reference plane)"
+    )
+    
+    rotation_period_hours = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Rotation period (day length) in hours"
+    )
+    
+    axial_tilt_deg = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Axial tilt in degrees (rotation axis tilt)"
+    )
+    
+    is_tidally_locked = models.BooleanField(
+        default=False,
+        help_text="Whether the body is tidally locked to its parent"
+    )
+    
     # Color palette: JSONField storing ColorPalette dataclass
     # Optional for now - concrete classes will generate this later
     color_palette = models.JSONField(
@@ -218,7 +287,7 @@ class Star(PhysicalBody):
             self.scale = Scale.STAR
         super().save(*args, **kwargs)
 
-class Planet(Location):
+class Planet(PhysicalBody):
     class planetType(models.TextChoices):
         MESOPLANET = 'MP', _('Mesoplanet')
         SILICATE = 'SI', _('Silicate')
@@ -250,24 +319,24 @@ class Planet(Location):
             self.scale = Scale.PLANET
         super().save(*args, **kwargs)
 
-class Moon(Location):
-    VARIETIES = [
-        ('R', 'Rocky'),     # e.g. Luna, Deimos, Phobos - no atmosphere to speak of, dry 
-        ('I', 'Icy'),       # e.g. Europa, Ganymede, Callisto 
-        ('O', 'Organic'),     # e.g. Titan, with a gaseous atmosphere and liquid water 
-        ('T', 'Terrestrial') # e.g. "Earth-like" and therefore habitable; a special sub-class of "O" 
-    ]
+class Moon(PhysicalBody):
+    class MoonType(models.TextChoices):
+        ROCKY = 'R', _('Rocky')     # e.g. Luna, Deimos, Phobos - no atmosphere to speak of, dry 
+        ICY = 'I', _('Icy')       # e.g. Europa, Ganymede, Callisto 
+        ORGANIC = 'O', _('Organic')     # e.g. Titan, with a gaseous atmosphere and liquid water 
+        TERRESTRIAL = 'T', _('Terrestrial') # e.g. "Earth-like" and therefore habitable; a special sub-class of "O" 
+    
     orbits = models.ForeignKey(
         Location,
         on_delete=models.CASCADE,
         related_name='moons'
     )
     
-    variety = models.CharField(
+    moon_type = models.CharField(
         max_length=1,
-        choices=VARIETIES,
-        default='R',
-        help_text="The primary composition of the moon"        
+        choices=MoonType.choices,
+        default=MoonType.ROCKY,
+        help_text="The primary composition/type of the moon"        
     )
 
     def save(self, *args, **kwargs):

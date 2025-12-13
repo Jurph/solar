@@ -20,7 +20,7 @@
           <moon>
             <name>Moon</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Moon Control</name>
               <scale>SS</scale>
@@ -32,7 +32,7 @@
           <moon>
             <name>Luna</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Luna Orbital Control</name>
               <scale>SS</scale>
@@ -63,7 +63,7 @@
           <moon>
             <name>Phobos</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Phobos Control</name>
               <scale>SS</scale>
@@ -75,7 +75,7 @@
           <moon>
             <name>Deimos</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Deimos Control</name>
               <scale>SS</scale>
@@ -95,7 +95,7 @@
         <moon>
           <name>Ceres</name>
           <scale>MN</scale>
-          <variety>R</variety>
+          <moon_type>R</moon_type>
           <station>
             <name>Ceres Control</name>
             <scale>SS</scale>
@@ -121,7 +121,7 @@
           <moon>
             <name>Alpha Moon 1</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Alpha Moon 1 Control</name>
               <scale>SS</scale>
@@ -133,7 +133,7 @@
           <moon>
             <name>Alpha Moon 2</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Alpha Moon 2 Control</name>
               <scale>SS</scale>
@@ -164,7 +164,7 @@
           <moon>
             <name>Alpha Minor Moon</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Alpha Minor Moon Control</name>
               <scale>SS</scale>
@@ -194,7 +194,7 @@
           <moon>
             <name>Beta Moon 1</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Beta Moon 1 Control</name>
               <scale>SS</scale>
@@ -206,7 +206,7 @@
           <moon>
             <name>Beta Moon 2</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
           </moon>
           <station>
             <name>Beta Major Orbital Control</name>
@@ -230,7 +230,7 @@
           <moon>
             <name>Beta Minor Moon</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Beta Minor Moon Control</name>
               <scale>SS</scale>

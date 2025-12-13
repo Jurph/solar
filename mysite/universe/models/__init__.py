@@ -6,6 +6,8 @@ from mysite.universe.models.celestial import (
 from mysite.universe.models.station import Station, BerthAssignment
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.actor import Actor, Pilot, Controller, Satellite
+from mysite.universe.models.physics import Atmosphere
+from mysite.universe.models import display
 
 __all__ = [
     'Actor',
@@ -24,4 +26,6 @@ __all__ = [
     'Station',
     'BerthAssignment',
     'Ship',
+    'Atmosphere',
+    'display',
 ]
