@@ -18,6 +18,8 @@ from .particles import (
     RadioReadback,
     HoldResponse,
     Holding,
+    CommsCheckRequest,
+    SatelliteResponse,
 )
 from mysite.universe.models.actor import Actor
 
@@ -59,6 +61,8 @@ class ParticleFactory:
         "hold_response": HoldResponse,
         "holding": Holding,
         "adjusted_response": RadioResponse,  # Same as response, just after a hold
+        "comms_check": CommsCheckRequest,  # Pilot requesting comms check from satellite
+        "satellite_response": SatelliteResponse,  # Satellite responding with pre-programmed message
     }
     
     @classmethod
