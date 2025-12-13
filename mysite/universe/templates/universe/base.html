@@ -130,6 +130,16 @@
                     }
                 }
                 
+                // MISSION CONTEXT SECTION (parent body)
+                if (data.parent_body_name) {
+                    html += '<div class="property-section-header">Mission Context</div>';
+                    let parentDisplay = data.parent_body_name;
+                    if (data.parent_body_type) {
+                        parentDisplay += ` (${data.parent_body_type})`;
+                    }
+                    html += `<div class="property"><strong>Orbits:</strong> ${parentDisplay}</div>`;
+                }
+                
                 // PHYSICAL PROPERTIES SECTION - only show if we have at least one property
                 let hasPhysicalProps = false;
                 let physicalPropsHtml = '';
@@ -158,6 +168,10 @@
                     physicalPropsHtml += `<div class="property"><strong>Surface Gravity:</strong> ${data.surface_gravity_formatted}</div>`;
                     hasPhysicalProps = true;
                 }
+                if (data.surface_composition) {
+                    physicalPropsHtml += `<div class="property"><strong>Surface:</strong> ${data.surface_composition}</div>`;
+                    hasPhysicalProps = true;
+                }
                 
                 if (hasPhysicalProps) {
                     html += '<div class="property-section-header">Physical Properties</div>';
@@ -165,21 +179,32 @@
                 }
             
             // ATMOSPHERE SECTION
-            html += '<div class="property-section-header">Atmosphere</div>';
+            let hasAtmosphereData = false;
+            let atmosphereHtml = '';
             if (data.has_atmosphere !== undefined) {
                 if (data.has_atmosphere) {
-                    html += `<div class="property"><strong>Atmosphere:</strong> ${data.atmosphere_type || 'Present'}</div>`;
+                    atmosphereHtml += `<div class="property"><strong>Atmosphere:</strong> ${data.atmosphere_type || 'Present'}</div>`;
+                    hasAtmosphereData = true;
                     if (data.atmosphere_height_formatted) {
-                        html += `<div class="property"><strong>Atmospheric Height:</strong> ${data.atmosphere_height_formatted}</div>`;
+                        atmosphereHtml += `<div class="property"><strong>Atmospheric Height:</strong> ${data.atmosphere_height_formatted}</div>`;
+                    }
+                    if (data.scale_height_formatted && data.scale_height_formatted !== 'N/A') {
+                        atmosphereHtml += `<div class="property"><strong>Scale Height:</strong> ${data.scale_height_formatted}</div>`;
                     }
                     if (data.surface_pressure_formatted) {
-                        html += `<div class="property"><strong>Surface Pressure:</strong> ${data.surface_pressure_formatted}</div>`;
+                        atmosphereHtml += `<div class="property"><strong>Surface Pressure:</strong> ${data.surface_pressure_formatted}</div>`;
                     }
                 } else {
-                    html += `<div class="property"><strong>Atmosphere:</strong> None</div>`;
+                    atmosphereHtml += `<div class="property"><strong>Atmosphere:</strong> None</div>`;
+                    hasAtmosphereData = true;
                 }
             } else {
-                html += `<div class="property"><strong>Atmosphere:</strong> N/A</div>`;
+                atmosphereHtml += `<div class="property"><strong>Atmosphere:</strong> N/A</div>`;
+                hasAtmosphereData = true;
+            }
+            if (hasAtmosphereData) {
+                html += '<div class="property-section-header">Atmosphere</div>';
+                html += atmosphereHtml;
             }
             
                 // ORBITAL PROPERTIES SECTION (for planets and moons)
@@ -256,6 +281,22 @@
                     html += '<div class="property-section-header">Thermal Properties</div>';
                     html += thermalPropsHtml;
                 }
+            
+            // MISSION-CRITICAL VELOCITIES SECTION
+            let hasVelocities = false;
+            let velocitiesHtml = '';
+            if (data.escape_velocity_formatted && data.escape_velocity_formatted !== 'N/A') {
+                velocitiesHtml += `<div class="property"><strong>Escape Velocity:</strong> ${data.escape_velocity_formatted}</div>`;
+                hasVelocities = true;
+            }
+            if (data.orbital_velocity_formatted && data.orbital_velocity_formatted !== 'N/A') {
+                velocitiesHtml += `<div class="property"><strong>Orbital Velocity:</strong> ${data.orbital_velocity_formatted}</div>`;
+                hasVelocities = true;
+            }
+            if (hasVelocities) {
+                html += '<div class="property-section-header">Mission-Critical Velocities</div>';
+                html += velocitiesHtml;
+            }
             
             // STAR-SPECIFIC PROPERTIES
             if (data.star_magnitude !== null && data.star_magnitude !== undefined) {

@@ -177,15 +177,28 @@ def object_details(request, object_type, object_id):
                 if hasattr(concrete, 'get_planet_type_display'):
                     try:
                         planet_type_display = concrete.get_planet_type_display()
-                    except:
+                    except (AttributeError, ValueError):
                         planet_type_display = concrete.planet_type
                 else:
                     planet_type_display = concrete.planet_type
+            # Get parent body (star that planet orbits)
+            parent_body_name = None
+            parent_body_type = None
+            try:
+                if hasattr(concrete, 'orbits'):
+                    parent_star = concrete.orbits
+                    parent_body_name = parent_star.name
+                    if hasattr(parent_star, 'star_type'):
+                        parent_body_type = parent_star.get_star_type_display() if hasattr(parent_star, 'get_star_type_display') else parent_star.star_type
+            except Exception as e:
+                print(f"[object_details] Error getting parent body for planet: {e}")
+            
             # Check for atmosphere relationship using ContentType
             has_atmosphere = False
             atmosphere_type = None
             atmosphere_height_km = None
             surface_pressure_bar = None
+            scale_height_km = None
             try:
                 from django.contrib.contenttypes.models import ContentType
                 from mysite.universe.models import Atmosphere
@@ -196,6 +209,7 @@ def object_details(request, object_type, object_id):
                     atmosphere_type = atmosphere.atmosphere_type
                     atmosphere_height_km = atmosphere.atmosphere_height_km
                     surface_pressure_bar = atmosphere.surface_pressure_bar
+                    scale_height_km = atmosphere.scale_height_km
                 except Atmosphere.DoesNotExist:
                     pass
             except Exception as e:
@@ -227,8 +241,20 @@ def object_details(request, object_type, object_id):
             axial_tilt_deg = getattr(concrete, 'axial_tilt_deg', None)
             is_tidally_locked = getattr(concrete, 'is_tidally_locked', None)
             
+            # Calculate escape velocity and orbital velocity
+            escape_velocity_ms = display.calculate_escape_velocity_ms(mass_kg, radius_km)
+            orbital_velocity_ms = display.calculate_orbital_velocity_ms(mass_kg, radius_km)
+            
+            # Get surface composition hint
+            surface_composition = display.get_surface_composition_hint(
+                planet_type=concrete.planet_type if hasattr(concrete, 'planet_type') else None,
+                density_kg_m3=density_kg_m3
+            )
+            
             details.update({
                 'planet_type': planet_type_display,
+                'parent_body_name': parent_body_name,
+                'parent_body_type': parent_body_type,
                 'orbital_distance_au': concrete.orbital_distance_au if hasattr(concrete, 'orbital_distance_au') else None,
                 'mass_kg': mass_kg,
                 'mass_formatted': display.format_number(mass_kg),
@@ -238,6 +264,11 @@ def object_details(request, object_type, object_id):
                 'density_formatted': f"{density_kg_m3:.0f} kg/m³" if density_kg_m3 else None,
                 'surface_gravity_ms2': surface_gravity_ms2,
                 'surface_gravity_formatted': display.format_surface_gravity(surface_gravity_ms2),
+                'surface_composition': surface_composition,
+                'escape_velocity_ms': escape_velocity_ms,
+                'escape_velocity_formatted': display.format_escape_velocity(escape_velocity_ms),
+                'orbital_velocity_ms': orbital_velocity_ms,
+                'orbital_velocity_formatted': display.format_orbital_velocity(orbital_velocity_ms),
                 'albedo': albedo,
                 'albedo_formatted': f"{albedo:.3f}" if albedo else None,
                 'equilibrium_temperature_k': equilibrium_temperature_k,
@@ -257,6 +288,8 @@ def object_details(request, object_type, object_id):
                 'atmosphere_type': atmosphere_type,
                 'atmosphere_height_km': atmosphere_height_km,
                 'atmosphere_height_formatted': display.format_atmosphere_height(atmosphere_height_km),
+                'scale_height_km': scale_height_km,
+                'scale_height_formatted': display.format_atmosphere_height(scale_height_km),
                 'surface_pressure_bar': surface_pressure_bar,
                 'surface_pressure_formatted': f"{surface_pressure_bar:.3f} bar" if surface_pressure_bar else None,
             })
@@ -266,16 +299,38 @@ def object_details(request, object_type, object_id):
                 if hasattr(concrete, 'get_moon_type_display'):
                     try:
                         moon_type_display = concrete.get_moon_type_display()
-                    except:
+                    except (AttributeError, ValueError):
                         moon_type_display = concrete.moon_type
                 else:
                     moon_type_display = concrete.moon_type
+            
+            # Get parent body (planet that moon orbits)
+            parent_body_name = None
+            parent_body_type = None
+            try:
+                if hasattr(concrete, 'orbits'):
+                    parent_location = concrete.orbits
+                    parent_body_name = parent_location.name
+                    # Get type name for parent (could be Planet or Star)
+                    if hasattr(parent_location, 'get_type_name'):
+                        parent_type_name = parent_location.get_type_name()
+                        if parent_type_name == 'Planet':
+                            if hasattr(parent_location, 'planet_type'):
+                                parent_body_type = parent_location.get_planet_type_display() if hasattr(parent_location, 'get_planet_type_display') else parent_location.planet_type
+                        elif parent_type_name == 'Star':
+                            if hasattr(parent_location, 'star_type'):
+                                parent_body_type = parent_location.get_star_type_display() if hasattr(parent_location, 'get_star_type_display') else parent_location.star_type
+                    else:
+                        parent_body_type = parent_location.get_type_name() if hasattr(parent_location, 'get_type_name') else 'Unknown'
+            except Exception as e:
+                print(f"[object_details] Error getting parent body for moon: {e}")
             
             # Check for atmosphere relationship using ContentType
             has_atmosphere = False
             atmosphere_type = None
             atmosphere_height_km = None
             surface_pressure_bar = None
+            scale_height_km = None
             try:
                 from django.contrib.contenttypes.models import ContentType
                 from mysite.universe.models import Atmosphere
@@ -286,6 +341,7 @@ def object_details(request, object_type, object_id):
                     atmosphere_type = atmosphere.atmosphere_type
                     atmosphere_height_km = atmosphere.atmosphere_height_km
                     surface_pressure_bar = atmosphere.surface_pressure_bar
+                    scale_height_km = atmosphere.scale_height_km
                 except Atmosphere.DoesNotExist:
                     pass
             except Exception as e:
@@ -318,8 +374,20 @@ def object_details(request, object_type, object_id):
             axial_tilt_deg = getattr(concrete, 'axial_tilt_deg', None)
             is_tidally_locked = getattr(concrete, 'is_tidally_locked', None)
             
+            # Calculate escape velocity and orbital velocity
+            escape_velocity_ms = display.calculate_escape_velocity_ms(mass_kg, radius_km)
+            orbital_velocity_ms = display.calculate_orbital_velocity_ms(mass_kg, radius_km)
+            
+            # Get surface composition hint
+            surface_composition = display.get_surface_composition_hint(
+                moon_type=concrete.moon_type if hasattr(concrete, 'moon_type') else None,
+                density_kg_m3=density_kg_m3
+            )
+            
             details.update({
                 'moon_type': moon_type_display,
+                'parent_body_name': parent_body_name,
+                'parent_body_type': parent_body_type,
                 'mass_kg': mass_kg,
                 'mass_formatted': display.format_number(mass_kg),
                 'radius_km': radius_km,
@@ -328,6 +396,11 @@ def object_details(request, object_type, object_id):
                 'density_formatted': f"{density_kg_m3:.0f} kg/m³" if density_kg_m3 else None,
                 'surface_gravity_ms2': surface_gravity_ms2,
                 'surface_gravity_formatted': display.format_surface_gravity(surface_gravity_ms2),
+                'surface_composition': surface_composition,
+                'escape_velocity_ms': escape_velocity_ms,
+                'escape_velocity_formatted': display.format_escape_velocity(escape_velocity_ms),
+                'orbital_velocity_ms': orbital_velocity_ms,
+                'orbital_velocity_formatted': display.format_orbital_velocity(orbital_velocity_ms),
                 'albedo': albedo,
                 'albedo_formatted': f"{albedo:.3f}" if albedo else None,
                 'equilibrium_temperature_k': equilibrium_temperature_k,
@@ -349,6 +422,8 @@ def object_details(request, object_type, object_id):
                 'atmosphere_type': atmosphere_type,
                 'atmosphere_height_km': atmosphere_height_km,
                 'atmosphere_height_formatted': display.format_atmosphere_height(atmosphere_height_km),
+                'scale_height_km': scale_height_km,
+                'scale_height_formatted': display.format_atmosphere_height(scale_height_km),
                 'surface_pressure_bar': surface_pressure_bar,
                 'surface_pressure_formatted': f"{surface_pressure_bar:.3f} bar" if surface_pressure_bar else None,
             })
@@ -365,7 +440,7 @@ def object_details(request, object_type, object_id):
                 if hasattr(concrete, 'get_galaxy_type_display'):
                     try:
                         galaxy_type_display = concrete.get_galaxy_type_display()
-                    except:
+                    except (AttributeError, ValueError):
                         galaxy_type_display = concrete.galaxy_type
                 else:
                     galaxy_type_display = concrete.galaxy_type
@@ -373,7 +448,7 @@ def object_details(request, object_type, object_id):
                 if hasattr(concrete, 'get_galaxy_size_display'):
                     try:
                         galaxy_size_display = concrete.get_galaxy_size_display()
-                    except:
+                    except (AttributeError, ValueError):
                         galaxy_size_display = concrete.galaxy_size
                 else:
                     galaxy_size_display = concrete.galaxy_size
