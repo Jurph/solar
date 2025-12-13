@@ -143,6 +143,15 @@ class ScriptService:
         """
         Extract or create controller from NavigationEvent.
         
+        Uses the controller assigned by RouteService._enhance_with_controllers() if present,
+        otherwise determines controller based on maneuver type and location context.
+        
+        Rules:
+        - Arrival maneuvers (DEORBIT, LANDING, DOCK, INSERTION): use destination's effective controller
+        - Departure maneuvers (LAUNCH, UNDOCK): use origin's effective controller
+        - Transfer maneuvers (SUBLIGHT, TRANSFER, PLANE_CHANGE, CIRCULARIZE): use current location's effective controller
+        - Other maneuvers: use current location's effective controller as fallback
+        
         Args:
             nav_event: NavigationEvent to extract controller from
             
@@ -152,33 +161,71 @@ class ScriptService:
         Raises:
             ValueError: If controller cannot be determined
         """
-        controller_name = None
-        controller_location = None
+        from mysite.universe.models.actor import Controller
+        from mysite.universe.models.navigation import ManeuverType
         
+        # First, check if controller is already assigned by RouteService
         if hasattr(nav_event, 'controller') and nav_event.controller:
-            from mysite.universe.models.actor import Controller
             if isinstance(nav_event.controller, Controller):
-                controller_name = nav_event.controller.name
-                controller_location = nav_event.controller
+                return nav_event.controller
             elif hasattr(nav_event.controller, 'name'):
-                controller_name = nav_event.controller.name
-                controller_location = nav_event.controller
+                # It's a Location (station), get or create the Controller actor
+                controller = Controller.objects.filter(name=nav_event.controller.name).first()
+                if not controller:
+                    controller = Controller.create(name=nav_event.controller.name, location=nav_event.controller)
+                return controller
         
-        if not controller_name and hasattr(nav_event, 'destination') and nav_event.destination:
-            controller_name = f"{nav_event.destination.name} Control"
+        # Determine controller based on maneuver type
+        route_service = RouteService()
+        target_location = None
         
-        if not controller_name:
+        # Arrival maneuvers: use destination
+        if nav_event.maneuver in (ManeuverType.DEORBIT, ManeuverType.LANDING, ManeuverType.DOCK, ManeuverType.INSERTION):
+            if hasattr(nav_event, 'destination') and nav_event.destination:
+                target_location = nav_event.destination
+        # Departure maneuvers: use origin
+        elif nav_event.maneuver in (ManeuverType.LAUNCH, ManeuverType.UNDOCK):
+            if hasattr(nav_event, 'origin') and nav_event.origin:
+                target_location = nav_event.origin
+        # Transfer maneuvers: use current location
+        elif nav_event.maneuver in (ManeuverType.SUBLIGHT, ManeuverType.TRANSFER, ManeuverType.PLANE_CHANGE, ManeuverType.CIRCULARIZE):
+            if hasattr(nav_event, 'current') and nav_event.current:
+                target_location = nav_event.current
+        # Fallback: use current location if available, otherwise destination
+        else:
+            if hasattr(nav_event, 'current') and nav_event.current:
+                target_location = nav_event.current
+            elif hasattr(nav_event, 'destination') and nav_event.destination:
+                target_location = nav_event.destination
+        
+        if not target_location:
             raise ValueError(
-                f"Cannot determine controller name for navigation event. "
+                f"Cannot determine controller for navigation event. "
                 f"Maneuver: {nav_event.maneuver}, "
+                f"Origin: {getattr(nav_event, 'origin', None)}, "
+                f"Current: {getattr(nav_event, 'current', None)}, "
                 f"Destination: {getattr(nav_event, 'destination', None)}"
             )
         
-        # Get or create controller
+        # Get the effective controller for the target location
+        effective_controller = route_service.effective_controller(target_location)
+        
+        # If effective_controller is a Controller, return it
+        if isinstance(effective_controller, Controller):
+            return effective_controller
+        
+        # If effective_controller is a Location (station), get or create the Controller actor
+        if hasattr(effective_controller, 'name'):
+            controller = Controller.objects.filter(name=effective_controller.name).first()
+            if not controller:
+                controller = Controller.create(name=effective_controller.name, location=effective_controller)
+            return controller
+        
+        # Fallback: create a controller with the location's name
+        controller_name = f"{target_location.name} Control"
         controller = Controller.objects.filter(name=controller_name).first()
         if not controller:
-            controller = Controller.create(name=controller_name, location=controller_location)
-        
+            controller = Controller.create(name=controller_name, location=target_location)
         return controller
     
     def _convert_messages_to_events(
