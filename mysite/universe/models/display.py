@@ -2,6 +2,7 @@
 Display formatting methods for celestial objects.
 Moved from template JavaScript to model methods for proper separation of concerns.
 """
+import math
 from typing import Optional, Dict, Any
 
 
@@ -87,4 +88,95 @@ def format_atmosphere_height(height_km: Optional[float]) -> str:
     if height_km is None:
         return 'N/A'
     return f"{height_km:.2f} km"
+
+
+def calculate_escape_velocity_ms(mass_kg: Optional[float], radius_km: Optional[float]) -> Optional[float]:
+    """
+    Calculate escape velocity in m/s.
+    Formula: v_escape = √(2GM/r)
+    where G = 6.67430e-11 m³/(kg·s²), M = mass_kg, r = radius_m
+    """
+    if mass_kg is None or radius_km is None:
+        return None
+    G = 6.67430e-11  # Gravitational constant
+    radius_m = radius_km * 1000
+    return math.sqrt(2 * G * mass_kg / radius_m)
+
+
+def format_escape_velocity(velocity_ms: Optional[float]) -> str:
+    """Format escape velocity in m/s with km/s conversion and Earth comparison."""
+    if velocity_ms is None:
+        return 'N/A'
+    velocity_kms = velocity_ms / 1000
+    earth_escape_velocity_ms = 11186.0  # Earth's escape velocity in m/s
+    earth_ratio = velocity_ms / earth_escape_velocity_ms
+    return f"{velocity_kms:.2f} km/s ({earth_ratio:.2f}× Earth)"
+
+
+def calculate_orbital_velocity_ms(mass_kg: Optional[float], radius_km: Optional[float]) -> Optional[float]:
+    """
+    Calculate orbital velocity at surface in m/s.
+    Formula: v_orbital = √(GM/r)
+    where G = 6.67430e-11 m³/(kg·s²), M = mass_kg, r = radius_m
+    """
+    if mass_kg is None or radius_km is None:
+        return None
+    G = 6.67430e-11  # Gravitational constant
+    radius_m = radius_km * 1000
+    return math.sqrt(G * mass_kg / radius_m)
+
+
+def format_orbital_velocity(velocity_ms: Optional[float]) -> str:
+    """Format orbital velocity in m/s with km/s conversion."""
+    if velocity_ms is None:
+        return 'N/A'
+    velocity_kms = velocity_ms / 1000
+    return f"{velocity_kms:.2f} km/s"
+
+
+def get_surface_composition_hint(planet_type: Optional[str] = None, moon_type: Optional[str] = None, 
+                                  density_kg_m3: Optional[float] = None) -> Optional[str]:
+    """
+    Derive surface composition hint from type and density.
+    Returns a human-readable description of the surface.
+    """
+    # For planets
+    if planet_type:
+        if planet_type in ['GG', 'IG']:  # Gas Giant, Ice Giant
+            return "No solid surface"
+        elif planet_type == 'AB':  # Asteroid Belt
+            return "Rocky fragments"
+        elif planet_type in ['TE', 'SE', 'SI']:  # Terrestrial, Super-earth, Silicate
+            if density_kg_m3:
+                if density_kg_m3 > 5000:
+                    return "Dense rocky surface"
+                elif density_kg_m3 > 3000:
+                    return "Rocky surface"
+                else:
+                    return "Light rocky/icy surface"
+            return "Rocky surface"
+        elif planet_type == 'CT':  # Cthonian
+            return "Exposed rocky core"
+        elif planet_type == 'MP':  # Mesoplanet
+            return "Small rocky body"
+    
+    # For moons
+    if moon_type:
+        if moon_type == 'I':  # Icy
+            return "Ice/water surface"
+        elif moon_type == 'O':  # Organic
+            if density_kg_m3 and density_kg_m3 < 2000:
+                return "Ice/water surface with organic compounds"
+            return "Organic-rich surface"
+        elif moon_type == 'T':  # Terrestrial
+            return "Earth-like surface (potentially habitable)"
+        elif moon_type == 'R':  # Rocky
+            if density_kg_m3:
+                if density_kg_m3 > 4000:
+                    return "Dense rocky surface"
+                else:
+                    return "Rocky surface"
+            return "Rocky surface"
+    
+    return None
 
