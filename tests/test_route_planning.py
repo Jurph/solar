@@ -259,6 +259,7 @@ class TestControllerAssignment(TestCase):
         self.universe = UniverseGraph.get_instance()
         self.earth = Location.objects.get(name="Earth")
         self.moon = Location.objects.get(name="Moon")
+        self.mars = Location.objects.get(name="Mars")
         self.earth_control = Location.objects.get(name="Earth Orbital Control")
         self.moon_control = Location.objects.get(name="Moon Control")
         self.alpha_prime = Location.objects.get(name="Alpha Prime")
@@ -373,3 +374,171 @@ class TestControllerAssignment(TestCase):
                 events[-1].controller.name, arrival_controller,
                 f"Arrival controller for journey from {origin.name} to {destination.name} should be {arrival_controller}"
             )
+    
+    def test_script_service_controller_extraction_from_controller_actor(self):
+        """
+        Test that ScriptService._get_controller() returns the Controller actor 
+        if nav_event.controller is a Controller.
+        """
+        from mysite.universe.services.script_server import ScriptService
+        from mysite.universe.services.llm_service import LLMService
+        from mysite.universe.models.navigation import NavigationEvent, ManeuverType
+        from mysite.universe.models.actor import Controller
+        
+        llm = LLMService(quiet_mode=True)
+        script_service = ScriptService(llm)
+        
+        # Get or create Earth controller
+        earth_controller = Controller.objects.filter(name="Earth Orbital Control").first()
+        if not earth_controller:
+            earth_controller = Controller.create(name="Earth Orbital Control", location=self.earth_control)
+        
+        nav_event = NavigationEvent(
+            maneuver=ManeuverType.DEORBIT,
+            origin=self.mars,
+            current=self.earth,
+            next=self.earth,
+            destination=self.earth,
+            controller=earth_controller  # Controller actor
+        )
+        
+        result = script_service._get_controller(nav_event)
+        self.assertEqual(result, earth_controller)
+        self.assertEqual(result.name, "Earth Orbital Control")
+    
+    def test_script_service_controller_extraction_from_location(self):
+        """
+        Test that ScriptService._get_controller() extracts controller name from Location 
+        if nav_event.controller is a Location (station).
+        """
+        from mysite.universe.services.script_server import ScriptService
+        from mysite.universe.services.llm_service import LLMService
+        from mysite.universe.models.navigation import NavigationEvent, ManeuverType
+        
+        llm = LLMService(quiet_mode=True)
+        script_service = ScriptService(llm)
+        
+        nav_event = NavigationEvent(
+            maneuver=ManeuverType.DEORBIT,
+            origin=self.mars,
+            current=self.earth,
+            next=self.earth,
+            destination=self.earth,
+            controller=self.earth_control  # Location (station)
+        )
+        
+        result = script_service._get_controller(nav_event)
+        self.assertEqual(result.name, "Earth Orbital Control")
+        # Should find existing controller or create one
+        from mysite.universe.models.actor import Controller
+        self.assertIsInstance(result, Controller)
+    
+    def test_script_service_controller_fallback_for_arrival_maneuver(self):
+        """
+        Test that ScriptService._get_controller() correctly determines controller for arrival maneuvers
+        when nav_event.controller is None.
+        
+        This is the critical test case: When RouteService assigns controller=None (bug scenario),
+        ScriptService should determine controller based on maneuver type, not just destination.
+        
+        For DEORBIT (arrival maneuver), controller should be based on destination, not origin.
+        """
+        from mysite.universe.services.script_server import ScriptService
+        from mysite.universe.services.llm_service import LLMService
+        from mysite.universe.models.navigation import NavigationEvent, ManeuverType
+        
+        llm = LLMService(quiet_mode=True)
+        script_service = ScriptService(llm)
+        
+        nav_event = NavigationEvent(
+            maneuver=ManeuverType.DEORBIT,  # Arrival maneuver
+            origin=self.mars,
+            current=self.earth,
+            next=self.earth,
+            destination=self.earth,
+            controller=None  # Simulating bug where RouteService didn't set controller
+        )
+        
+        result = script_service._get_controller(nav_event)
+        
+        # Should get Earth Orbital Control (destination controller), NOT Mars Control (origin controller)
+        self.assertEqual(result.name, "Earth Orbital Control")
+        self.assertNotEqual(result.name, "Mars Control")
+    
+    def test_script_service_controller_fallback_for_departure_maneuver(self):
+        """
+        Test that ScriptService._get_controller() correctly determines controller for departure maneuvers
+        when nav_event.controller is None.
+        
+        For LAUNCH (departure maneuver), controller should be based on origin, not destination.
+        """
+        from mysite.universe.services.script_server import ScriptService
+        from mysite.universe.services.llm_service import LLMService
+        from mysite.universe.models.navigation import NavigationEvent, ManeuverType
+        
+        llm = LLMService(quiet_mode=True)
+        script_service = ScriptService(llm)
+        
+        # Get or create Mars controller
+        from mysite.universe.models.actor import Controller
+        mars_controller = Controller.objects.filter(name="Mars Control").first()
+        if not mars_controller:
+            # Find or create Mars control station
+            mars_control_station = Location.objects.filter(name__icontains="Mars").filter(name__icontains="Control").first()
+            if not mars_control_station:
+                mars_control_station = Location.objects.create(name="Mars Control", scale=Scale.STATION)
+            mars_controller = Controller.create(name="Mars Control", location=mars_control_station)
+        
+        nav_event = NavigationEvent(
+            maneuver=ManeuverType.LAUNCH,  # Departure maneuver
+            origin=self.mars,
+            current=self.mars,
+            next=self.earth,
+            destination=self.earth,
+            controller=None  # Simulating bug where RouteService didn't set controller
+        )
+        
+        result = script_service._get_controller(nav_event)
+        
+        # Should get Mars Control (origin controller), NOT Earth Orbital Control (destination controller)
+        self.assertEqual(result.name, "Mars Control")
+        self.assertNotEqual(result.name, "Earth Orbital Control")
+    
+    def test_script_service_controller_fallback_for_transfer_maneuver(self):
+        """
+        Test that ScriptService._get_controller() correctly determines controller for transfer maneuvers
+        when nav_event.controller is None.
+        
+        For SUBLIGHT (transfer maneuver), controller should be based on current location, not destination.
+        """
+        from mysite.universe.services.script_server import ScriptService
+        from mysite.universe.services.llm_service import LLMService
+        from mysite.universe.models.navigation import NavigationEvent, ManeuverType
+        
+        llm = LLMService(quiet_mode=True)
+        script_service = ScriptService(llm)
+        
+        # Get or create Mars controller
+        from mysite.universe.models.actor import Controller
+        mars_controller = Controller.objects.filter(name="Mars Control").first()
+        if not mars_controller:
+            # Find or create Mars control station
+            mars_control_station = Location.objects.filter(name__icontains="Mars").filter(name__icontains="Control").first()
+            if not mars_control_station:
+                mars_control_station = Location.objects.create(name="Mars Control", scale=Scale.STATION)
+            mars_controller = Controller.create(name="Mars Control", location=mars_control_station)
+        
+        nav_event = NavigationEvent(
+            maneuver=ManeuverType.SUBLIGHT,  # Transfer maneuver
+            origin=self.mars,
+            current=self.mars,  # Currently at Mars
+            next=self.earth,
+            destination=self.earth,
+            controller=None  # Simulating bug where RouteService didn't set controller
+        )
+        
+        result = script_service._get_controller(nav_event)
+        
+        # Should get Mars Control (current location controller), NOT Earth Orbital Control (destination controller)
+        self.assertEqual(result.name, "Mars Control")
+        self.assertNotEqual(result.name, "Earth Orbital Control")
