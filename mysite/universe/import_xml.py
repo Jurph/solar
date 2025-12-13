@@ -4,8 +4,9 @@ from typing import Dict, Any
 from decimal import Decimal
 from mysite.universe.models import (
     Galaxy, StarSystem,
-    Star, Planet, Moon, Station
+    Star, Planet, Moon, Station, Atmosphere
 )
+from django.contrib.contenttypes.models import ContentType
 
 class UniverseImporter:
     """Imports the universe from an XML file into the database."""
@@ -167,7 +168,60 @@ class UniverseImporter:
         if not created:
             if element.findtext("type"):
                 planet.planet_type = element.findtext("type")
-            planet.save()
+        # Import orbital_distance_au if it exists (this field exists on Planet)
+        if element.findtext("orbital_distance_au"):
+            planet.orbital_distance_au = float(element.findtext("orbital_distance_au"))
+        # Import physical properties if Planet inherits from PhysicalBody (check if field exists)
+        if hasattr(planet, 'mass_kg') and element.findtext("mass_kg"):
+            planet.mass_kg = float(element.findtext("mass_kg"))
+        if hasattr(planet, 'radius_km') and element.findtext("radius_km"):
+            planet.radius_km = float(element.findtext("radius_km"))
+        if hasattr(planet, 'density_kg_m3') and element.findtext("density_kg_m3"):
+            planet.density_kg_m3 = float(element.findtext("density_kg_m3"))
+        if hasattr(planet, 'orbital_period_days') and element.findtext("orbital_period_days"):
+            planet.orbital_period_days = float(element.findtext("orbital_period_days"))
+        if hasattr(planet, 'rotation_period_hours') and element.findtext("rotation_period_hours"):
+            planet.rotation_period_hours = float(element.findtext("rotation_period_hours"))
+        if hasattr(planet, 'axial_tilt_deg') and element.findtext("axial_tilt_deg"):
+            planet.axial_tilt_deg = float(element.findtext("axial_tilt_deg"))
+        if hasattr(planet, 'is_tidally_locked') and element.findtext("is_tidally_locked"):
+            planet.is_tidally_locked = element.findtext("is_tidally_locked").lower() == "true"
+        if hasattr(planet, 'albedo') and element.findtext("albedo"):
+            planet.albedo = float(element.findtext("albedo"))
+        if hasattr(planet, 'equilibrium_temperature_k') and element.findtext("equilibrium_temperature_k"):
+            planet.equilibrium_temperature_k = float(element.findtext("equilibrium_temperature_k"))
+        if hasattr(planet, 'orbital_eccentricity') and element.findtext("orbital_eccentricity"):
+            planet.orbital_eccentricity = float(element.findtext("orbital_eccentricity"))
+        if hasattr(planet, 'orbital_inclination_deg') and element.findtext("orbital_inclination_deg"):
+            planet.orbital_inclination_deg = float(element.findtext("orbital_inclination_deg"))
+        planet.save()
+        
+        # Import atmosphere if it exists
+        atmosphere_elem = element.find("./atmosphere")
+        if atmosphere_elem is not None:
+            atmosphere_type = atmosphere_elem.findtext("atmosphere_type")
+            if atmosphere_type and atmosphere_type != "NONE":
+                content_type = ContentType.objects.get_for_model(Planet)
+                atmosphere, _ = Atmosphere.objects.get_or_create(
+                    content_type=content_type,
+                    object_id=planet.id,
+                    defaults={
+                        "atmosphere_type": atmosphere_type,
+                        "atmosphere_height_km": float(atmosphere_elem.findtext("atmosphere_height_km") or 0) if atmosphere_elem.findtext("atmosphere_height_km") else None,
+                        "surface_pressure_bar": float(atmosphere_elem.findtext("surface_pressure_bar") or 0) if atmosphere_elem.findtext("surface_pressure_bar") else None,
+                        "scale_height_km": float(atmosphere_elem.findtext("scale_height_km") or 0) if atmosphere_elem.findtext("scale_height_km") else None,
+                    }
+                )
+                # Update if already exists
+                if not _:
+                    atmosphere.atmosphere_type = atmosphere_type
+                    if atmosphere_elem.findtext("atmosphere_height_km"):
+                        atmosphere.atmosphere_height_km = float(atmosphere_elem.findtext("atmosphere_height_km"))
+                    if atmosphere_elem.findtext("surface_pressure_bar"):
+                        atmosphere.surface_pressure_bar = float(atmosphere_elem.findtext("surface_pressure_bar"))
+                    if atmosphere_elem.findtext("scale_height_km"):
+                        atmosphere.scale_height_km = float(atmosphere_elem.findtext("scale_height_km"))
+                    atmosphere.save()
         
         self.object_cache[planet.name] = planet
         
@@ -180,20 +234,72 @@ class UniverseImporter:
     def import_moon(self, element: ET.Element, parent) -> Moon:
         """Import a moon and its stations."""
         name = element.findtext("name")
-        variety = element.findtext("variety")
+        moon_type = element.findtext("moon_type")
         moon, created = Moon.objects.get_or_create(
             name=name,
             orbits=parent,
             defaults={
                 "scale": "MN",
-                "variety": variety,
+                "moon_type": moon_type,
             }
         )
         # Update fields if they exist in XML (in case moon was already created)
         if not created:
-            if variety:
-                moon.variety = variety
-            moon.save()
+            if moon_type:
+                moon.moon_type = moon_type
+        # Import physical properties if Moon inherits from PhysicalBody (check if field exists)
+        if hasattr(moon, 'mass_kg') and element.findtext("mass_kg"):
+            moon.mass_kg = float(element.findtext("mass_kg"))
+        if hasattr(moon, 'radius_km') and element.findtext("radius_km"):
+            moon.radius_km = float(element.findtext("radius_km"))
+        if hasattr(moon, 'density_kg_m3') and element.findtext("density_kg_m3"):
+            moon.density_kg_m3 = float(element.findtext("density_kg_m3"))
+        if hasattr(moon, 'orbital_distance_km') and element.findtext("orbital_distance_km"):
+            moon.orbital_distance_km = float(element.findtext("orbital_distance_km"))
+        if hasattr(moon, 'orbital_period_hours') and element.findtext("orbital_period_hours"):
+            moon.orbital_period_hours = float(element.findtext("orbital_period_hours"))
+        if hasattr(moon, 'rotation_period_hours') and element.findtext("rotation_period_hours"):
+            moon.rotation_period_hours = float(element.findtext("rotation_period_hours"))
+        if hasattr(moon, 'axial_tilt_deg') and element.findtext("axial_tilt_deg"):
+            moon.axial_tilt_deg = float(element.findtext("axial_tilt_deg"))
+        if hasattr(moon, 'is_tidally_locked') and element.findtext("is_tidally_locked"):
+            moon.is_tidally_locked = element.findtext("is_tidally_locked").lower() == "true"
+        if hasattr(moon, 'albedo') and element.findtext("albedo"):
+            moon.albedo = float(element.findtext("albedo"))
+        if hasattr(moon, 'equilibrium_temperature_k') and element.findtext("equilibrium_temperature_k"):
+            moon.equilibrium_temperature_k = float(element.findtext("equilibrium_temperature_k"))
+        if hasattr(moon, 'orbital_eccentricity') and element.findtext("orbital_eccentricity"):
+            moon.orbital_eccentricity = float(element.findtext("orbital_eccentricity"))
+        if hasattr(moon, 'orbital_inclination_deg') and element.findtext("orbital_inclination_deg"):
+            moon.orbital_inclination_deg = float(element.findtext("orbital_inclination_deg"))
+        moon.save()
+        
+        # Import atmosphere if it exists
+        atmosphere_elem = element.find("./atmosphere")
+        if atmosphere_elem is not None:
+            atmosphere_type = atmosphere_elem.findtext("atmosphere_type")
+            if atmosphere_type and atmosphere_type != "NONE":
+                content_type = ContentType.objects.get_for_model(Moon)
+                atmosphere, _ = Atmosphere.objects.get_or_create(
+                    content_type=content_type,
+                    object_id=moon.id,
+                    defaults={
+                        "atmosphere_type": atmosphere_type,
+                        "atmosphere_height_km": float(atmosphere_elem.findtext("atmosphere_height_km") or 0) if atmosphere_elem.findtext("atmosphere_height_km") else None,
+                        "surface_pressure_bar": float(atmosphere_elem.findtext("surface_pressure_bar") or 0) if atmosphere_elem.findtext("surface_pressure_bar") else None,
+                        "scale_height_km": float(atmosphere_elem.findtext("scale_height_km") or 0) if atmosphere_elem.findtext("scale_height_km") else None,
+                    }
+                )
+                # Update if already exists
+                if not _:
+                    atmosphere.atmosphere_type = atmosphere_type
+                    if atmosphere_elem.findtext("atmosphere_height_km"):
+                        atmosphere.atmosphere_height_km = float(atmosphere_elem.findtext("atmosphere_height_km"))
+                    if atmosphere_elem.findtext("surface_pressure_bar"):
+                        atmosphere.surface_pressure_bar = float(atmosphere_elem.findtext("surface_pressure_bar"))
+                    if atmosphere_elem.findtext("scale_height_km"):
+                        atmosphere.scale_height_km = float(atmosphere_elem.findtext("scale_height_km"))
+                    atmosphere.save()
         
         self.object_cache[moon.name] = moon
         

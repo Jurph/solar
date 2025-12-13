@@ -37,7 +37,7 @@
           <moon>
             <name>Luna</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Lunar Control</name>
               <scale>SS</scale>
@@ -75,7 +75,7 @@
           <moon>
             <name>Phobos</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Phobos Base</name>
               <scale>SS</scale>
@@ -87,7 +87,7 @@
           <moon>
             <name>Deimos</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Deimos Observatory</name>
               <scale>SS</scale>
@@ -111,7 +111,7 @@
           <moon>
             <name>Io</name>
             <scale>MN</scale>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <station>
               <name>Io Volcanic Observatory</name>
               <scale>SS</scale>
@@ -123,7 +123,7 @@
           <moon>
             <name>Europa</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <station>
               <name>Europa Subsurface Research Base</name>
               <scale>SS</scale>
@@ -135,7 +135,7 @@
           <moon>
             <name>Ganymede</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <station>
               <name>Ganymede Colony</name>
               <scale>SS</scale>
@@ -147,7 +147,7 @@
           <moon>
             <name>Callisto</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <station>
               <name>Callisto Mining Outpost</name>
               <scale>SS</scale>
@@ -171,7 +171,7 @@
           <moon>
             <name>Titan</name>
             <scale>MN</scale>
-            <variety>O</variety>
+            <moon_type>O</moon_type>
             <station>
               <name>Titan Atmospheric Research</name>
               <scale>SS</scale>
@@ -183,7 +183,7 @@
           <moon>
             <name>Enceladus</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <station>
               <name>Enceladus Geyser Station</name>
               <scale>SS</scale>
@@ -207,17 +207,17 @@
           <moon>
             <name>Titania</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
           </moon>
           <moon>
             <name>Oberon</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
           </moon>
           <moon>
             <name>Miranda</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
           </moon>
         </planet>
         <planet>
@@ -227,7 +227,7 @@
           <moon>
             <name>Triton</name>
             <scale>MN</scale>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <station>
               <name>Triton Research Base</name>
               <scale>SS</scale>
@@ -240,7 +240,7 @@
         <moon>
           <name>Pluto</name>
           <scale>MN</scale>
-          <variety>I</variety>
+          <moon_type>I</moon_type>
           <station>
             <name>New Horizons Memorial Station</name>
             <scale>SS</scale>
@@ -252,7 +252,7 @@
         <moon>
           <name>Ceres</name>
           <scale>MN</scale>
-          <variety>R</variety>
+          <moon_type>R</moon_type>
           <station>
             <name>Ceres Mining Hub</name>
             <scale>SS</scale>

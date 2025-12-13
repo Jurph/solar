@@ -9,6 +9,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # The "Universe Browser"
     path('universe/', views.universe_view, name='universe'),
+    # API endpoint for object details (baseball card)
+    path('api/universe/<str:object_type>/<int:object_id>/', views.object_details, name='object_details'),
     # The event scroller wrapper with control panel (main page):
     path("events/", views.event_scroller_wrapper, name="event_scroller_wrapper"),
     # The event scroller page (iframe content):

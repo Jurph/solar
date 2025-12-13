@@ -232,7 +232,7 @@ class ImportExportTest(TestCase):
         if sample_moon:
             moon_props = {
                 "name": sample_moon.name,
-                "variety": sample_moon.variety,
+                "moon_type": sample_moon.moon_type,
             }
         
         # Second import
@@ -251,7 +251,7 @@ class ImportExportTest(TestCase):
         
         if sample_moon:
             moon_after = Moon.objects.get(name=sample_moon.name)
-            self.assertEqual(moon_after.variety, moon_props["variety"])
+            self.assertEqual(moon_after.moon_type, moon_props["moon_type"])
     
     def test_import_with_procedural_generation(self):
         """

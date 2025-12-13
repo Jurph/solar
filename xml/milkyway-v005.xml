@@ -126,7 +126,7 @@
           </station>
           <moon>
             <name>Luna</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>7.342e22</mass_kg>
             <radius_km>1737.4</radius_km>
             <density_kg_m3>3344</density_kg_m3>
@@ -187,7 +187,7 @@
           </station>
           <moon>
             <name>Phobos</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>1.066e16</mass_kg>
             <radius_km>11.267</radius_km>
             <density_kg_m3>1876</density_kg_m3>
@@ -205,7 +205,7 @@
           </moon>
           <moon>
             <name>Deimos</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>1.476e15</mass_kg>
             <radius_km>6.2</radius_km>
             <density_kg_m3>1471</density_kg_m3>
@@ -254,7 +254,7 @@
           </station>
           <moon>
             <name>Io</name>
-            <variety>R</variety>
+            <moon_type>R</moon_type>
             <mass_kg>8.93e22</mass_kg>
             <radius_km>1821.6</radius_km>
             <density_kg_m3>3528</density_kg_m3>
@@ -281,7 +281,7 @@
           </moon>
           <moon>
             <name>Europa</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>4.80e22</mass_kg>
             <radius_km>1560.8</radius_km>
             <density_kg_m3>3013</density_kg_m3>
@@ -308,7 +308,7 @@
           </moon>
           <moon>
             <name>Ganymede</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>1.482e23</mass_kg>
             <radius_km>2634.1</radius_km>
             <density_kg_m3>1936</density_kg_m3>
@@ -335,7 +335,7 @@
           </moon>
           <moon>
             <name>Callisto</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>1.076e23</mass_kg>
             <radius_km>2410.3</radius_km>
             <density_kg_m3>1834</density_kg_m3>
@@ -359,6 +359,321 @@
               <medium_berths>4</medium_berths>
               <small_berths>16</small_berths>
             </station>
+          </moon>
+          <moon>
+            <name>Amalthea</name>
+            <moon_type>R</moon_type>
+            <mass_kg>7.5e16</mass_kg>
+            <radius_km>83.5</radius_km>
+            <density_kg_m3>857</density_kg_m3>
+            <orbital_distance_km>181400</orbital_distance_km>
+            <orbital_period_hours>11.95</orbital_period_hours>
+            <rotation_period_hours>11.95</rotation_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <albedo>0.09</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>true</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Thebe</name>
+            <moon_type>R</moon_type>
+            <mass_kg>8.0e15</mass_kg>
+            <radius_km>49.3</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>221900</orbital_distance_km>
+            <orbital_period_hours>16.23</orbital_period_hours>
+            <rotation_period_hours>16.23</rotation_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <albedo>0.047</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Metis</name>
+            <moon_type>R</moon_type>
+            <mass_kg>9.0e15</mass_kg>
+            <radius_km>21.5</radius_km>
+            <density_kg_m3>3000</density_kg_m3>
+            <orbital_distance_km>127960</orbital_distance_km>
+            <orbital_period_hours>7.07</orbital_period_hours>
+            <rotation_period_hours>7.07</rotation_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <albedo>0.06</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Adrastea</name>
+            <moon_type>R</moon_type>
+            <mass_kg>2.0e15</mass_kg>
+            <radius_km>8.2</radius_km>
+            <density_kg_m3>3000</density_kg_m3>
+            <orbital_distance_km>129000</orbital_distance_km>
+            <orbital_period_hours>7.16</orbital_period_hours>
+            <rotation_period_hours>7.16</rotation_period_hours>
+            <is_tidally_locked>true</is_tidally_locked>
+            <albedo>0.1</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Himalia</name>
+            <moon_type>R</moon_type>
+            <mass_kg>9.5e16</mass_kg>
+            <radius_km>85</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>11460000</orbital_distance_km>
+            <orbital_period_hours>250.56</orbital_period_hours>
+            <rotation_period_hours>7.78</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Elara</name>
+            <moon_type>R</moon_type>
+            <mass_kg>8.0e15</mass_kg>
+            <radius_km>43</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>11741000</orbital_distance_km>
+            <orbital_period_hours>259.64</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Lysithea</name>
+            <moon_type>R</moon_type>
+            <mass_kg>6.3e15</mass_kg>
+            <radius_km>18</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>11717000</orbital_distance_km>
+            <orbital_period_hours>259.2</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Leda</name>
+            <moon_type>R</moon_type>
+            <mass_kg>1.1e15</mass_kg>
+            <radius_km>9</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>11165000</orbital_distance_km>
+            <orbital_period_hours>240.93</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Pasiphae</name>
+            <moon_type>R</moon_type>
+            <mass_kg>3.0e16</mass_kg>
+            <radius_km>30</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>23624000</orbital_distance_km>
+            <orbital_period_hours>743.63</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Carme</name>
+            <moon_type>R</moon_type>
+            <mass_kg>1.3e16</mass_kg>
+            <radius_km>23</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>23404000</orbital_distance_km>
+            <orbital_period_hours>734.17</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Sinope</name>
+            <moon_type>R</moon_type>
+            <mass_kg>7.5e15</mass_kg>
+            <radius_km>19</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>23939000</orbital_distance_km>
+            <orbital_period_hours>758</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Ananke</name>
+            <moon_type>R</moon_type>
+            <mass_kg>3.0e15</mass_kg>
+            <radius_km>14</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>21276000</orbital_distance_km>
+            <orbital_period_hours>610.45</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Carpo</name>
+            <moon_type>R</moon_type>
+            <mass_kg>4.5e14</mass_kg>
+            <radius_km>1.5</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>17058000</orbital_distance_km>
+            <orbital_period_hours>456.3</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Valetudo</name>
+            <moon_type>R</moon_type>
+            <mass_kg>1.5e14</mass_kg>
+            <radius_km>1</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>18900000</orbital_distance_km>
+            <orbital_period_hours>532</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
+          </moon>
+          <moon>
+            <name>Dia</name>
+            <moon_type>R</moon_type>
+            <mass_kg>9.0e14</mass_kg>
+            <radius_km>2</radius_km>
+            <density_kg_m3>1500</density_kg_m3>
+            <orbital_distance_km>12270000</orbital_distance_km>
+            <orbital_period_hours>287.93</orbital_period_hours>
+            <rotation_period_hours>12</rotation_period_hours>
+            <is_tidally_locked>false</is_tidally_locked>
+            <albedo>0.04</albedo>
+            <composition>
+              <iron_content>0.1</iron_content>
+              <ice_content>0.0</ice_content>
+              <has_methane>false</has_methane>
+              <has_sulfur>false</has_sulfur>
+              <water_coverage>0.0</water_coverage>
+              <carbon_content>0.0</carbon_content>
+              <organic_haze>0.0</organic_haze>
+            </composition>
           </moon>
         </planet>
         <planet>
@@ -393,7 +708,7 @@
           </station>
           <moon>
             <name>Titan</name>
-            <variety>O</variety>
+            <moon_type>O</moon_type>
             <mass_kg>1.345e23</mass_kg>
             <radius_km>2574.7</radius_km>
             <density_kg_m3>1880</density_kg_m3>
@@ -425,7 +740,7 @@
           </moon>
           <moon>
             <name>Enceladus</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>1.08e20</mass_kg>
             <radius_km>252.1</radius_km>
             <density_kg_m3>1609</density_kg_m3>
@@ -477,7 +792,7 @@
           </composition>
           <moon>
             <name>Titania</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>3.40e21</mass_kg>
             <radius_km>788.9</radius_km>
             <density_kg_m3>1711</density_kg_m3>
@@ -489,7 +804,7 @@
           </moon>
           <moon>
             <name>Oberon</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>3.08e21</mass_kg>
             <radius_km>761.4</radius_km>
             <density_kg_m3>1630</density_kg_m3>
@@ -501,7 +816,7 @@
           </moon>
           <moon>
             <name>Miranda</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>6.59e19</mass_kg>
             <radius_km>235.8</radius_km>
             <density_kg_m3>1200</density_kg_m3>
@@ -544,7 +859,7 @@
           </composition>
           <moon>
             <name>Triton</name>
-            <variety>I</variety>
+            <moon_type>I</moon_type>
             <mass_kg>2.14e22</mass_kg>
             <radius_km>1353.4</radius_km>
             <density_kg_m3>2061</density_kg_m3>
@@ -572,7 +887,7 @@
         </planet>
         <moon>
           <name>Pluto</name>
-          <variety>I</variety>
+          <moon_type>I</moon_type>
           <mass_kg>1.303e22</mass_kg>
           <radius_km>1188.3</radius_km>
           <density_kg_m3>1854</density_kg_m3>
@@ -600,7 +915,7 @@
         </moon>
         <moon>
           <name>Ceres</name>
-          <variety>R</variety>
+          <moon_type>R</moon_type>
           <mass_kg>9.39e20</mass_kg>
           <radius_km>473</radius_km>
           <density_kg_m3>2162</density_kg_m3>
