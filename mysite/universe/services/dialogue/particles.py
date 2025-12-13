@@ -829,3 +829,144 @@ class Holding(DialogueParticle):
             "adjusted_response": 1.0  # Controller provides adjusted clearance
         }
 
+
+class CommsCheckRequest(PilotRequest):
+    """
+    Pilot requesting a comms check from a satellite.
+    
+    Used when a pilot performs a routine comms check with a relay satellite or nav beacon.
+    """
+    
+    def get_examples(self) -> List[str]:
+        """
+        Return examples of comms check requests.
+        
+        Returns:
+            List of example comms check dialogue strings.
+        """
+        recipient = self.recipient
+        
+        return [
+            f"Performing routine comms check, do you copy?",
+            f"Comms check, please respond.",
+            f"I'm calibrating my receivers, {recipient}, can you give me a tone?",
+            f"Requesting comms check, {recipient}, please respond.",
+            f"{recipient}, comms check on this channel please?",
+            f"Comms check, {recipient}, is this a working channel?",
+        ]
+    
+    def get_counterexample(self) -> str:
+        """
+        Return counterexample showing what NOT to do.
+        
+        Returns:
+            Counterexample string.
+        """
+        return "[DON'T DO THIS!] Hey little satellite buddy, are you there?"
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a comms check request.
+        
+        Comms checks always get a satellite response.
+        
+        Returns:
+            Dict mapping particle types to probabilities.
+        """
+        return {
+            "satellite_response": 1.0  # Always get satellite response
+        }
+
+
+class SatelliteResponse(DialogueParticle):
+    """
+    Satellite responding to a comms check with a pre-programmed message.
+    
+    This particle does NOT use LLM generation - it returns the satellite's
+    pre-programmed response message directly.
+    """
+    
+    def get_role_description(self) -> str:
+        """
+        Return role description for satellite.
+        
+        Format: "An automated relay satellite named {satellite_name}"
+        
+        Returns:
+            Role description string.
+        """
+        satellite_name = self.actor.name
+        return f"An automated relay satellite named {satellite_name}"
+    
+    def get_situation_description(self) -> str:
+        """
+        Return situation description for satellite response.
+        
+        Returns:
+            Situation description string.
+        """
+        sender = self.get_sender_callsign()
+        recipient = self.recipient
+        
+        return f"{sender} has requested a comms check from {recipient}. {recipient} is responding with its pre-programmed automated message."
+    
+    def generate_procedural_greeting(self) -> str:
+        """
+        Generate procedural greeting for satellite responses.
+        
+        Satellites typically just identify themselves.
+        
+        Returns:
+            Greeting string (satellite name).
+        """
+        satellite_name = self.actor.name.upper()
+        return f"{satellite_name}."
+    
+    def get_examples(self) -> List[str]:
+        """
+        Return examples (not used for LLM, but required by interface).
+        
+        This particle bypasses LLM generation and uses the satellite's
+        pre-programmed message instead.
+        
+        Returns:
+            Empty list (not used).
+        """
+        return []
+    
+    def get_counterexample(self) -> str:
+        """
+        Return counterexample (not used for LLM, but required by interface).
+        
+        Returns:
+            Empty string (not used).
+        """
+        return ""
+    
+    def get_pre_programmed_message(self) -> str:
+        """
+        Get the pre-programmed response message from the satellite.
+        
+        This method is called instead of LLM generation for satellite responses.
+        
+        Returns:
+            Pre-programmed message string.
+        """
+        from mysite.universe.models.actor import Satellite
+        
+        if isinstance(self.actor, Satellite):
+            return self.actor.get_response_message()
+        else:
+            # Fallback if actor is not a Satellite
+            return "BEEP BOOP"
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a satellite response.
+        
+        Satellite responses typically end the chain (optional pilot acknowledgment).
+        
+        Returns:
+            Empty dict - chain typically ends after satellite response.
+        """
+        return {}  # Chain typically ends after satellite response

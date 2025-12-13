@@ -87,6 +87,9 @@ class DialogueService:
         Uses structured outputs to ensure valid DialogueMessage JSON.
         Retries on validation failures (e.g., missing recipient identification).
         
+        Special handling: SatelliteResponse particles use pre-programmed messages
+        instead of LLM generation.
+        
         Args:
             particle: DialogueParticle instance
             previous_dialogue: Optional previous dialogue message for context
@@ -103,6 +106,32 @@ class DialogueService:
         import logging
         
         logger = logging.getLogger('dialogue_service')
+        
+        # Special handling for satellite responses - use pre-programmed message
+        from .particles import SatelliteResponse
+        if isinstance(particle, SatelliteResponse):
+            # Get pre-programmed message from satellite
+            message_content = particle.get_pre_programmed_message()
+            
+            # Generate procedural greeting
+            greeting = particle.generate_procedural_greeting()
+            
+            # Get known values from particle
+            sender_callsign = particle.get_sender_callsign()
+            recipient_callsign = particle.recipient
+            role = particle.get_role()
+            
+            # Build full message with procedural greeting
+            full_message = f"{greeting} {message_content}"
+            
+            # Build DialogueMessage with known values from particle
+            dialogue_msg = DialogueMessage(
+                role=role,
+                speaker_callsign=sender_callsign,
+                recipient_callsign=recipient_callsign,
+                message=full_message,
+            )
+            return dialogue_msg
         
         # All particles now use procedural greetings
         # Generate procedural greeting prefix (inherited from base class or overridden)
