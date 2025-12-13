@@ -225,14 +225,6 @@ CRITICAL SAFETY RULES:
 class Satellite(Actor):
     """An automated satellite that can relay messages."""
     
-    # Pre-programmed response message for comms checks
-    response_message = models.CharField(
-        max_length=200,
-        blank=True,
-        default="<BURST OF MODEM NOISE>",
-        help_text="Pre-programmed response message for comms checks (e.g., 'BEEP BOOP', '<ENCODED NOISE>')"
-    )
-    
     def get_identity_prompt(self) -> str:
         """Return a satellite-specific identity prompt."""
         return f"""You are an automated relay satellite named {self.name}.
@@ -245,32 +237,30 @@ CRITICAL SAFETY RULES:
         """
         Get the pre-programmed response message for this satellite.
         
-        If no custom message is set, returns a default based on satellite name.
+        Determines message dynamically based on satellite name/type.
+        No database field needed - calculated on demand.
         
         Returns:
             Pre-programmed response message string.
         """
-        if self.response_message:
-            return self.response_message
+        name_lower = self.name.lower()
         
         # Default messages based on satellite type/name
-        name_lower = self.name.lower()
         if "beacon" in name_lower or "nav" in name_lower:
             return "BEEP BOOP"
         elif "relay" in name_lower:
             return "<ENCODED NOISE>"
         else:
-            # Generic default
-            return f"This is {self.name}. Transmitting a Nav Update to your system now via Quindar compression."
+            # Generic default for other satellite types
+            return "<BURST OF MODEM NOISE>"
 
     @classmethod
-    def create(cls, name: str = None, response_message: str = None) -> 'Satellite':
+    def create(cls, name: str = None) -> 'Satellite':
         """
         Create a new satellite with sensible defaults.
         
         Args:
             name: Satellite's name (generated if not provided)
-            response_message: Pre-programmed response message (optional)
             
         Returns:
             A new Satellite instance
@@ -279,8 +269,6 @@ CRITICAL SAFETY RULES:
             name = cls.generate_name()
             
         satellite = cls(name=name)
-        if response_message:
-            satellite.response_message = response_message
         satellite.save()
         
         return satellite

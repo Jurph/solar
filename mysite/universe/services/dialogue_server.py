@@ -108,7 +108,7 @@ class DialogueService:
         logger = logging.getLogger('dialogue_service')
         
         # Special handling for satellite responses - use pre-programmed message
-        from .particles import SatelliteResponse
+        from .dialogue.particles import SatelliteResponse
         if isinstance(particle, SatelliteResponse):
             # Get pre-programmed message from satellite
             message_content = particle.get_pre_programmed_message()
