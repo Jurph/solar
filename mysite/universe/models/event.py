@@ -135,44 +135,13 @@ class DialogueEvent(Event):
                 else:
                     reply_actor = None
 
-        # If we still don't have a reply actor, use the original actor
-        if reply_actor is None:
-            reply_actor = self.actor
-
-        # Determine the reply text based on actor role
-        from mysite.universe.models.actor import Satellite, Controller, Pilot
-        if isinstance(reply_actor, Satellite):
-            reply_text = "BEEP BOOP"
-            expect_reply = False
-        elif isinstance(reply_actor, Controller):
-            # Pilot -> Controller: Chains are now generated upfront, so this should not happen
-            # If expect_reply=True on a chain event, the next event is already in the chain
-            # Return None to indicate no dynamic reply needed
-            return None
-        elif isinstance(self.actor, Controller) and isinstance(reply_actor, Pilot):
-            # Controller -> Pilot: Chains are now generated upfront, so this should not happen
-            # If expect_reply=True on a chain event, the next event is already in the chain
-            # Return None to indicate no dynamic reply needed
-            return None
-        else:
-            # Use expected_reply from metadata if provided, otherwise generate a generic reply
-            reply_text = (
-                self.metadata["expected_reply"]
-                if self.metadata and "expected_reply" in self.metadata
-                else f"Acknowledged, {self.actor.name}."
-            )
-            expect_reply = False
-
-        # Create the reply event 5 seconds after the original message
-        return DialogueEvent(
-            timestamp=self.timestamp + 5.0,
-            actor=reply_actor,
-            text=reply_text,
-            expect_reply=expect_reply,
-            duration=2.0,
-            event_type="dialogue",
-            metadata=self.metadata
-        )
+        # Chains are now generated upfront by the particle system, so this method
+        # should not generate dynamic replies. If expect_reply=True on a chain event,
+        # the next event is already in the chain. Return None to indicate no dynamic reply needed.
+        # 
+        # This method is kept for backward compatibility but should rarely be called
+        # in the new particle-based dialogue system.
+        return None
     
     def end_conversation_action(self):
         """Action to take when the dialogue ends the conversation."""

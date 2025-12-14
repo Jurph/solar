@@ -150,19 +150,17 @@ class Command(BaseCommand):
             comms_check_position = min(3, len(script_events) - 1)
             comms_check_timestamp = script_events[comms_check_position].timestamp + 5.0
             
-            # Create a dialogue event for the comms check
-            comms_check_event = DialogueEvent(
-                timestamp=comms_check_timestamp,
-                actor=pilot,
-                text=f"Relay Satellite Alpha, this is {ship.name}. Performing routine comms check, please respond.",
-                expect_reply=True,
-                duration=2.0,
-                event_type="dialogue",
-                metadata={"type": "comms_check", "reply_actor_name": satellite.name}
+            # Generate comms check chain using the particle system
+            comms_check_events = ScriptService.get_instance().generate_comms_check_chain(
+                pilot=pilot,
+                satellite=satellite,
+                ship=ship,
+                base_timestamp=comms_check_timestamp,
             )
             
-            # Insert the comms check event into the script events
-            script_events.insert(comms_check_position + 1, comms_check_event)
+            # Insert the comms check events into the script events
+            for i, comms_event in enumerate(comms_check_events):
+                script_events.insert(comms_check_position + 1 + i, comms_event)
             
             self.stdout.write(self.style.SUCCESS(f"Generated {len(script_events)} script events including comms check"))
             

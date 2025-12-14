@@ -85,9 +85,9 @@ Some guidelines:
 Your message field should contain ONLY the dialogue content (request, response, 
 acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phrases.
 
-2. You will be given a counterexample. Avoid its mistakes! 
+2. You will be given a counterexample. Avoid its mistakes! For example, it's critical to understand which role you are playing in the dialogue. 
 
-3. You will be given examples. Follow them closely! 
+3. You will be given examples. Pay attention to your role and situation so you can follow the examples closely! 
 
 4. You will be given the last dialogue line. Respond to it naturally and contextually. 
 

@@ -261,14 +261,16 @@ class DialogueService:
         particle_type: str,
         pilot: Actor,
         controller: Actor,
+        satellite: Optional[Actor] = None,
     ) -> Tuple[Actor, str]:
         """
         Determine actor and recipient for a particle type.
         
         Args:
-            particle_type: Particle type string (e.g., "request", "response")
+            particle_type: Particle type string (e.g., "request", "response", "comms_check", "satellite_response")
             pilot: Pilot actor
             controller: Controller actor
+            satellite: Optional Satellite actor (for comms checks)
             
         Returns:
             Tuple of (actor, recipient_callsign)
@@ -276,8 +278,20 @@ class DialogueService:
         # Normalize to lowercase for consistent matching
         particle_type = particle_type.lower() if particle_type else ""
         
+        # Comms check requests come from pilot to satellite
+        if particle_type == "comms_check":
+            if satellite is None:
+                raise ValueError("Satellite actor required for comms_check particle")
+            actor = pilot
+            recipient = satellite.name.upper()
+        # Satellite responses come from satellite to pilot's ship
+        elif particle_type == "satellite_response":
+            if satellite is None:
+                raise ValueError("Satellite actor required for satellite_response particle")
+            actor = satellite
+            recipient = pilot.ship.name.upper() if hasattr(pilot, 'ship') and pilot.ship else pilot.name.upper()
         # Requests, readbacks, holding come from pilot
-        if particle_type in ["request", "holding", "readback"]:
+        elif particle_type in ["request", "holding", "readback"]:
             actor = pilot
             recipient = controller.name.upper()
         # Responses come from controller
@@ -299,6 +313,7 @@ class DialogueService:
         controller: Actor,
         nav_context: Dict[str, Any],
         temperature: Optional[float] = None,
+        satellite: Optional[Actor] = None,
     ) -> List[Tuple[DialogueMessage, float]]:
         """
         Generate a dialogue chain iteratively using particle-driven probabilities.
@@ -313,6 +328,7 @@ class DialogueService:
             controller: Controller actor
             nav_context: Navigation context dictionary
             temperature: Optional temperature override
+            satellite: Optional Satellite actor (for comms check chains)
             
         Returns:
             List of (DialogueMessage, cumulative_time_offset) tuples.
@@ -354,6 +370,7 @@ class DialogueService:
                 next_particle_type,
                 pilot,
                 controller,
+                satellite=satellite,
             )
             
             # Create next particle
@@ -411,5 +428,6 @@ class DialogueService:
             controller=controller,
             nav_context=nav_context,
             temperature=temperature,
+            satellite=None,  # No satellite for navigation event chains
         )
 
