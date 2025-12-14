@@ -138,7 +138,7 @@ class LaunchRequest(PilotRequest):
         Returns:
             Counterexample string.
         """
-        return "[DON'T DO THIS!] Earth Control, we want to launch the STELLAR HORIZON to Earth please."
+        return "[DON'T DO THIS!] Earth Control, permission granted. We're the STELLAR HORIZON and we're cleared for launch."
     
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
@@ -247,7 +247,7 @@ class SublightRequest(PilotRequest):
         Returns:
             Counterexample string.
         """
-        return "[DON'T DO THIS!] We're gonna start the sublight burn now, okay?"
+        return "[DON'T DO THIS!] We're approved for sublight. Permission granted, over."
 
 
 class InsertionRequest(PilotRequest):
@@ -282,7 +282,7 @@ class InsertionRequest(PilotRequest):
         Returns:
             Counterexample string.
         """
-        return "[DON'T DO THIS!] We're gonna insert now, okay?"
+        return "[DON'T DO THIS!] Permission granted. Your request is approved."
 
 
 class DeorbitRequest(PilotRequest):
@@ -317,7 +317,7 @@ class DeorbitRequest(PilotRequest):
         Returns:
             Counterexample string.
         """
-        return "[DON'T DO THIS!] We're starting our deorbit burn now."
+        return "[DON'T DO THIS!] I've approved the deorbit request and you can begin."
 
 
 class LandingRequest(PilotRequest):
@@ -352,7 +352,7 @@ class LandingRequest(PilotRequest):
         Returns:
             Counterexample string.
         """
-        return "[DON'T DO THIS!] We're landing now, see you on the ground!"
+        return f"[DON'T DO THIS!] We are fully approved to land. Permission granted for final approach to {self.nav_context.get('destination', 'our destination')}."
 
 
 class GenericRequest(PilotRequest):
@@ -391,7 +391,7 @@ class GenericRequest(PilotRequest):
         recipient = self.recipient
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
 
-        return f"[DON'T DO THIS!] {sender}, {recipient}, our plan for {maneuver} is approved. Over."
+        return f"[DON'T DO THIS!] {sender}, {recipient}, our plan for {maneuver} is now approved. Over."
 
 
 class RadioResponse(DialogueParticle):
@@ -876,6 +876,17 @@ class CommsCheckRequest(PilotRequest):
         return {
             "satellite_response": 1.0  # Always get satellite response
         }
+    
+    def get_delay_until_next(self) -> Optional[float]:
+        """
+        Return delay until satellite response.
+        
+        Satellites respond quickly to comms checks (2-3 seconds).
+        
+        Returns:
+            Seconds until next event.
+        """
+        return 3.0  # Quick satellite response
 
 
 class SatelliteResponse(DialogueParticle):
@@ -914,13 +925,15 @@ class SatelliteResponse(DialogueParticle):
         """
         Generate procedural greeting for satellite responses.
         
-        Satellites typically just identify themselves.
+        Satellites follow radio protocol: "{recipient}, {satellite_name}."
+        This ensures the recipient is identified in the message for validation.
         
         Returns:
-            Greeting string (satellite name).
+            Greeting string with recipient and satellite name.
         """
         satellite_name = self.actor.name.upper()
-        return f"{satellite_name}."
+        recipient = self.recipient
+        return f"{recipient}, {satellite_name}."
     
     def get_examples(self) -> List[str]:
         """

@@ -88,13 +88,11 @@ class Pilot(Actor):
         return f"""You are a pilot named {self.name}. You operate the ship {ship_name}.
 
 CRITICAL SAFETY RULES:
-1. When speaking, you identify yourself as {self.name} (the pilot), not as {ship_name} (the ship)
-2. In your message text, you say "{ship_name}" as your callsign, but YOU are the one speaking
-3. Always acknowledge receipt of instructions
-4. Request clarification if instructions are unclear
-5. Report any issues or anomalies immediately
+1. Flight protocol is handled procedurally. You do not need to identify yourself or your ship.
+2. As a pilot, you defer to the controller's judgment; you REQUEST, but you never APPROVE.
+3. When you receive instructions, you CONFIRM that you have received them by reading back the relevant details. 
 
-Remember: Ships are metal - they don't speak. You, {self.name}, are the one speaking on behalf of {ship_name}."""
+Pay close attention to the examples and counterexamples provided. """
 
     @classmethod
     def create(cls, name: str = None, ship=None) -> 'Pilot':
@@ -162,13 +160,9 @@ class Controller(Actor):
 You do not have a personal name - you speak as the station itself.
 
 CRITICAL SAFETY RULES:
-1. Always identify yourself as {self.name} when speaking (not a personal name)
-2. Give clear, unambiguous instructions
-3. Maintain awareness of all traffic in your sector
-4. Prioritize safety over efficiency
-5. Verify readback of critical instructions
-6. You APPROVE, AUTHORIZE, CONFIRM, and CLEAR - you rarely REQUEST anything
-7. You are in a position of authority - pilots request, you approve"""
+1. Give clear, unambiguous instructions
+2. You APPROVE, AUTHORIZE, CONFIRM, and CLEAR - you rarely REQUEST anything
+3. You are in a position of authority - pilots request, and then you approve"""
 
     def get_concrete_instance(self):
         """

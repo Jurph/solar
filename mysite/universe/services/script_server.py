@@ -88,6 +88,95 @@ class ScriptService:
         
         return events
     
+    def generate_comms_check_chain(
+        self,
+        pilot,
+        satellite,
+        ship: Ship,
+        base_timestamp: float = 0.0,
+    ) -> List[DialogueEvent]:
+        """
+        Generate a dialogue chain for a comms check between pilot and satellite.
+        
+        Uses the particle system to generate:
+        1. CommsCheckRequest (pilot → satellite)
+        2. SatelliteResponse (satellite → pilot, pre-programmed message)
+        
+        Args:
+            pilot: Pilot actor
+            satellite: Satellite actor
+            ship: Ship the pilot is operating
+            base_timestamp: Base timestamp for the chain (default: 0.0)
+            
+        Returns:
+            List of DialogueEvent instances for the comms check chain
+        """
+        from mysite.universe.schemas.dialogue_schema import Role
+        
+        # Build nav context for comms check
+        nav_context = {
+            "ship_name": ship.name.upper() if ship else "UNKNOWN",
+            "pilot_name": pilot.name if pilot else None,
+            "recipient": satellite.name.upper(),
+        }
+        
+        # Create initial comms check request particle
+        initial_particle = self.dialogue_service.particle_factory.create_particle(
+            particle_type="comms_check",
+            actor=pilot,
+            recipient=satellite.name.upper(),
+            nav_context=nav_context,
+        )
+        
+        # Generate chain iteratively (will generate request → satellite response)
+        messages = self.dialogue_service.generate_chain_iteratively(
+            initial_particle=initial_particle,
+            pilot=pilot,
+            controller=None,  # Not needed for comms checks
+            nav_context=nav_context,
+            temperature=getattr(self.llm, 'temperature', None),
+            satellite=satellite,
+        )
+        
+        # Convert messages to events
+        events: List[DialogueEvent] = []
+        for i, (msg, relative_time_offset) in enumerate(messages):
+            # Determine actor based on role
+            if msg.role == Role.PILOT:
+                actor = pilot
+                expected_reply_actor = satellite
+            elif msg.role == Role.SATELLITE:
+                actor = satellite
+                expected_reply_actor = pilot
+            else:
+                # Fallback
+                actor = pilot
+                expected_reply_actor = satellite
+            
+            # Build metadata
+            metadata = {
+                "type": "comms_check" if i == 0 else "satellite_response",
+                "ship_name": ship.name.upper() if ship else "UNKNOWN",
+                "pilot_name": pilot.name if pilot else None,
+                "satellite_name": satellite.name,
+                "dialogue_message": msg.model_dump(),
+            }
+            
+            # Create DialogueEvent
+            event = DialogueEvent(
+                timestamp=base_timestamp + relative_time_offset,
+                actor=actor,
+                text=msg.message,
+                expect_reply=(i == 0),  # Only first event expects reply
+                duration=2.0,
+                event_type="dialogue",
+                metadata=metadata,
+                expected_reply_actor=expected_reply_actor if i == 0 else None,
+            )
+            events.append(event)
+        
+        return events
+    
     def _build_nav_context(self, nav_event: NavigationEvent, ship: Ship) -> Dict[str, Any]:
         """
         Build navigation context dictionary from NavigationEvent and Ship.
@@ -362,74 +451,4 @@ class ScriptService:
                 current_timestamp += updated_event.duration
         
         return script_events
-
-    def build_situation_prompt(self, nav_event: NavigationEvent, ship: Ship) -> str:
-        return f"""Current Situation:
-- Ship {ship.name.upper()} is on a journey from {nav_event.origin} to {nav_event.destination}
-- Currently at {nav_event.current}, next stop is {nav_event.next}
-- Performing a {nav_event.maneuver.value if hasattr(nav_event.maneuver, 'value') else nav_event.maneuver} maneuver
-- Under the direction of {nav_event.controller} 
-"""
-
-    def get_dialogue_context(self, dialogue: DialogueEvent) -> dict:
-        """Assembles dialogue context from existing metadata and exchanges."""
-        context = {
-            "navigation": dialogue.metadata.get("context", {}),
-            "recent_exchanges": dialogue.metadata.get("recent_exchanges", [])[-3:],  # Last 3 exchanges
-            "current_maneuver": dialogue.metadata.get("maneuver"),
-        }
-        return context
-
-    def format_context_for_llm(self, context: dict, dialogue: DialogueEvent) -> List[str]:
-        """Formats context into a list of strings for the LLM."""
-        messages = []
-        
-        # Add situation prompt if we have navigation context
-        if nav_context := context["navigation"]:
-            mission = nav_context.get("mission", {})
-            situation = nav_context.get("current_situation", {})
-            
-            situation_text = f"""Current Situation:
-- Ship {situation.get('ship', 'UNIDENTIFIED VESSEL').upper()} is on a journey from {mission.get('origin')} to {mission.get('destination')}
-- Currently at {situation.get('location')}, next stop is {situation.get('next_waypoint')}
-- Performing a {situation.get('maneuver')} maneuver
-- Under the direction of {mission.get('controller')}
-"""
-            messages.append(situation_text)
-        
-        # Add recent exchanges in chronological order
-        for exchange in context["recent_exchanges"]:
-            messages.append(f"{exchange['speaker']}: {exchange['message']}")
-        
-        # Add the current message last
-        messages.append(dialogue.text)
-        
-        return messages
-
-    def build_controller_examples(self, ship_name: str, control_name: str) -> str:
-        ship_name = ship_name.upper()
-        control_name = control_name.upper()
-        return f"""Examples of responding to a Pilot, using your identity as {control_name}:
-Pilot: "{control_name}, this is {ship_name}, requesting clearance for launch."
-{control_name}: "{ship_name}, {control_name}. Cleared for takeoff, heading 090."
-
-Pilot: "{control_name}, this is {ship_name}, ready for insertion burn."
-{control_name}: "{ship_name}, {control_name}. Confirmed for insertion burn whenever you're ready."
-
-Remember: You are {control_name}. Always identify yourself when speaking. Never pretend to be the {ship_name}. 
-All of your dialogue with {ship_name} should be in the format '{control_name}: "{ship_name}, {control_name}, <approval or instructions here>"'"""
-
-    def build_pilot_examples(self, ship_name: str, control_name: str) -> str:
-        ship_name = ship_name.upper()
-        control_name = control_name.upper() 
-        return f"""Examples of responding to a Controller, using your identity as {ship_name}:
-
-{control_name}: "{ship_name}, {control_name}. Adjust course 45 degrees right."
-{ship_name}: "{control_name}, this is {ship_name}. Coming right 45 degrees, confirmed."
-
-{control_name}: "{ship_name}, {control_name}. You're cleared for landing."
-{ship_name}: "{control_name}, this is {ship_name}. Beginning landing approach."
-
-Remember: You are {ship_name}. Always identify yourself when speaking. Never pretend to be {control_name}.
-All of your dialogue with {control_name} should be in the format '{ship_name}: "{control_name}, {ship_name}, <request or polite concurrence here>"'"""
 
