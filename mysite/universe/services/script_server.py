@@ -324,11 +324,11 @@ class ScriptService:
         ship: Ship,
     ) -> List[DialogueEvent]:
         """
-        Convert (DialogueMessage, time_offset) tuples to DialogueEvent list with timestamps.
+        Convert (DialogueMessage, time_offset) tuples to DialogueEvent list with relative timestamps.
         
         Sets up proper timing, actors, and metadata for each event in the chain.
-        Times are relative to chain start (0.0), then mapped to absolute timestamps
-        starting at nav_event.duration.
+        Timestamps are relative to chain start (0.0) and will be mapped to absolute timestamps
+        by parse_navigation_events().
         
         Args:
             messages_with_timing: List of (DialogueMessage, cumulative_time_offset) tuples.
@@ -337,11 +337,9 @@ class ScriptService:
             ship: Ship performing the maneuver
             
         Returns:
-            List of DialogueEvent instances with absolute timestamps
+            List of DialogueEvent instances with relative timestamps (will be mapped to absolute by caller)
         """
         events: List[DialogueEvent] = []
-        # Base timestamp: navigation event duration (when nav event completes)
-        base_timestamp = nav_event.duration if hasattr(nav_event, 'duration') else 0.0
         
         pilot = ship.pilot if ship and hasattr(ship, 'pilot') and ship.pilot else None
         controller = self._get_controller(nav_event)
@@ -404,11 +402,9 @@ class ScriptService:
             # Last event in chain doesn't expect reply, others do
             expect_reply = (i < len(messages_with_timing) - 1)
             
-            # Calculate absolute timestamp: base (nav event completion) + relative offset
-            absolute_timestamp = base_timestamp + relative_time_offset
-            
+            # Use relative time offset directly (will be mapped to absolute timestamp by parse_navigation_events)
             event = DialogueEvent(
-                timestamp=absolute_timestamp,
+                timestamp=relative_time_offset,
                 actor=actor,
                 text=msg.message,  # Natural language message text
                 expect_reply=expect_reply,
@@ -424,31 +420,43 @@ class ScriptService:
     
     def parse_navigation_events(self, nav_events: List[NavigationEvent], ship: Ship) -> List[DialogueEvent]:
         """
-        Convert a list of navigation events into dialogue events with updated sequential timestamps.
+        Convert a list of navigation events into dialogue events with sequential timestamps.
         
         Each navigation event generates a complete dialogue chain. Timestamps are set
-        sequentially, accumulating duration from previous events.
+        sequentially, preserving relative timing within each chain and accumulating
+        across chains.
         
         Args:
             nav_events: List of NavigationEvent instances
             ship: Ship performing the maneuvers
             
         Returns:
-            List of DialogueEvent instances with sequential timestamps
+            List of DialogueEvent instances with sequential absolute timestamps
         """
         from dataclasses import replace
         script_events: List[DialogueEvent] = []
-        current_timestamp = 0.0
+        chain_start_timestamp = 0.0
         
         for nav_event in nav_events:
             # Generate complete dialogue chain for this navigation event
+            # Events in chain have relative timestamps (relative to chain start at 0.0)
             dialogue_chain = self.parse_navigation_event(nav_event, ship)
             
-            # Update timestamps to be sequential
+            # Map relative timestamps to absolute timestamps, preserving chain's internal timing
             for event in dialogue_chain:
-                updated_event = replace(event, timestamp=current_timestamp)
+                # event.timestamp is relative offset within chain, map to absolute
+                absolute_timestamp = chain_start_timestamp + event.timestamp
+                updated_event = replace(event, timestamp=absolute_timestamp)
                 script_events.append(updated_event)
-                current_timestamp += updated_event.duration
+            
+            # Advance chain start timestamp: use the last event's timestamp + duration
+            # This preserves the spacing between chains
+            if dialogue_chain:
+                last_event = dialogue_chain[-1]
+                chain_start_timestamp = chain_start_timestamp + last_event.timestamp + last_event.duration
+            else:
+                # If chain is empty, advance by a default duration to prevent overlap
+                chain_start_timestamp += 2.0
         
         return script_events
 

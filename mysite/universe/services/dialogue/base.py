@@ -80,6 +80,8 @@ the context of the scene and situation. Observe the
 SITUATION, place yourself in the ROLE. Follow the EXAMPLES and avoid the COUNTEREXAMPLE. 
 Write a professional and concise MESSAGE to the RECIPIENT that follows the LAST DIALOGUE LINE.
 
+Consider copying one of the three EXAMPLES and modifying it very slightly for your SITUATION. 
+
 Some guidelines: 
 1. The greeting protocol (callsigns, station names) is handled procedurally.
 Your message field should contain ONLY the dialogue content (request, response, 
