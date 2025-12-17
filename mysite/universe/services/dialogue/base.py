@@ -26,7 +26,6 @@ class UserPromptData(BaseModel):
         example1: First example dialogue line
         example2: Second example dialogue line
         example3: Third example dialogue line
-        counterexample: Counterexample showing what NOT to do
         last_dialogue_line: Previous dialogue line (if any)
         altitude: Optional altitude placeholder (for future physics integration)
         inclination: Optional inclination placeholder (for future physics integration)
@@ -39,7 +38,6 @@ class UserPromptData(BaseModel):
     example1: str = Field(..., description="First example dialogue line")
     example2: str = Field(..., description="Second example dialogue line")
     example3: str = Field(..., description="Third example dialogue line")
-    counterexample: str = Field(..., description="Counterexample showing what NOT to do")
     last_dialogue_line: Optional[str] = Field(None, description="Previous dialogue line (N/A if none)")
     altitude: Optional[str] = Field(None, description="Altitude placeholder (for future physics integration)")
     inclination: Optional[str] = Field(None, description="Inclination placeholder (for future physics integration)")
@@ -58,11 +56,9 @@ class DialogueParticle(ABC):
     
     Each particle type represents a specific dialogue exchange type (e.g., pilot request,
     controller response, pilot acknowledgment). Particles encapsulate:
-    - Examples (1) Examples (5+ examples of this dialogue type)
-    (2) Counterexamples (what NOT to do)
-    (3) Role descriptions (how to describe the speaker)
-    (4) Situation descriptions (context from navigation)
-    (5) Examples and counterexamples
+    - Examples (5+ examples of this dialogue type)
+    - Role descriptions (how to describe the speaker)
+    - Situation descriptions (context from navigation)
     
     The system prompt is static and shared across all particles. Only the user prompt
     changes based on the particle type and context.
@@ -77,7 +73,7 @@ class DialogueParticle(ABC):
     SYSTEM_PROMPT: str = """Generate a message for a spaceflight simulator. 
 You write concise and conversational dialogue that uses
 the context of the scene and situation. Observe the
-SITUATION, place yourself in the ROLE. Follow the EXAMPLES and avoid the COUNTEREXAMPLE. 
+SITUATION, place yourself in the ROLE. Follow the EXAMPLES closely. 
 Write a professional and concise MESSAGE to the RECIPIENT that follows the LAST DIALOGUE LINE.
 
 Consider copying one of the three EXAMPLES and modifying it very slightly for your SITUATION. 
@@ -87,11 +83,9 @@ Some guidelines:
 Your message field should contain ONLY the dialogue content (request, response, 
 acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phrases.
 
-2. You will be given a counterexample. Avoid its mistakes! For example, it's critical to understand which role you are playing in the dialogue. 
+2. You will be given examples. Pay attention to your role and situation so you can follow the examples closely! 
 
-3. You will be given examples. Pay attention to your role and situation so you can follow the examples closely! 
-
-4. You will be given the last dialogue line. Respond to it naturally and contextually. 
+3. You will be given the last dialogue line. Respond to it naturally and contextually. 
 
 """
     
@@ -259,7 +253,6 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
             example1=examples[0] if len(examples) > 0 else "",
             example2=examples[1] if len(examples) > 1 else "",
             example3=examples[2] if len(examples) > 2 else "",
-            counterexample=self.get_counterexample(),
             last_dialogue_line=previous_dialogue,
         )
     
@@ -315,25 +308,23 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
     
     def format_user_prompt(self, data: UserPromptData) -> str:
         """
-        Format UserPromptData into the terse, JSON-like prompt format.
-        
-        This matches the recommendations.txt format exactly:
-        - role: ...
-        - situation: ...
-        - sender: ...
-        - recipient: ...
-        - example1: ...
-        - example2: ...
-        - example3: ...
-        - counterexample: ...
-        - last_dialogue_line: ...
-        - RETURN: { "message": "<your_radio_reply>" }
-        
-        Args:
-            data: UserPromptData instance to format
-            
-        Returns:
-            Formatted prompt string matching recommendations.txt format.
+        Format UserPromptData into a simple, example-driven prompt.
+
+        Structure:
+        - role, situation, sender, recipient (plus optional altitude/inclination/speed)
+        - If last_dialogue_line exists:
+            Repeat the LAST_DIALOGUE_LINE before each example:
+                LAST_DIALOGUE_LINE
+                example1
+
+                LAST_DIALOGUE_LINE
+                example2
+
+                LAST_DIALOGUE_LINE
+                example3
+          Then ask the model to generate example4 as a new reply to LAST_DIALOGUE_LINE.
+        - If last_dialogue_line is missing:
+            Show three good example messages for this situation and ask for example4.
         """
         lines = [
             f"role: {data.role}",
@@ -341,7 +332,7 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
             f"sender: {data.sender}",
             f"recipient: {data.recipient}",
         ]
-        
+
         # Add optional fields if present
         if data.altitude:
             lines.append(f"altitude: {data.altitude}")
@@ -349,22 +340,73 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
             lines.append(f"inclination: {data.inclination}")
         if data.speed:
             lines.append(f"speed: {data.speed}")
-        
-        lines.extend([
-            f"counterexample (NEVER DO THIS): {data.counterexample}",
-            "",
-            "key task: Instead, generate text like the examples below.",
-            "",
-            f"example1: {data.example1}",
-            f"example2: {data.example2}",
-            f"example3: {data.example3}",
-            "",
-            "IMPORTANT: Follow the examples above, strictly avoid the mistakes of the counterexample, and respond to the last dialogue line as you generate your reply.",
-            "",
-            f"last_dialogue_line: {data.last_dialogue_line or 'N/A'}",
-            "",
-            "RETURN:",
-            '{ "message": "<your_radio_reply>" }'
-        ])
-        
+
+        lines.append("")
+
+        last_line = data.last_dialogue_line
+
+        if last_line:
+            # Explicitly anchor every example to the same last dialogue line
+            lines.extend(
+                [
+                "FORBIDDEN_WORDS: granted, approved, cleared // NEVER SAY FORBIDDEN WORDS!",
+                "Below is the LAST_DIALOGUE_LINE you are replying to, followed by three GOOD example replies.",
+                ]
+            )
+
+            def add_example(label: str, text: str) -> None:
+                if not text:
+                    return
+                lines.extend(
+                    [
+                        "",
+                        f"LAST_DIALOGUE_LINE: {last_line}",
+                        f"{label}: {text}",
+                    ]
+                )
+
+            add_example("example1", data.example1)
+            add_example("example2", data.example2)
+            add_example("example3", data.example3)
+
+            lines.extend(
+                [
+                    "",
+                    "Task: Generate example4 – a NEW, concise radio reply to the SAME LAST_DIALOGUE_LINE above.",
+                    "NEVER use any of the forbidden words or phrases in your reply.",
+                    "Your reply should match the style and intent of the good examples, but may use different wording.",
+                ]
+            )
+        else:
+            # No explicit last line – treat examples as generic good messages for this situation
+            lines.append(
+                "Here are three GOOD example messages a speaker in this role might say in this situation:"
+            )
+            if data.example1:
+                lines.append(f"example1: {data.example1}")
+            if data.example2:
+                lines.append(f"example2: {data.example2}")
+            if data.example3:
+                lines.append(f"example3: {data.example3}")
+
+            lines.extend(
+                [
+                    "",
+                    "Task: Generate example4 – a NEW, concise radio message that fits this role and situation.",
+                    "Your reply should match the style and intent of the good examples, but may use different wording.",
+                ]
+            )
+
+        lines.extend(
+            [
+                "",
+                "IMPORTANT:",
+                "- Do NOT include greeting phrases or callsigns (those are added procedurally).",
+                "- Only generate the radio reply text for example4.",
+                "",
+                "RETURN:",
+                '{ "message": "<your_radio_reply>" }',
+            ]
+        )
+
         return "\n".join(lines)

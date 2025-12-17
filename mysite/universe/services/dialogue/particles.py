@@ -50,7 +50,7 @@ class PilotRequest(DialogueParticle):
         maneuver = self.nav_context.get("maneuver_type", "maneuver")
         current = self.nav_context.get("current_location", "current location")
         
-        return f"{sender} is a ship intending to fly to {destination} from {current}. The {sender} needs permission from {self.recipient} to {maneuver.lower()}."
+        return f"{sender} is a ship intending to fly to {destination} from {current}. The {sender} is asking for permission from {self.recipient} to {maneuver.lower()}. CRITICAL: the sender MUST NEVER grant themselves permission; they MUST ask or request."
     
     def generate_procedural_greeting(self) -> str:
         """
