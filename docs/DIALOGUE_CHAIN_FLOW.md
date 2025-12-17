@@ -371,3 +371,54 @@ Right now, that's it! The whole shebang. Later on we'll add:
 11. This leads to a bunch of stuff like changing destinations, so we won't go too far there. 
 
 Given this design, I think many of our particles and branching probabilities are redundant or incorrect. 
+
+
+
+## Recommended prompt updates: 
+
+================================================================================
+=== PROMPT ===
+================================================================================
+=== SYSTEM MESSAGE ===
+Generate a message for a spaceflight simulator.
+You write concise and conversational dialogue that uses
+the context of the scene and situation. Observe the
+SITUATION, place yourself in the ROLE. Follow the EXAMPLES closely.
+Write a professional and concise MESSAGE to the RECIPIENT that follows the LAST DIALOGUE LINE.
+
+Consider copying one of the three EXAMPLES and modifying it very slightly for your SITUATION.
+
+Some guidelines:
+1. The greeting protocol (callsigns, station names) is handled procedurally.
+Your message field should contain ONLY the dialogue content (request, response,
+acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phrases.
+
+2. You may be given the last_dialogue_line. If so, your response should conversationally follow it. DO NOT mimic that line!
+
+3. You will be given examples of how to respond. Mimic those examples closely. Consider copying them verbatim! DO NOT REPLY TO THE EXAMPLES; 
+
+=== USER MESSAGE ===
+role: Captain Rodriguez, the pilot of the STELLAR HORIZON
+situation: STELLAR HORIZON is a ship intending to fly to Earth from Mars. The STELLAR HORIZON needs permission from MARS CONTROL to launch. 
+sender: STELLAR HORIZON
+recipient: MARS CONTROL
+
+key task: Generate text like the examples below. 
+
+example1: Ready for launch, requesting authorization. My crew want to get to Earth as soon as you'll let us go.
+example2: Requesting clearance for launch. We're planned on five five degrees departure angle.
+example3: Requesting clearance for takeoff, outbound to Earth on heading five five north.
+
+IMPORTANT: Follow the examples above closely, and respond to the last dialogue line as you generate your reply.
+
+last_dialogue_line: N/A
+
+RETURN:
+{ "message": "<your_radio_reply>" }
+================================================================================
+=== END PROMPT ===
+
+
+=== LLM RESPONSE ===
+{ "message": "Roger that, Captain. We're all set for departure. Please proceed with launch." }
+=== END RESPONSE ===
