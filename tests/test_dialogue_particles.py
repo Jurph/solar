@@ -85,7 +85,7 @@ class TestPilotRequestParticles(DialogueParticleTest):
     def test_launch_request_examples_integrate_context_values(self):
         """Test that examples incorporate nav_context values when provided."""
         self.nav_context["destination"] = "Saturn"
-        self.nav_context["azimuth"] = "ninety"
+        self.nav_context["azimuth_deg"] = 90  # Use numeric value and correct key name
         particle = LaunchRequest(
             actor=self.pilot,
             recipient="MARS CONTROL",
@@ -94,9 +94,9 @@ class TestPilotRequestParticles(DialogueParticleTest):
         examples = particle.get_examples()
         # At least some examples should reference the context values
         destination_found = any("Saturn" in ex for ex in examples)
-        azimuth_found = any("ninety" in ex.lower() for ex in examples)
+        azimuth_found = any("90" in ex or "ninety" in ex.lower() for ex in examples)
         self.assertTrue(destination_found, "Examples should incorporate destination from nav_context")
-        self.assertTrue(azimuth_found, "Examples should incorporate azimuth from nav_context")
+        self.assertTrue(azimuth_found, "Examples should incorporate azimuth_deg from nav_context")
     
     def test_examples_are_diverse(self):
         """Test that examples are not all identical templates."""

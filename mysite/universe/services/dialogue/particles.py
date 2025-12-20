@@ -118,17 +118,17 @@ class LaunchRequest(PilotRequest):
         """
         origin = self.nav_context.get("current_location", "current location")
         destination = self.nav_context.get("destination", "destination")
-        azimuth = self.nav_context.get("azimuth", "five five")
+        azimuth = self.nav_context.get("azimuth_deg", "zero nine zero")
         
         return [
-            f"Requesting permission for lift-off on {azimuth} degrees north.",
-            f"We're planned for {azimuth} degrees departure angle, prepped for launch, and awaiting your clearance.",
-            f"Request launch clearance to outbound {azimuth} degrees north, heading to {destination}.",
-            f"Requesting clearance for launch. We're planned on {azimuth} degrees departure angle.",
-            f"Ready for launch, requesting authorization. My crew want to get to {destination} as soon as you'll let us go.",
-            f"Requesting clearance for takeoff, outbound to {destination} on heading {azimuth} north.",
-            f"Our launch window opened up about a minute ago, and I've got our azimuth keyed in. Permission to launch, please?",
-            f"Standing by on {origin}. Requesting clearance for launch, bound for {destination} on heading {azimuth} north.",
+            f"Requesting launch clearance. We're planned for {azimuth} degrees departure, bound for {destination}. Standing by for your go.",
+            f"Ready for launch, requesting authorization. Our flight plan calls for {azimuth} degrees departure angle to {destination}.",
+            f"Requesting clearance for lift-off. We're filed for {azimuth} degrees departure lane, heading to {destination}.",
+            f"Standing by on {origin}. Requesting launch clearance on {azimuth} degrees departure lane, bound for {destination}.",
+            f"Ready for launch, requesting clearance. Our departure azimuth is {azimuth} degrees, destination {destination}.",
+            f"Requesting permission to launch. We're planned on {azimuth} degrees departure angle, outbound for {destination}.",
+            f"Our launch window is open. Requesting clearance for {azimuth} degrees departure lane to {destination}.",
+            f"Requesting launch authorization. We're prepped for {azimuth} degrees departure, destination {destination}.",
         ]
     
     def get_counterexample(self) -> str:
@@ -186,16 +186,18 @@ class CircularizationRequest(PilotRequest):
         Returns:
             List of example circularization request dialogue strings.
         """
-        altitude_km = 200
-        inclination_deg = 20
+        # Get current inclination if available, otherwise use placeholder
+        current_inclination = self.nav_context.get("current_inclination_deg", "twenty")
+        if isinstance(current_inclination, (int, float)):
+            current_inclination = f"{int(current_inclination)}"
         
         return [
-            f"Requesting clearance for circularization burn to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"Ready for circularization, looks like we can hit {altitude_km} kilometers and {inclination_deg} degrees pretty easily. Does that work for you?",
-            f"Coasting to apogee. Requesting permission to circularize orbit to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"Clearance to circularize to {altitude_km} by {inclination_deg}, please.",
-            f"Ascent burn was clean. My nav computer shows {inclination_deg} degrees inclination and {altitude_km} kilometers is my minimum-energy burn. Any problem clearing me for that orbit?",
-            f"Approaching apogee on {inclination_deg} degrees inclination. Request clearance to circularize orbit to {altitude_km} kilometers."
+            f"We're suborbital and planning to circularize. Our current inclination is {current_inclination} degrees. Can you give us an approved orbit?",
+            f"Approaching apogee, requesting clearance to circularize. We're at {current_inclination} degrees inclination. What orbit parameters do you want us to target?",
+            f"Coasting to apogee. Our inclination is {current_inclination} degrees. Requesting permission to circularize - can you specify the approved altitude?",
+            f"We're ready for circularization burn. Currently at {current_inclination} degrees inclination. Requesting clearance and orbit parameters.",
+            f"Ascent burn complete. We're suborbital at {current_inclination} degrees inclination. Can you give us clearance and an approved circularization orbit?",
+            f"Requesting circularization clearance. We're approaching apogee on {current_inclination} degrees inclination. What orbit do you want us to establish?",
         ]
     
     def get_counterexample(self) -> str:
@@ -228,16 +230,15 @@ class SublightRequest(PilotRequest):
         Returns:
             List of example sublight request dialogue strings.
         """
-        sender = self.get_sender_callsign()
-        recipient = self.recipient
         destination = self.nav_context.get("destination", "destination")
         
         return [
-            f"{recipient}, this is {sender}, requesting clearance for sublight burn to {destination}.",
-            f"{recipient}, {sender}. Ready for sublight transit, requesting authorization.",
-            f"{recipient}, {sender} here. Requesting permission to begin sublight burn toward {destination}.",
-            f"{recipient}, {sender}. Request clearance for sublight maneuver.",
-            f"{recipient}, this is {sender}, orbit is stable. Requesting clearance to initiate sublight burn for {destination}.",
+            f"Orbit is stable. We're outbound for {destination}. Can you give us a heading for departure and clear us to depart?",
+            f"Requesting clearance for sublight burn. We're bound for {destination}. What departure parameters do you want us to use?",
+            f"Ready for sublight transit to {destination}. Requesting clearance and departure heading.",
+            f"We're planning sublight burn outbound for {destination}. Can you give us departure clearance and a heading?",
+            f"Orbit is circular. Requesting permission to begin sublight burn toward {destination}. What departure angle should we use?",
+            f"Requesting sublight clearance. We're outbound for {destination}. Can you specify our departure heading?",
         ]
     
     def get_counterexample(self) -> str:
@@ -266,13 +267,16 @@ class InsertionRequest(PilotRequest):
             List of example insertion request dialogue strings.
         """
         destination = self.nav_context.get("destination", "destination")
+        current_inclination = self.nav_context.get("current_inclination_deg", "twenty")
+        if isinstance(current_inclination, (int, float)):
+            current_inclination = f"{int(current_inclination)}"
         
         return [
-            f"Requesting clearance for insertion burn into {destination} orbit.",
-            f"Ready for orbital insertion, requesting authorization.",
-            f"Requesting permission for insertion maneuver into {destination} orbit.",
-            f"Request insertion burn clearance for {destination}.",
-            f"Approaching {destination}. Requesting clearance for insertion burn.",
+            f"Approaching {destination}. Requesting clearance for insertion burn. Can you give us approved orbit parameters?",
+            f"Ready for orbital insertion at {destination}. Our current inclination is {current_inclination} degrees. What orbit do you want us to establish?",
+            f"Requesting permission for insertion maneuver into {destination} orbit. Can you specify the target altitude and inclination?",
+            f"Entering {destination} sphere of influence. Requesting insertion clearance and orbit parameters.",
+            f"Approaching {destination}. We're at {current_inclination} degrees inclination. Requesting clearance for insertion burn - what orbit should we target?",
         ]
     
     def get_counterexample(self) -> str:
@@ -301,13 +305,16 @@ class DeorbitRequest(PilotRequest):
             List of example deorbit request dialogue strings.
         """
         destination = self.nav_context.get("destination", "destination")
+        current_altitude = self.nav_context.get("current_altitude_km", "two hundred")
+        if isinstance(current_altitude, (int, float)):
+            current_altitude = f"{int(current_altitude)}"
         
         return [
-            f"Requesting clearance for deorbit burn.",
-            f"Ready for deorbit, requesting authorization.",
-            f"Requesting permission to deorbit for {destination}.",
-            f"Request deorbit burn clearance.",
-            f"Orbit is stable. Requesting clearance to begin deorbit sequence.",
+            f"Orbit is stable at {current_altitude} kilometers. Requesting clearance for deorbit burn to {destination}. Can you give us entry parameters?",
+            f"Ready for deorbit, requesting authorization. We're at {current_altitude} kilometers altitude. What entry angle do you want us to use?",
+            f"Requesting permission to deorbit for {destination}. Currently at {current_altitude} kilometers. Can you specify the deorbit burn parameters?",
+            f"Request deorbit burn clearance. We're at {current_altitude} kilometers. What entry corridor should we target?",
+            f"Orbit is stable. Requesting clearance to begin deorbit sequence to {destination}. Can you give us approved entry parameters?",
         ]
     
     def get_counterexample(self) -> str:
@@ -338,11 +345,11 @@ class LandingRequest(PilotRequest):
         destination = self.nav_context.get("destination", "destination")
         
         return [
-            f"Requesting clearance for landing on {destination}.",
-            f"Ready for landing approach, requesting authorization.",
-            f"Requesting permission to land on {destination}.",
-            f"Request landing clearance.",
-            f"Deorbit complete. Requesting clearance for final approach and landing.",
+            f"Deorbit complete. Requesting clearance for final approach and landing on {destination}. Can you give us approach parameters?",
+            f"Ready for landing approach to {destination}, requesting authorization and approach heading.",
+            f"Requesting permission to land on {destination}. Can you specify our approach vector?",
+            f"Request landing clearance for {destination}. What approach parameters should we use?",
+            f"On final approach to {destination}. Requesting landing clearance and approach instructions.",
         ]
     
     def get_counterexample(self) -> str:
@@ -375,9 +382,9 @@ class GenericRequest(PilotRequest):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         
         return [
-            f"Requesting clearance for {maneuver}.",
-            f"Ready for {maneuver}, requesting authorization.",
-            f"Requesting clearance for {maneuver} maneuver.",
+            f"Requesting clearance for {maneuver}. Can you give us approved parameters?",
+            f"Ready for {maneuver}, requesting authorization and maneuver parameters.",
+            f"Requesting clearance for {maneuver} maneuver. What parameters should we use?",
         ]
     
     def get_counterexample(self) -> str:
@@ -937,15 +944,13 @@ class CommsCheckRequest(PilotRequest):
         Returns:
             List of example comms check dialogue strings.
         """
-        recipient = self.recipient
-        
         return [
             f"Performing routine comms check, do you copy?",
             f"Comms check, please respond.",
-            f"I'm calibrating my receivers, {recipient}, can you give me a tone?",
-            f"Requesting comms check, {recipient}, please respond.",
-            f"{recipient}, comms check on this channel please?",
-            f"Comms check, {recipient}, is this a working channel?",
+            f"I'm calibrating my receivers, can you give me a tone?",
+            f"Requesting comms check, please respond.",
+            f"Comms check on this channel please?",
+            f"Comms check, is this a working channel?",
         ]
     
     def get_counterexample(self) -> str:
