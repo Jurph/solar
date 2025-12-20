@@ -756,12 +756,15 @@ class RadioReadback(DialogueParticle):
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         if not maneuver:
             maneuver = "maneuver"
-        inclination_deg = self.nav_context.get("inclination_deg", "inclination")
+        
+        # Use None as default so falsy check works correctly
+        inclination_deg = self.nav_context.get("inclination_deg")
         if not inclination_deg:
-            inclination_deg = "45"
-        altitude_km = self.nav_context.get("altitude_km", "altitude")
+            inclination_deg = random.randint(15, 45)
+        
+        altitude_km = self.nav_context.get("altitude_km")
         if not altitude_km:
-            altitude_km = "150"
+            altitude_km = random.randint(200, 500)
             
         if maneuver in ["launch", "direct_ascent"]:
             verb = "launch"
