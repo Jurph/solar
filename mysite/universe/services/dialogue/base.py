@@ -349,7 +349,6 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
             # Explicitly anchor every example to the same last dialogue line
             lines.extend(
                 [
-                "FORBIDDEN_WORDS: granted, approved, cleared // NEVER SAY FORBIDDEN WORDS!",
                 "Below is the LAST_DIALOGUE_LINE you are replying to, followed by three GOOD example replies.",
                 ]
             )
