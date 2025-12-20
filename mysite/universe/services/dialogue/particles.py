@@ -7,7 +7,7 @@ DialogueParticle and implement the abstract methods.
 """
 import random
 from typing import List, Dict, Optional
-from .base import DialogueParticle
+from .base import DialogueParticle, UserPromptData
 
 
 class PilotRequest(DialogueParticle):
@@ -91,6 +91,43 @@ class PilotRequest(DialogueParticle):
             "response": 0.95,      # Usually approved quickly
             "hold_response": 0.05,  # Sometimes held (traffic, hazards)
         }
+    
+    def format_user_prompt(self, data: UserPromptData) -> str:
+        """
+        Format user prompt with pilot-specific forbidden words instruction.
+        
+        Adds a forbidden words section to prevent pilots from granting themselves
+        clearance or using controller language.
+        """
+        # Get the base prompt from parent class
+        prompt = super().format_user_prompt(data)
+        
+        # Insert forbidden words section right after role/situation/sender/recipient
+        # The base format always has: role, situation, sender, recipient, optional fields, empty line,
+        # then either "Below is the LAST_DIALOGUE_LINE" or "Here are three GOOD example"
+        lines = prompt.split('\n')
+        
+        # Find the empty line that comes right before the examples section
+        # Look for lines that start with "Below is" or "Here are" - the empty line is just before them
+        insert_index = None
+        for i, line in enumerate(lines):
+            if line.startswith("Below is the LAST_DIALOGUE_LINE") or line.startswith("Here are three GOOD example messages"):
+                # The empty line should be 1-2 lines before this
+                if i > 0 and lines[i-1].strip() == "":
+                    insert_index = i - 1
+                    break
+        
+        if insert_index is not None:
+            forbidden_section = [
+                "",
+                "FORBIDDEN WORDS: cleared, approved, denied, authorized",
+                "BETTER CHOICES: maneuvering, burning, executing, requesting, standing by",
+                "CRITICAL: You are REQUESTING clearance, never GRANTING or APPROVING clearance. Even when clearance has been granted to you, you reply that you're COMPLYING or EXECUTING.",
+            ]
+            # Insert the forbidden section
+            lines[insert_index:insert_index] = forbidden_section
+        
+        return '\n'.join(lines)
 
 
 # ============================================================================
@@ -690,7 +727,8 @@ class RadioReadback(DialogueParticle):
         """
         ship_name = self.get_sender_callsign()
         pilot_name = self.actor.name
-        return f"{pilot_name}, the pilot of the {ship_name}"
+        controller_name = self.recipient
+        return f"{pilot_name}, the pilot of the {ship_name} is reassuring {controller_name} that they are executing the approved course of action."
     
     def get_situation_description(self) -> str:
         """
@@ -705,7 +743,7 @@ class RadioReadback(DialogueParticle):
         sender = self.get_sender_callsign()
         recipient = self.recipient
         
-        return f"{sender} has received specific instructions from {recipient}. {sender} reads back a concise summary of any technical details from the last dialogue line." 
+        return f"{sender} has received specific instructions from {recipient}. {sender} reads back a concise summary of any technical details from the last dialogue line. You are replying that you are DOING the maneuver. It's not important to tell the Controller that you are approved (they already know this!). They need to know that you are ACTING on the approval." 
     
     def get_examples(self) -> List[str]:
         """
