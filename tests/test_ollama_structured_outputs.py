@@ -2,6 +2,7 @@
 import json
 import yaml
 import requests
+import pytest
 from unittest import TestCase
 from mysite.universe.schemas.dialogue_schema import DialogueMessage
 
@@ -72,8 +73,13 @@ Respond naturally and in character."""
         # Parse JSON
         return json.loads(response_text)
     
+    @pytest.mark.slow
     def test_basic_json_response(self):
-        """Trivial test: Verify Ollama returns valid JSON at all with structured outputs."""
+        """Trivial test: Verify Ollama returns valid JSON at all with structured outputs.
+        
+        NOTE: This test makes a real LLM call and typically takes 3-5 seconds.
+        Marked as slow - skip with: pytest -m "not slow"
+        """
         instruction = "Say something back."
         
         result = self._call_ollama_with_schema(instruction)
@@ -94,8 +100,13 @@ Respond naturally and in character."""
         self.assertIsNotNone(dialogue_msg)
         self.assertIsNotNone(dialogue_msg.message)
     
+    @pytest.mark.slow
     def test_satellite_beep_boop(self):
-        """Test: Satellite should echo back 'BEEP BOOP'."""
+        """Test: Satellite should echo back 'BEEP BOOP'.
+        
+        NOTE: This test makes a real LLM call and typically takes 3-5 seconds.
+        Marked as slow - skip with: pytest -m "not slow"
+        """
         instruction = """
         You are a satellite. Your response should be exactly 'BEEP BOOP'.
         Do not include any other text or punctuation. No emojis! 
@@ -129,8 +140,13 @@ Respond naturally and in character."""
         self.assertIsNotNone(dialogue_msg)
         self.assertIsNotNone(dialogue_msg.message)
     
+    @pytest.mark.slow
     def test_readback_confirmation(self):
-        """Test: Confirmation with readback of specific instructions."""
+        """Test: Confirmation with readback of specific instructions.
+        
+        NOTE: This test makes a real LLM call and typically takes 3-5 seconds.
+        Marked as slow - skip with: pytest -m "not slow"
+        """
         instruction = "You are a pilot confirming instructions. Safety protocol requires you to read back '150km orbit' and confirm you understood."
         
         result = self._call_ollama_with_schema(instruction)
