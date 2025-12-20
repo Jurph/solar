@@ -103,7 +103,6 @@ class Command(BaseCommand):
                 timestamp=5.0,
                 actor=pilot,
                 text="Control, this is Test Ship requesting clearance for departure.",
-                expect_reply=True,
                 duration=2.0,
                 event_type="dialogue",
             ),
@@ -111,7 +110,6 @@ class Command(BaseCommand):
                 timestamp=10.0,
                 actor=controller,
                 text="Test Ship, you are cleared for departure. Proceed on heading 270.",
-                expect_reply=True,
                 duration=3.0,
                 event_type="dialogue",
             ),
@@ -119,7 +117,6 @@ class Command(BaseCommand):
                 timestamp=15.0,
                 actor=pilot,
                 text="Copy that Control, heading 270. Test Ship out.",
-                expect_reply=False,
                 duration=2.0,
                 event_type="dialogue",
             ),
@@ -163,26 +160,16 @@ class SimulationQueue:
         
         For each event:
         1. Remove it from the queue
-        2. Call its process() method
-        3. If process() returns new events, add them to the queue
-        4. Emit appropriate signal based on event type
+        2. Emit appropriate signal based on event type
+        
+        Note: Dialogue chains are generated complete upfront, so events don't
+        generate follow-up events. The queue just emits signals for each event.
         """
         while self._queue and self._queue[0][0] <= current_time:  # First element is timestamp
             event = self.get_next_event()
             
-            # First process the event and handle any returned events
             try:
-                result = event.process()
-                if result:
-                    # If process() returns a list of events, add them all
-                    if isinstance(result, list):
-                        for new_event in result:
-                            self.add_event(new_event)
-                    # If process() returns a single event, add it
-                    else:
-                        self.add_event(result)
-                
-                # Then emit the appropriate signal for this event
+                # Emit the appropriate signal for this event
                 if isinstance(event, DialogueEvent):
                     dialogue_event_processed.send(sender=SimulationQueue, event=event)
                 elif isinstance(event, NavigationEvent):

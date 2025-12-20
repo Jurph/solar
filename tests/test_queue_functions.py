@@ -11,7 +11,7 @@ from mysite.universe.management.commands.start_simulation_loop import (
     DIALOGUE_EVENTS_RECEIVED,
     SimulationQueue,
 )
-from mysite.universe.models.actor import Pilot, Controller, Satellite
+from mysite.universe.models.actor import Pilot, Controller
 from mysite.universe.models.base import Location
 from mysite.universe.models.event import DialogueEvent, NavigationEvent
 from mysite.universe.models.ship import Ship
@@ -68,17 +68,14 @@ class TestSimulationQueue(TestCase):
                 timestamp=10,
                 actor=self.pilot,
                 text="Requesting clearance for departure",
-                expect_reply=True,
                 duration=2.0,
                 event_type="dialogue",
                 metadata={"order": "first_event", "control_name": self.controller.name},
-                expected_reply_actor=self.controller
             ),
             DialogueEvent(
                 timestamp=12,
                 actor=self.controller,
                 text="Clearance granted",
-                expect_reply=False,
                 duration=1.5,
                 event_type="dialogue",
                 metadata={"order": "second_event"}
@@ -101,7 +98,6 @@ class TestSimulationQueue(TestCase):
             timestamp=5.0,
             actor=self.pilot,
             text="Test message",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue"
         )
@@ -232,7 +228,6 @@ def test_queue_processes_events_in_order():
             timestamp=30,
             actor=dummy_actor,
             text="Third event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "third"}
@@ -241,7 +236,6 @@ def test_queue_processes_events_in_order():
             timestamp=10,
             actor=dummy_actor,
             text="First event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "first"}
@@ -250,7 +244,6 @@ def test_queue_processes_events_in_order():
             timestamp=20,
             actor=dummy_actor,
             text="Second event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "second"}
@@ -280,7 +273,6 @@ def test_queue_processes_only_due_events():
             timestamp=10, 
             actor=dummy_actor,
             text="First event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "first"}
@@ -289,7 +281,6 @@ def test_queue_processes_only_due_events():
             timestamp=20, 
             actor=dummy_actor,
             text="Second event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "second"}
@@ -298,7 +289,6 @@ def test_queue_processes_only_due_events():
             timestamp=30, 
             actor=dummy_actor,
             text="Third event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "third"}
@@ -307,7 +297,6 @@ def test_queue_processes_only_due_events():
             timestamp=40, 
             actor=dummy_actor,
             text="Fourth event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "fourth"}
@@ -316,7 +305,6 @@ def test_queue_processes_only_due_events():
             timestamp=50, 
             actor=dummy_actor,
             text="Fifth event",
-            expect_reply=False,
             duration=1.0,
             event_type="dialogue",
             metadata={"order": "fifth"}
@@ -370,7 +358,6 @@ def dummy_event():
         timestamp=5.0,
         actor=actor,
         text="Dummy message",
-        expect_reply=False,
         duration=1.0,
         event_type="dialogue",
     )
@@ -439,68 +426,40 @@ def test_simulation_loop_with_injected_time(dummy_event):
     assert len(command.dialogue_events_received) == 1
 
 @pytest.mark.django_db
-def test_pilot_satellite_dialogue():
+def test_dialogue_event_emits_signal():
     """
-    Test that a Pilot's dialogue with a Satellite generates the expected reply.
-    The Satellite should respond with 'BEEP BOOP' 5 seconds after the pilot's message.
+    Test that processing a DialogueEvent emits the dialogue_event_processed signal.
+    
+    This verifies the signal handler (DIALOGUE_EVENTS_RECEIVED) receives events
+    when they are processed by SimulationQueue.
     """
     # Clear any existing dialogue events
     DIALOGUE_EVENTS_RECEIVED.clear()
     
-    # Create our test actors
+    # Create a test actor
     from mysite.universe.models.base import Location
-    # Create a dummy location
     location = Location.objects.create(name="Test Location")
-    
-    # Create the ship with the dummy location
     ship = Ship.objects.create(name="Test Ship", current_location=location)
-    
     pilot = Pilot.create(ship=ship)
     pilot.name = "Test Pilot"
     pilot.save()
-    satellite = Satellite.create(name="Nav Beacon J5")
     
-    # Create the queue
+    # Create the queue and event
     queue = SimulationQueue()
-    
-    # Create pilot's initial dialogue event
-    pilot_event = DialogueEvent(
-        timestamp=10.0,
+    event = DialogueEvent(
+        timestamp=5.0,
         actor=pilot,
-        text="Nav Beacon J5, requesting status check, over.",
-        expect_reply=True,
+        text="Control, this is Test Ship, requesting status.",
         duration=2.0,
         event_type="dialogue",
-            metadata={
-                "reply_actor_name": "Nav Beacon J5",  # Specify which actor should reply
-                "expected_reply": "BEEP BOOP",  # What we expect the satellite to say
-                "ship_name": ship.name.upper(),  # Include ship name for recipient identification
-                "reply_delay": 5.0  # 5 second delay for satellite reply
-            },
-        expected_reply_actor=satellite  # Directly attach the reply actor
     )
     
-    # Add the event to the queue
-    queue.add_event(pilot_event)
+    # Add and process the event
+    queue.add_event(event)
+    queue.process_due_events(5.1)
     
-    # Process events up to just after the pilot's message
-    queue.process_due_events(10.1)
-    
-    # Verify pilot's message was processed
+    # Verify signal was emitted and received
     assert len(DIALOGUE_EVENTS_RECEIVED) == 1
     assert DIALOGUE_EVENTS_RECEIVED[0].actor == pilot
-    assert "requesting status check" in DIALOGUE_EVENTS_RECEIVED[0].text
-    
-    # Process events up to when we expect the satellite's reply (5 seconds after message ends)
-    # Reply timestamp = 10.0 (start) + 2.0 (duration) + 5.0 (delay) = 17.0
-    queue.process_due_events(17.1)
-    
-    # Verify satellite replied
-    assert len(DIALOGUE_EVENTS_RECEIVED) == 2
-    satellite_reply = DIALOGUE_EVENTS_RECEIVED[1]
-    assert satellite_reply.actor == satellite
-    # Satellite response includes greeting: "{recipient}, {satellite_name}. {message}"
-    # For "Nav Beacon J5", the message should be "BEEP BOOP"
-    assert "BEEP BOOP" in satellite_reply.text
-    assert satellite_reply.timestamp == pytest.approx(17.0)  # 5 seconds after pilot's message (10.0 + 2.0 duration + 5.0 delay)
-    assert not satellite_reply.expect_reply  # Satellite doesn't expect a reply
+    assert "requesting status" in DIALOGUE_EVENTS_RECEIVED[0].text
+    assert DIALOGUE_EVENTS_RECEIVED[0].timestamp == pytest.approx(5.0)

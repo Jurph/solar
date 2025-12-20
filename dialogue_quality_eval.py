@@ -59,22 +59,12 @@ def ensure_controllers_exist(quiet=False):
 
 def process_dialogue_chain(initial_event: DialogueEvent) -> List[DialogueEvent]:
     """
-    Process a dialogue event and handle satellite replies if needed.
+    Process a dialogue event.
     
-    NOTE: Dialogue chains are now generated COMPLETE upfront by parse_navigation_events().
-    This function only handles special cases like satellite comms checks (BEEP BOOP).
-    For normal controller/pilot chains, the events are already complete.
+    NOTE: Dialogue chains are generated COMPLETE upfront by parse_navigation_events().
+    This function just wraps the event in a list for API compatibility.
     """
-    events = [initial_event]
-    
-    # Only process replies for special cases (e.g., satellites)
-    # Normal dialogue chains are already complete from parse_navigation_events()
-    if initial_event.expect_reply:
-        reply = initial_event.expect_reply_action()
-        if reply:
-            events.append(reply)
-    
-    return events
+    return [initial_event]
 
 
 def print_run_header(run_number: int, total_runs: int, temperature: float, model: str = None):
@@ -200,7 +190,7 @@ def main():
             # Generate initial dialogue events from navigation events
             script_events = script_service.parse_navigation_events(route_events, ship)
             
-            # Insert comms check event
+            # Insert comms check chain using the particle system
             if len(script_events) > 0:
                 comms_check_position = min(3, len(script_events) - 1)
                 comms_check_timestamp = script_events[comms_check_position].timestamp + 5.0
@@ -211,36 +201,21 @@ def main():
                 if not satellite:
                     satellite = Satellite.create(name=satellite_name)
                 
-                comms_check_event = DialogueEvent(
-                    timestamp=comms_check_timestamp,
-                    actor=pilot,
-                    text=f"Relay Satellite Alpha, this is {ship.name}. Performing routine comms check, please respond.",
-                    expect_reply=True,
-                    duration=2.0,
-                    event_type="dialogue",
-                    metadata={
-                        "type": "comms_check",
-                        "reply_actor_name": satellite.name,
-                    },
-                    expected_reply_actor=satellite
+                # Generate complete comms check chain using the particle system
+                comms_check_events = script_service.generate_comms_check_chain(
+                    pilot=pilot,
+                    satellite=satellite,
+                    ship=ship,
+                    base_timestamp=comms_check_timestamp,
                 )
-                script_events.insert(comms_check_position + 1, comms_check_event)
+                
+                # Insert the comms check events into the script events
+                for i, comms_event in enumerate(comms_check_events):
+                    script_events.insert(comms_check_position + 1 + i, comms_event)
             
-            # Process all dialogue events immediately (no timing/queue)
-            # NOTE: script_events already contains COMPLETE dialogue chains from parse_navigation_events()
-            # We only need to handle special cases like satellite comms checks
-            all_dialogue_events = []
+            # All dialogue events are already complete chains
+            all_dialogue_events = script_events
             event_counter = 1
-            
-            for event in script_events:
-                # For normal dialogue events, chains are already complete - just add them
-                # For special cases (e.g., comms checks), process any satellite replies
-                if event.expect_reply and event.metadata.get("type") == "comms_check":
-                    dialogue_chain = process_dialogue_chain(event)
-                    all_dialogue_events.extend(dialogue_chain)
-                else:
-                    # Normal dialogue chain - already complete
-                    all_dialogue_events.append(event)
             
             # Print all dialogue events for this run
             for event in all_dialogue_events:

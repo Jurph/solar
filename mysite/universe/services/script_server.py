@@ -144,14 +144,11 @@ class ScriptService:
             # Determine actor based on role
             if msg.role == Role.PILOT:
                 actor = pilot
-                expected_reply_actor = satellite
             elif msg.role == Role.SATELLITE:
                 actor = satellite
-                expected_reply_actor = pilot
             else:
                 # Fallback
                 actor = pilot
-                expected_reply_actor = satellite
             
             # Build metadata
             metadata = {
@@ -167,11 +164,9 @@ class ScriptService:
                 timestamp=base_timestamp + relative_time_offset,
                 actor=actor,
                 text=msg.message,
-                expect_reply=(i == 0),  # Only first event expects reply
                 duration=2.0,
                 event_type="dialogue",
                 metadata=metadata,
-                expected_reply_actor=expected_reply_actor if i == 0 else None,
             )
             events.append(event)
         
@@ -356,14 +351,11 @@ class ScriptService:
             # Determine actor based on role
             if msg.role == Role.PILOT:
                 actor = pilot
-                expected_reply_actor = controller
             elif msg.role == Role.CONTROLLER:
                 actor = controller
-                expected_reply_actor = pilot
             else:
                 # Fallback
                 actor = pilot
-                expected_reply_actor = controller
             
             if not actor:
                 raise ValueError(f"Cannot determine actor for message {i}: {msg.role}")
@@ -398,17 +390,11 @@ class ScriptService:
                     if v is not None and (not isinstance(v, dict) or any(v.values()))
                 }
             
-            # Determine if this event expects a reply
-            # Last event in chain doesn't expect reply, others do
-            expect_reply = (i < len(messages_with_timing) - 1)
-            
             # Use relative time offset directly (will be mapped to absolute timestamp by parse_navigation_events)
             event = DialogueEvent(
                 timestamp=relative_time_offset,
                 actor=actor,
                 text=msg.message,  # Natural language message text
-                expect_reply=expect_reply,
-                expected_reply_actor=expected_reply_actor if expect_reply else None,
                 duration=default_duration,  # TODO: Get actual particle duration
                 event_type="dialogue",
                 metadata=metadata
