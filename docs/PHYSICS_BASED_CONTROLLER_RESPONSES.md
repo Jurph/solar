@@ -189,33 +189,43 @@ From `PhysicalBody` orbital properties:
 
 ## Implementation Plan
 
-### Phase 1: Helper Methods on PhysicalBody
+### Phase 1: Helper Methods on PhysicalBody ✅
 
-Add methods to calculate orbital parameters:
+Added methods to calculate orbital parameters:
 
--- rewrite based on my instructions above -- 
+- `get_atmosphere()` - Get Atmosphere object for this body
+- `get_min_safe_orbit_km()` - Calculate minimum safe orbital altitude
+- `get_leo_band_altitude_km(lane_number)` - Get LEO band altitude in 10km increments (lanes 1-50)
+- `get_launch_apogee_km(target_circular_orbit_km)` - Calculate launch apogee (target + 10-50km buffer)
+- `get_safe_entry_angle_deg()` - Calculate safe atmospheric entry angle (5-10° range)
 
-### Phase 2: Controller Response Parameter Generation
+### Phase 2: Controller Response Parameter Generation ✅
 
-Create a service or helper that generates physics-based parameters:
+Created `ControllerPhysicsService` (`mysite/universe/services/controller_physics.py`):
 
--- rewrite -- 
+- `get_relevant_body(controller, nav_context)` - Determines planet/moon based on maneuver type
+- `generate_launch_parameters()` - Returns inclination_deg, apogee_km, azimuth_deg
+- `generate_circularization_parameters()` - Returns altitude_km, inclination_deg
+- `generate_insertion_parameters()` - Returns altitude_km, inclination_deg (same as circularization)
+- `generate_sublight_parameters()` - Returns departure_angle_deg (straight-line calculation)
+- `generate_plane_change_parameters()` - Returns target_inclination_deg (relative angle)
+- `generate_deorbit_parameters()` - Returns deorbit_altitude_km, entry_angle_deg
+- `generate_landing_parameters()` - Returns approach_heading_deg, approach_speed_ms
+- `generate_parameters(controller, nav_context)` - Main entry point, routes to appropriate generator
 
+### Phase 3: Integration with ControllerResponse Particle ✅
 
-### Phase 3: Integration with ControllerResponse Particle
+Modified `ControllerResponse.get_examples()` in `mysite/universe/services/dialogue/particles.py`:
 
-Modify `ControllerResponse.get_examples()` to:
-1. Get the controller's location (planet/moon)
-2. Use `ControllerPhysicsService` to generate parameters
-3. Format parameters into examples
-
--- rewrite -- 
+1. Calls `ControllerPhysicsService.generate_parameters()` to get physics-based parameters
+2. Formats parameters into realistic controller response examples
+3. Includes specific technical details (altitude, inclination, angles, speeds) in all examples
 
 ## Next Steps
 
-1. **Review and refine rules** - User should review the maneuver rules and adjust as needed
-2. **Implement helper methods** - Add `get_min_safe_orbit_km()`, `get_leo_bands()`, etc. to `PhysicalBody`
-3. **Create ControllerPhysicsService** - Implement parameter generation logic
-4. **Integrate with particles** - Update `ControllerResponse.get_examples()` to use physics service
-5. **Test with real data** - Verify parameters are realistic for Earth, Mars, etc.
+1. ✅ **Review and refine rules** - Rules reviewed and implemented
+2. ✅ **Implement helper methods** - Added to `PhysicalBody` class
+3. ✅ **Create ControllerPhysicsService** - Service created with all maneuver generators
+4. ✅ **Integrate with particles** - `ControllerResponse.get_examples()` updated
+5. **Test with real data** - Verify parameters are realistic for Earth, Mars, etc. (TODO: Run character_dialogue_demo to test)
 

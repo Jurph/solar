@@ -196,6 +196,144 @@ class PhysicalBody(Celestial):
         if self.radius_km is not None and self.radius_solar is None:
             self.radius_solar = self.calculate_radius_solar()
         super().save(*args, **kwargs)
+    
+    def get_atmosphere(self):
+        """
+        Get the Atmosphere object for this body, if it exists.
+        
+        Returns:
+            Atmosphere instance or None
+        """
+        from .physics import Atmosphere
+        from django.contrib.contenttypes.models import ContentType
+        
+        try:
+            content_type = ContentType.objects.get_for_model(self.__class__)
+            return Atmosphere.objects.filter(
+                content_type=content_type,
+                object_id=self.pk
+            ).first()
+        except Exception:
+            return None
+    
+    def get_min_safe_orbit_km(self) -> float:
+        """
+        Calculate minimum safe orbital altitude above surface.
+        
+        Rules:
+        - If atmosphere exists: min_altitude = 1.5 * atmosphere_height_km (rounded to 10km)
+        - If no atmosphere: min_altitude = radius_km * 0.01 (rounded up to 10km)
+        
+        Returns:
+            Minimum safe orbit altitude in km (rounded to nearest 10km)
+        """
+        import math
+        
+        atmosphere = self.get_atmosphere()
+        if atmosphere and atmosphere.atmosphere_height_km:
+            min_alt = 1.5 * atmosphere.atmosphere_height_km
+        elif self.radius_km:
+            min_alt = self.radius_km * 0.01
+        else:
+            # Fallback: assume 100km minimum
+            min_alt = 100.0
+        
+        # Round to nearest 10km
+        return math.ceil(min_alt / 10.0) * 10.0
+    
+    def get_leo_band_altitude_km(self, lane_number: int = None) -> float:
+        """
+        Get a LEO (Low Earth Orbit) band altitude in 10km increments.
+        
+        Lanes are spaced 10km apart starting from min_safe_orbit.
+        Lane numbers range from 1 to 50.
+        
+        Args:
+            lane_number: Lane number (1-50). If None, randomly selects one.
+            
+        Returns:
+            Altitude in km for the selected lane
+        """
+        import random
+        
+        min_alt = self.get_min_safe_orbit_km()
+        
+        if lane_number is None:
+            lane_number = random.randint(1, 50)
+        else:
+            lane_number = max(1, min(50, lane_number))
+        
+        return min_alt + (lane_number * 10.0)
+    
+    def get_launch_apogee_km(self, target_circular_orbit_km: float) -> float:
+        """
+        Calculate launch apogee altitude (slightly above target circularization orbit).
+        
+        Args:
+            target_circular_orbit_km: Target circular orbit altitude
+            
+        Returns:
+            Launch apogee altitude (target + 10-50km buffer)
+        """
+        import random
+        
+        buffer = random.uniform(10.0, 50.0)
+        apogee = target_circular_orbit_km + buffer
+        
+        # Ensure apogee is above atmosphere if one exists
+        atmosphere = self.get_atmosphere()
+        if atmosphere and atmosphere.atmosphere_height_km:
+            min_apogee = atmosphere.atmosphere_height_km + 20.0  # Safety margin
+            apogee = max(apogee, min_apogee)
+        
+        return round(apogee, 1)
+    
+    def get_safe_entry_angle_deg(self) -> float:
+        """
+        Calculate safe atmospheric entry angle based on atmosphere properties.
+        
+        Uses a simplified model based on:
+        - Atmosphere height (affects entry interface)
+        - Surface pressure (affects deceleration)
+        - Scale height (affects density gradient)
+        
+        Typical safe entry angles: 5-10 degrees
+        Too steep (>10°): excessive heating
+        Too shallow (<5°): skip out of atmosphere
+        
+        Returns:
+            Safe entry angle in degrees (5-10 range)
+        """
+        import random
+        import math
+        
+        atmosphere = self.get_atmosphere()
+        if not atmosphere or not atmosphere.atmosphere_height_km:
+            # Airless body: entry angle less critical, use wider range
+            return random.uniform(3.0, 8.0)
+        
+        # Base angle on atmospheric properties
+        # Higher pressure = can handle steeper entry (more drag)
+        # Higher scale height = more gradual density change = can handle steeper entry
+        base_angle = 6.5  # Earth-like default
+        
+        if atmosphere.surface_pressure_bar:
+            # Higher pressure allows steeper entry
+            # Earth = 1.0 bar, Venus = 92 bar, Mars = 0.006 bar
+            pressure_factor = min(1.0, math.log10(max(0.01, atmosphere.surface_pressure_bar) + 1.0) / 2.0)
+            base_angle += pressure_factor * 2.0  # Add up to 2 degrees for high pressure
+        
+        if atmosphere.scale_height_km:
+            # Higher scale height = more gradual = steeper entry possible
+            # Earth = ~8.5km, Mars = ~11km
+            scale_factor = min(1.0, (atmosphere.scale_height_km - 5.0) / 10.0)
+            base_angle += scale_factor * 1.5  # Add up to 1.5 degrees
+        
+        # Add small random variation (±0.5 degrees)
+        entry_angle = base_angle + random.uniform(-0.5, 0.5)
+        
+        # Clamp to safe range
+        return max(5.0, min(10.0, entry_angle))
 
 class Galaxy(Location):
     ## https://en.wikipedia.org/wiki/Galaxy#Types_and_morphology    

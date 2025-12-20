@@ -71,7 +71,8 @@ class TestSimulationQueue(TestCase):
                 expect_reply=True,
                 duration=2.0,
                 event_type="dialogue",
-                metadata={"order": "first_event"}
+                metadata={"order": "first_event", "control_name": self.controller.name},
+                expected_reply_actor=self.controller
             ),
             DialogueEvent(
                 timestamp=12,
@@ -152,8 +153,9 @@ class TestSimulationQueue(TestCase):
         self.assertEqual(self.dialogue_events[1], events[1])
         
         # Check that the event with timestamp > 12.0 is still in the queue
-        self.assertEqual(len(self.queue._queue), 2)
-        self.assertEqual(self.queue.peek_next_event().timestamp, events[0].timestamp + 5.0)
+        # (Only the navigation event at 30.0 should remain, as replies are now generated upfront)
+        self.assertEqual(len(self.queue._queue), 1)
+        self.assertEqual(self.queue.peek_next_event().timestamp, events[2].timestamp)
     
     @patch('time.time')
     def test_simulation_loop(self, mock_time):
@@ -201,9 +203,9 @@ class TestSimulationQueue(TestCase):
             # Give the simulation loop more time to process
             time.sleep(0.5)  # Increased from 0.1 to 0.5
             
-            # Update expectation: since the first dialogue event generates a reply, the total dialogue events
-            # processed will be (i+2) for the i-th event once i>=1. For i==0, it's 1. (This is a change from the old behavior.)
-            expected_count = 4 if i == 2 else i + 1
+            # Update expectation: replies are now generated upfront, not dynamically
+            # So we expect (i+1) events after processing the i-th event
+            expected_count = i + 1
             self.assertEqual(len(DIALOGUE_EVENTS_RECEIVED), expected_count,
                             f"Expected {expected_count} events after processing event with timestamp {event.timestamp}")
         
@@ -214,7 +216,9 @@ class TestSimulationQueue(TestCase):
         thread.join(timeout=1.0)
         
         # Check final state
-        self.assertEqual(len(DIALOGUE_EVENTS_RECEIVED), 4)
+        # We have 3 events total (pilot request, controller reply, navigation event)
+        # No dynamic replies are generated anymore (replies are generated upfront)
+        self.assertEqual(len(DIALOGUE_EVENTS_RECEIVED), 3)
 
 @pytest.mark.django_db
 def test_queue_processes_events_in_order():
@@ -467,10 +471,12 @@ def test_pilot_satellite_dialogue():
         expect_reply=True,
         duration=2.0,
         event_type="dialogue",
-        metadata={
-            "reply_actor_name": "Nav Beacon J5",  # Specify which actor should reply
-            "expected_reply": "BEEP BOOP"  # What we expect the satellite to say
-        },
+            metadata={
+                "reply_actor_name": "Nav Beacon J5",  # Specify which actor should reply
+                "expected_reply": "BEEP BOOP",  # What we expect the satellite to say
+                "ship_name": ship.name.upper(),  # Include ship name for recipient identification
+                "reply_delay": 5.0  # 5 second delay for satellite reply
+            },
         expected_reply_actor=satellite  # Directly attach the reply actor
     )
     
@@ -485,13 +491,16 @@ def test_pilot_satellite_dialogue():
     assert DIALOGUE_EVENTS_RECEIVED[0].actor == pilot
     assert "requesting status check" in DIALOGUE_EVENTS_RECEIVED[0].text
     
-    # Process events up to when we expect the satellite's reply (5 seconds later)
-    queue.process_due_events(15.1)
+    # Process events up to when we expect the satellite's reply (5 seconds after message ends)
+    # Reply timestamp = 10.0 (start) + 2.0 (duration) + 5.0 (delay) = 17.0
+    queue.process_due_events(17.1)
     
     # Verify satellite replied
     assert len(DIALOGUE_EVENTS_RECEIVED) == 2
     satellite_reply = DIALOGUE_EVENTS_RECEIVED[1]
     assert satellite_reply.actor == satellite
-    assert satellite_reply.text == "BEEP BOOP"
-    assert satellite_reply.timestamp == pytest.approx(15.0)  # 5 seconds after pilot's message
+    # Satellite response includes greeting: "{recipient}, {satellite_name}. {message}"
+    # For "Nav Beacon J5", the message should be "BEEP BOOP"
+    assert "BEEP BOOP" in satellite_reply.text
+    assert satellite_reply.timestamp == pytest.approx(17.0)  # 5 seconds after pilot's message (10.0 + 2.0 duration + 5.0 delay)
     assert not satellite_reply.expect_reply  # Satellite doesn't expect a reply

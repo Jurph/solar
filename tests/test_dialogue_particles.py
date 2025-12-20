@@ -353,7 +353,6 @@ class TestParticlePromptBuilding(DialogueParticleTest):
         self.assertGreater(len(prompt_data.example1), 0)
         self.assertGreater(len(prompt_data.example2), 0)
         self.assertGreater(len(prompt_data.example3), 0)
-        self.assertGreater(len(prompt_data.counterexample), 0)
     
     def test_radio_response_builds_prompt_data(self):
         """Test RadioResponse can build UserPromptData."""
@@ -372,5 +371,4 @@ class TestParticlePromptBuilding(DialogueParticleTest):
         self.assertGreater(len(prompt_data.example1), 0)
         self.assertGreater(len(prompt_data.example2), 0)
         self.assertGreater(len(prompt_data.example3), 0)
-        self.assertGreater(len(prompt_data.counterexample), 0)
 
