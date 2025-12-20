@@ -11,6 +11,7 @@ import random
 from typing import List, Dict, Any, Optional, Tuple
 from .dialogue.base import DialogueParticle
 from .dialogue.factory import ParticleFactory
+from .dialogue.particles import SatelliteResponse
 from mysite.universe.models.actor import Actor
 from mysite.universe.models.event import NavigationEvent
 from mysite.universe.schemas.dialogue_schema import DialogueMessage
@@ -59,7 +60,16 @@ class DialogueService:
             
         Returns:
             Tuple of (system_prompt, user_prompt) strings
+            
+        Raises:
+            ValueError: If particle is SatelliteResponse (satellites don't use LLM)
         """
+        # Explicit guardrail: SatelliteResponse particles never use LLM
+        if isinstance(particle, SatelliteResponse):
+            raise ValueError(
+                "Cannot build prompts for SatelliteResponse - satellites use pre-programmed messages, not LLM generation"
+            )
+        
         # Get previous dialogue text if available
         previous_text = previous_dialogue.message if previous_dialogue else None
         
@@ -108,7 +118,6 @@ class DialogueService:
         logger = logging.getLogger('dialogue_service')
         
         # Special handling for satellite responses - use pre-programmed message
-        from .dialogue.particles import SatelliteResponse
         if isinstance(particle, SatelliteResponse):
             # Get pre-programmed message from satellite
             message_content = particle.get_pre_programmed_message()
@@ -132,6 +141,13 @@ class DialogueService:
                 message=full_message,
             )
             return dialogue_msg
+        
+        # Assertion: SatelliteResponse should never reach LLM code path
+        # This is a defensive check to ensure the early return above is working
+        assert not isinstance(particle, SatelliteResponse), (
+            "SatelliteResponse reached LLM generation code path - this should never happen. "
+            "Satellites use pre-programmed messages only."
+        )
         
         # All particles now use procedural greetings
         # Generate procedural greeting prefix (inherited from base class or overridden)

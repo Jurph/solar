@@ -139,8 +139,45 @@ class DialogueEvent(Event):
         # should not generate dynamic replies. If expect_reply=True on a chain event,
         # the next event is already in the chain. Return None to indicate no dynamic reply needed.
         # 
-        # This method is kept for backward compatibility but should rarely be called
-        # in the new particle-based dialogue system.
+        # Exception: Satellite replies are pre-programmed and can be generated here
+        # for backward compatibility with tests and manual event creation.
+        if reply_actor:
+            from mysite.universe.models.actor import Satellite
+            if isinstance(reply_actor, Satellite):
+                # Generate pre-programmed satellite response
+                satellite_message = reply_actor.get_response_message()
+                # Get recipient from the original event
+                recipient = self.metadata.get("ship_name") if self.metadata else None
+                if not recipient and hasattr(self, 'actor') and self.actor:
+                    # Try to get ship name from pilot
+                    try:
+                        if hasattr(self.actor, 'ship') and self.actor.ship:
+                            recipient = self.actor.ship.name.upper()
+                    except (AttributeError, TypeError):
+                        pass
+                
+                # Generate greeting with recipient callsign (matching SatelliteResponse particle format)
+                if recipient:
+                    greeting = f"{recipient}, {reply_actor.name}."
+                else:
+                    greeting = f"{reply_actor.name}."
+                full_message = f"{greeting} {satellite_message}"
+                
+                # Calculate reply timestamp (after current event duration + delay)
+                # Use delay from CommsCheckRequest particle (3.0 seconds) or default 5.0 seconds
+                delay = self.metadata.get("reply_delay", 5.0) if self.metadata else 5.0
+                reply_timestamp = self.timestamp + self.duration + delay
+                
+                return DialogueEvent(
+                    timestamp=reply_timestamp,
+                    actor=reply_actor,
+                    text=full_message,
+                    expect_reply=False,
+                    duration=2.0,
+                    event_type="dialogue",
+                    metadata=self.metadata.copy() if self.metadata else {}
+                )
+        
         return None
     
     def end_conversation_action(self):

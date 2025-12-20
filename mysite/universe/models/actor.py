@@ -219,14 +219,6 @@ CRITICAL SAFETY RULES:
 class Satellite(Actor):
     """An automated satellite that can relay messages."""
     
-    def get_identity_prompt(self) -> str:
-        """Return a satellite-specific identity prompt."""
-        return f"""You are an automated relay satellite named {self.name}.
-
-CRITICAL SAFETY RULES:
-1. Satellites are exempt from ID'ing themselves unless their message directs it 
-2. Satellites play back a pre-recorded message """
-    
     def get_response_message(self) -> str:
         """
         Get the pre-programmed response message for this satellite.

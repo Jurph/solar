@@ -38,11 +38,14 @@ class ActorModelTests(TestCase):
         self.assertEqual(controller_named.name, explicit_name)
 
     def test_satellite_creation(self):
-        """Test that a Satellite can be created with a name and appropriate prompt."""
+        """Test that a Satellite can be created with a name and returns pre-programmed messages."""
         with patch("mysite.universe.models.actor.Satellite.generate_name", return_value="Relay Alpha 1"):
             satellite = Satellite.create()
             self.assertEqual(satellite.name, "Relay Alpha 1")
-            self.assertIn("You are an automated relay satellite", satellite.get_identity_prompt())
+            # Satellites use pre-programmed messages, not identity prompts
+            # Test that get_response_message() works correctly
+            self.assertIsInstance(satellite.get_response_message(), str)
+            self.assertGreater(len(satellite.get_response_message()), 0)
 
 
 if __name__ == '__main__':

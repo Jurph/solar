@@ -458,68 +458,161 @@ class RadioResponse(DialogueParticle):
         Return examples of controller responses with detailed instructions.
         
         Generates context-aware examples based on maneuver type and nav_context.
-        All approvals must include specific technical details (altitude, inclination, etc.)
-        as required by the design.
+        Uses ControllerPhysicsService to generate realistic physics-based parameters.
         
         Returns:
             List of example dialogue strings.
         """
+        from mysite.universe.services.controller_physics import ControllerPhysicsService
+        
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
-        inclination_deg = self.nav_context.get("inclination_deg", "")
-        altitude_km = self.nav_context.get("altitude_km", "")
         destination = self.nav_context.get("destination", "")
         
-        # Build examples based on maneuver type
+        # Generate physics-based parameters
+        physics_params = {}
+        if self.actor:
+            physics_params = ControllerPhysicsService.generate_parameters(self.actor, self.nav_context)
+        
+        # Build examples based on maneuver type with physics parameters
         examples = []
         
         # Launch/direct ascent examples
         if maneuver in ["launch", "direct_ascent"]:
-            if altitude_km and inclination_deg:
+            apogee_km = physics_params.get("apogee_km")
+            inclination_deg = physics_params.get("inclination_deg")
+            azimuth_deg = physics_params.get("azimuth_deg")
+            
+            if apogee_km and inclination_deg:
+                # Format azimuth as three-digit heading (e.g., "090 degrees")
+                azimuth_str = f"{int(azimuth_deg):03d}" if azimuth_deg else ""
                 examples.extend([
-                    f"Your {maneuver} burn is approved. You can head up to {altitude_km} kilometers, try to keep it near {inclination_deg} degrees, and check in when you get to orbit.",
-                    f"We see you cleared to {altitude_km} kilometers, {inclination_deg} degrees. Permission for {maneuver} granted.",
-                    f"Your {maneuver} burn is approved. Execute when ready.",
+                    f"Your launch is approved. Head up to {int(apogee_km)} kilometers apogee, launch azimuth {azimuth_str} degrees. Check in when you reach apogee.",
+                    f"Launch clearance granted. Target apogee {int(apogee_km)} kilometers, {int(inclination_deg)} degrees inclination.",
+                    f"Your launch burn is approved. You can head up to {int(apogee_km)} kilometers, try to keep it near {int(inclination_deg)} degrees, and check in when you get to orbit.",
                     f"We have your flight plan and your launch window is open. You are go.",
                 ])
             else:
                 examples.extend([
-                    f"Your {maneuver} burn is approved. Execute when ready.",
+                    f"Your launch burn is approved. Execute when ready.",
                     f"You're cleared for launch, proceed.",
+                    f"Launch clearance granted. Proceed when ready.",
                 ])
         
         # Orbital maneuvers (insertion, circularization)
         elif maneuver in ["insertion", "circularization"]:
+            altitude_km = physics_params.get("altitude_km")
+            inclination_deg = physics_params.get("inclination_deg")
+            
             if altitude_km and inclination_deg:
                 examples.extend([
-                    f"Cleared for {maneuver} burn to {altitude_km} kilometers, {inclination_deg} degrees.",
-                    f"Approved for {maneuver} to {inclination_deg} degrees, {altitude_km} kilometers.",
-                    f"Cleared for orbital {maneuver}, you're go. Make your own way, try to keep it near {inclination_deg} degrees.",
+                    f"Cleared for {maneuver} burn to {int(altitude_km)} kilometers, {int(inclination_deg)} degrees inclination.",
+                    f"Approved for {maneuver} to {int(inclination_deg)} degrees, {int(altitude_km)} kilometers.",
+                    f"Cleared for orbital {maneuver}, you're go. Make your own way, try to keep it near {int(inclination_deg)} degrees.",
                     f"{maneuver.capitalize()} clearance granted. You can have any achievable slot.",
-                    f"Bring it to {altitude_km} kilometers, {inclination_deg} degrees.",
+                    f"Bring it to {int(altitude_km)} kilometers, {int(inclination_deg)} degrees.",
                 ])
             else:
                 examples.extend([
                     f"Cleared for {maneuver}, proceed when ready.",
                     f"{maneuver.capitalize()} clearance granted.",
+                    f"Authorization granted for {maneuver} maneuver.",
                 ])
         
-        # Departure maneuvers (sublight, hyperspace)
-        elif maneuver in ["sublight", "hyperspace"]:
-            action = "burn" if maneuver == "sublight" else "jump"
+        # Departure maneuvers (sublight, transfer)
+        elif maneuver in ["sublight", "transfer"]:
+            action = "burn" if maneuver == "sublight" else "transfer"
+            departure_angle_deg = physics_params.get("departure_angle_deg")
             farewells = ["Safe travels.", "Good luck.", "See you again soon.", "Take care.", "Fly safe."]
             farewell = random.choice(farewells)
             
             if destination:
-                examples.extend([
-                    f"You are go for {maneuver} to {destination}. {farewell}",
-                    f"{maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
-                    f"Cleared for {maneuver} {action}.",
-                    f"{maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
-                ])
+                if departure_angle_deg:
+                    examples.extend([
+                        f"You are go for {maneuver} {action} to {destination}. Departure angle {int(departure_angle_deg)} degrees. {farewell}",
+                        f"{maneuver.capitalize()} {action} to {destination} is approved. Departure angle {int(departure_angle_deg)} degrees. {farewell}",
+                        f"Cleared for {maneuver} {action}.",
+                        f"{maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
+                    ])
+                else:
+                    examples.extend([
+                        f"You are go for {maneuver} to {destination}. {farewell}",
+                        f"{maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
+                        f"Cleared for {maneuver} {action}.",
+                    ])
             else:
                 examples.extend([
                     f"Cleared for {maneuver} {action}.",
                     f"{maneuver.capitalize()} clearance granted.",
+                    f"You are go for {maneuver} {action}.",
+                ])
+        
+        # Plane change
+        elif maneuver == "plane_change":
+            target_inclination_deg = physics_params.get("target_inclination_deg")
+            
+            if target_inclination_deg:
+                examples.extend([
+                    f"Cleared for plane change maneuver. Target inclination {int(target_inclination_deg)} degrees, execute at ascending node.",
+                    f"Plane change authorization granted. Adjust to {int(target_inclination_deg)} degrees inclination.",
+                    f"Cleared for plane change to {int(target_inclination_deg)} degrees.",
+                ])
+            else:
+                examples.extend([
+                    f"Cleared for plane change maneuver.",
+                    f"Plane change authorization granted.",
+                    f"Plane change clearance approved.",
+                ])
+        
+        # Deorbit
+        elif maneuver == "deorbit":
+            entry_angle_deg = physics_params.get("entry_angle_deg")
+            atmosphere = None
+            if self.actor and self.actor.location:
+                from mysite.universe.services.controller_physics import ControllerPhysicsService
+                body = ControllerPhysicsService.get_relevant_body(self.actor, self.nav_context)
+                if body:
+                    atmosphere = body.get_atmosphere()
+            
+            if entry_angle_deg and atmosphere and atmosphere.atmosphere_height_km:
+                examples.extend([
+                    f"Cleared for deorbit burn. Entry interface at {int(atmosphere.atmosphere_height_km)} kilometers, entry angle {entry_angle_deg:.1f} degrees.",
+                    f"Deorbit authorization granted. Entry angle {entry_angle_deg:.1f} degrees, entry interface {int(atmosphere.atmosphere_height_km)} kilometers.",
+                    f"Cleared for deorbit. Entry angle {entry_angle_deg:.1f} degrees.",
+                ])
+            elif entry_angle_deg:
+                examples.extend([
+                    f"Cleared for deorbit burn. Entry angle {entry_angle_deg:.1f} degrees.",
+                    f"Deorbit authorization granted. Entry angle {entry_angle_deg:.1f} degrees.",
+                ])
+            else:
+                examples.extend([
+                    f"Cleared for deorbit burn.",
+                    f"Deorbit authorization granted.",
+                    f"Deorbit clearance approved.",
+                ])
+        
+        # Landing/dock
+        elif maneuver in ["landing", "dock"]:
+            approach_heading_deg = physics_params.get("approach_heading_deg")
+            approach_speed_ms = physics_params.get("approach_speed_ms")
+            
+            if approach_heading_deg and approach_speed_ms:
+                examples.extend([
+                    f"Cleared for landing approach. Heading {int(approach_heading_deg)} degrees, final approach speed {int(approach_speed_ms)} meters per second.",
+                    f"Landing clearance granted. Approach heading {int(approach_heading_deg)} degrees, speed {int(approach_speed_ms)} meters per second.",
+                    f"Cleared for landing. Heading {int(approach_heading_deg)} degrees.",
+                ])
+            elif approach_heading_deg:
+                examples.extend([
+                    f"Cleared for landing approach. Heading {int(approach_heading_deg)} degrees.",
+                    f"Landing clearance granted.",
+                    f"Landing authorization approved.",
+                ])
+            else:
+                examples.extend([
+                    f"Cleared for landing.",
+                    f"Landing clearance granted.",
+                    f"Landing authorization approved.",
                 ])
         
         # Generic fallback
@@ -972,6 +1065,39 @@ class SatelliteResponse(DialogueParticle):
         else:
             # Fallback if actor is not a Satellite
             return "BEEP BOOP"
+    
+    def build_user_prompt_data(self, previous_dialogue: Optional[str] = None):
+        """
+        Override to prevent building prompt data for satellites.
+        
+        Satellites never use LLM generation, so this method should never be called.
+        This is a defensive override to catch any accidental calls.
+        
+        Args:
+            previous_dialogue: Optional previous dialogue line text (ignored)
+            
+        Returns:
+            Minimal UserPromptData (should never be used)
+        """
+        from .base import UserPromptData
+        # Return minimal data, but log a warning
+        import logging
+        logger = logging.getLogger('dialogue_service')
+        logger.warning(
+            "build_user_prompt_data() called on SatelliteResponse - "
+            "this should never happen as satellites use pre-programmed messages"
+        )
+        # Return minimal data structure (should never be used)
+        return UserPromptData(
+            role="",
+            situation="",
+            sender="",
+            recipient="",
+            example1="",
+            example2="",
+            example3="",
+            last_dialogue_line=previous_dialogue,
+        )
     
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
