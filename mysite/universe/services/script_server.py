@@ -404,7 +404,12 @@ class ScriptService:
         
         return events
     
-    def parse_navigation_events(self, nav_events: List[NavigationEvent], ship: Ship) -> List[DialogueEvent]:
+    def parse_navigation_events(
+        self, 
+        nav_events: List[NavigationEvent], 
+        ship: Ship,
+        use_physics_delays: bool = True,
+    ) -> List[DialogueEvent]:
         """
         Convert a list of navigation events into dialogue events with sequential timestamps.
         
@@ -412,9 +417,14 @@ class ScriptService:
         sequentially, preserving relative timing within each chain and accumulating
         across chains.
         
+        When use_physics_delays=True, the time between chains is based on the actual
+        physics-based duration of each maneuver (launch time, orbital period, transit time).
+        When False, chains are spaced only by dialogue timing (for demos/testing).
+        
         Args:
             nav_events: List of NavigationEvent instances
             ship: Ship performing the maneuvers
+            use_physics_delays: If True, use physics-based maneuver durations between chains
             
         Returns:
             List of DialogueEvent instances with sequential absolute timestamps
@@ -435,11 +445,19 @@ class ScriptService:
                 updated_event = replace(event, timestamp=absolute_timestamp)
                 script_events.append(updated_event)
             
-            # Advance chain start timestamp: use the last event's timestamp + duration
-            # This preserves the spacing between chains
+            # Advance chain start timestamp for next chain
             if dialogue_chain:
                 last_event = dialogue_chain[-1]
-                chain_start_timestamp = chain_start_timestamp + last_event.timestamp + last_event.duration
+                # End of this chain's dialogue
+                chain_end = chain_start_timestamp + last_event.timestamp + last_event.duration
+                
+                if use_physics_delays:
+                    # Add physics-based maneuver duration before next chain
+                    maneuver_duration = route_service.get_event_duration(nav_event)
+                    chain_start_timestamp = chain_end + maneuver_duration
+                else:
+                    # Just advance past the dialogue (for demos)
+                    chain_start_timestamp = chain_end
             else:
                 # If chain is empty, advance by a default duration to prevent overlap
                 chain_start_timestamp += 2.0

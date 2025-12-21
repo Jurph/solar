@@ -973,35 +973,58 @@ class Holding(DialogueParticle):
 
 class CommsCheckRequest(PilotRequest):
     """
-    Pilot requesting a comms check from a satellite.
+    Pilot performing a comms check with an automated satellite.
     
     Used when a pilot performs a routine comms check with a relay satellite or nav beacon.
+    This is a TECHNICAL procedure, not a conversation - the satellite is automated and
+    will just echo back a pre-programmed response.
     """
+    
+    def get_situation_description(self) -> str:
+        """
+        Return situation description for comms check.
+        
+        CRITICAL: This is a technical signal check, NOT a request for clearance or permission.
+        The satellite is automated - it cannot grant clearance or understand requests.
+        
+        Returns:
+            Situation description string.
+        """
+        sender = self.get_sender_callsign()
+        satellite_name = self.recipient
+        
+        return f"{sender} is performing a routine signal check with {satellite_name}, an AUTOMATED relay satellite. This is purely technical - just transmit a brief check and wait for the echo. The satellite CANNOT grant clearance or understand requests - it just echoes back an automated response."
     
     def get_examples(self) -> List[str]:
         """
         Return examples of comms check requests.
         
+        These are procedural transmissions to an automated relay satellite,
+        not conversational requests. The pilot just identifies and transmits;
+        the satellite echoes back automatically.
+        
         Returns:
             List of example comms check dialogue strings.
         """
         return [
-            f"Performing routine comms check, do you copy?",
-            f"Comms check, please respond.",
-            f"I'm calibrating my receivers, can you give me a tone?",
-            f"Requesting comms check, please respond.",
-            f"Comms check on this channel please?",
-            f"Comms check, is this a working channel?",
+            f"Comms check.",
+            f"Radio check, please?",
+            f"Can you give me a calibration tone?",
+            f"Signal check on this frequency.",
+            f"Testing relay link.",
+            f"Checking signal strength.",
         ]
     
     def get_counterexample(self) -> str:
         """
         Return counterexample showing what NOT to do.
         
+        Don't treat automated satellites like people who can understand and respond.
+        
         Returns:
             Counterexample string.
         """
-        return "[DON'T DO THIS!] Hey little satellite buddy, are you there?"
+        return "[DON'T DO THIS!] Can you give me clearance? Requesting permission to maneuver."
     
     def get_next_particle_probabilities(self) -> Dict[str, float]:
         """
