@@ -28,7 +28,8 @@ class VehicleParams:
     """Parameters for the spacecraft performing maneuvers."""
     max_proper_accel_gees: float = 3.5  # Crew comfort cap
     avg_vertical_thrust_frac: float = 0.85  # Gravity turn efficiency
-    sublight_velocity_c: float = 0.1  # Fraction of light speed for sublight
+    sublight_velocity_c: float = 0.1  # Canonical sublight speed: 0.1c (10% lightspeed)
+    hyperspace_velocity_c: float = 1000.0  # Canonical hyperspace speed: 1000c (1000x lightspeed)
 
 
 class ManeuverPhysicsService:
@@ -327,6 +328,47 @@ class ManeuverPhysicsService:
         return T_transfer
     
     # -------------------------------------------------------------------------
+    # HYPERSPACE: Interstellar transit time
+    # -------------------------------------------------------------------------
+    def calculate_hyperspace_duration(
+        self,
+        distance_ly: float,
+        velocity_c: Optional[float] = None,
+    ) -> float:
+        """
+        Calculate transit time for hyperspace travel between star systems.
+        
+        Formula: t = (distance_ly * c) / (velocity_c * c) = distance_ly / velocity_c
+        
+        Where:
+        - distance_ly = distance in light-years
+        - velocity_c = velocity as multiple of c (e.g., 100 = 100x lightspeed)
+        
+        Args:
+            distance_ly: Distance to travel in light-years
+            velocity_c: Velocity as multiple of c (default: vehicle's hyperspace_velocity_c)
+            
+        Returns:
+            Transit time in seconds
+        """
+        if velocity_c is None:
+            velocity_c = self.vehicle.hyperspace_velocity_c
+        
+        if velocity_c <= 0:
+            return float('inf')
+        
+        # Convert light-years to meters
+        # 1 light-year = c * 1 year in seconds
+        LIGHT_YEAR_IN_METERS = C * 365.25 * 24 * 3600
+        distance_m = distance_ly * LIGHT_YEAR_IN_METERS
+        
+        # Velocity in m/s
+        velocity_ms = velocity_c * C
+        
+        # Time = distance / velocity
+        return distance_m / velocity_ms
+    
+    # -------------------------------------------------------------------------
     # Convenience method: Get duration for any NavigationEvent
     # -------------------------------------------------------------------------
     def get_maneuver_duration(
@@ -390,6 +432,12 @@ class ManeuverPhysicsService:
                 origin_orbit_au=nav_context.get("origin_orbit_au", 1.0),
                 dest_orbit_au=nav_context.get("dest_orbit_au", 1.5),
                 star_mass_kg=nav_context.get("star_mass_kg", 1.989e30),
+            )
+        
+        elif maneuver == "HYPERSPACE":
+            return self.calculate_hyperspace_duration(
+                distance_ly=nav_context.get("distance_ly", 1.0),
+                velocity_c=nav_context.get("velocity_c", self.vehicle.hyperspace_velocity_c),
             )
         
         elif maneuver == "DEORBIT":
