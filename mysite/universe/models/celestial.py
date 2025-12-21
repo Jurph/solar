@@ -369,6 +369,21 @@ class Galaxy(Location):
         super().save(*args, **kwargs)
 
 class StarSystem(Location):
+    """
+    StarSystem represents a star system within a galaxy.
+    
+    Galactic coordinates (x, y, z) are stored in light-years relative to the
+    galactic center. These enable:
+    - Distance calculations between star systems
+    - HYPERSPACE transit time calculations
+    - Spatial visualization of the galaxy
+    
+    Coordinate system follows standard astronomical conventions:
+    - Origin at galactic center
+    - X-axis: direction toward galactic center from Sun's position
+    - Y-axis: direction of galactic rotation
+    - Z-axis: perpendicular to galactic plane (positive = north)
+    """
     orbits = models.ForeignKey(
         Galaxy,
         on_delete=models.CASCADE,
@@ -379,11 +394,53 @@ class StarSystem(Location):
         blank=True,
         help_text="System age in years (derived from seed, shared by all bodies in system)"
     )
+    galactic_x_ly = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Galactic X coordinate in light-years (relative to galactic center)"
+    )
+    galactic_y_ly = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Galactic Y coordinate in light-years (relative to galactic center)"
+    )
+    galactic_z_ly = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Galactic Z coordinate in light-years (relative to galactic center, perpendicular to plane)"
+    )
 
     def save(self, *args, **kwargs):
         if not self.scale:
             self.scale = Scale.STARSYSTEM
         super().save(*args, **kwargs)
+    
+    def get_distance_to_ly(self, other: 'StarSystem') -> float:
+        """
+        Calculate distance to another StarSystem in light-years.
+        
+        Uses Euclidean distance: sqrt((x2-x1)² + (y2-y1)² + (z2-z1)²)
+        
+        Args:
+            other: Another StarSystem instance
+            
+        Returns:
+            Distance in light-years, or float('inf') if coordinates are missing
+        """
+        import math
+        
+        if not all([self.galactic_x_ly is not None, self.galactic_y_ly is not None, 
+                   self.galactic_z_ly is not None]):
+            return float('inf')
+        if not all([other.galactic_x_ly is not None, other.galactic_y_ly is not None,
+                   other.galactic_z_ly is not None]):
+            return float('inf')
+        
+        dx = other.galactic_x_ly - self.galactic_x_ly
+        dy = other.galactic_y_ly - self.galactic_y_ly
+        dz = other.galactic_z_ly - self.galactic_z_ly
+        
+        return math.sqrt(dx*dx + dy*dy + dz*dz)
 
 class Star(PhysicalBody):
     """

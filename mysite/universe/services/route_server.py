@@ -710,27 +710,39 @@ class RouteService:
         if body is None:
             return {}
         
+        # Get values, handling None explicitly
+        radius_km = getattr(body, 'radius_km', None)
+        mass_kg = getattr(body, 'mass_kg', None)
+        gravity_gees = getattr(body, 'surface_gravity_gees', None)
+        atmospheric_height_km = getattr(body, 'atmospheric_height_km', None)
+        rotation_period_seconds = getattr(body, 'rotation_period_seconds', None)
+        
+        # Provide Earth-like defaults if None
         params = {
-            "radius_km": getattr(body, 'radius_km', 6371),
-            "mass_kg": getattr(body, 'mass_kg', 5.97e24),
-            "gravity_gees": getattr(body, 'surface_gravity_gees', None),
-            "atmospheric_height_km": getattr(body, 'atmospheric_height_km', 100),
-            "rotation_period_seconds": getattr(body, 'rotation_period_seconds', 86400),
-            "has_atmosphere": getattr(body, 'atmospheric_height_km', 0) > 0,
+            "radius_km": radius_km if radius_km is not None else 6371.0,
+            "mass_kg": mass_kg if mass_kg is not None else 5.97e24,
+            "atmospheric_height_km": atmospheric_height_km if atmospheric_height_km is not None else 100.0,
+            "rotation_period_seconds": rotation_period_seconds if rotation_period_seconds is not None else 86400.0,
+            "has_atmosphere": (atmospheric_height_km or 0) > 0,
         }
         
         # Calculate gravity from mass and radius if not provided
-        if params["gravity_gees"] is None and params["mass_kg"] and params["radius_km"]:
-            G = 6.67430e-11
-            EARTH_G = 9.80665
-            surface_g = (G * params["mass_kg"]) / ((params["radius_km"] * 1000) ** 2)
-            params["gravity_gees"] = surface_g / EARTH_G
+        if gravity_gees is None:
+            if params["mass_kg"] and params["radius_km"]:
+                G = 6.67430e-11
+                EARTH_G = 9.80665
+                surface_g = (G * params["mass_kg"]) / ((params["radius_km"] * 1000) ** 2)
+                params["gravity_gees"] = surface_g / EARTH_G
+            else:
+                params["gravity_gees"] = 1.0  # Default to Earth gravity
+        else:
+            params["gravity_gees"] = gravity_gees
         
         return params
     
     def _build_physics_nav_context(self, event: NavigationEvent, body) -> dict:
         """Build navigation context for physics calculations."""
-        from mysite.universe.models.celestial import Planet
+        from mysite.universe.models.celestial import Planet, StarSystem
         
         context = {
             "altitude_km": 300,  # Default LEO altitude
@@ -742,6 +754,9 @@ class RouteService:
         maneuver = event.maneuver.value.upper() if hasattr(event.maneuver, 'value') else str(event.maneuver).upper()
         
         if maneuver in ["SUBLIGHT", "TRANSFER"]:
+            # Canonical sublight speed: 0.1c
+            context["velocity_c"] = 0.1
+            
             # Try to get orbital distances for origin and destination
             origin_au = None
             dest_au = None
@@ -763,6 +778,54 @@ class RouteService:
             else:
                 # Default to Mars-Earth distance (~0.5 AU average)
                 context["distance_au"] = 0.5
+        
+        elif maneuver == "HYPERSPACE":
+            # Calculate distance between star systems
+            origin_system = None
+            dest_system = None
+            
+            # Find the StarSystem for origin
+            if event.origin:
+                origin_concrete = event.origin.get_concrete_instance()
+                # Navigate up the hierarchy to find StarSystem
+                current = origin_concrete
+                while current:
+                    if isinstance(current, StarSystem):
+                        origin_system = current
+                        break
+                    # Try to get parent via orbits
+                    if hasattr(current, 'orbits') and current.orbits:
+                        current = current.orbits.get_concrete_instance()
+                    else:
+                        break
+            
+            # Find the StarSystem for destination
+            if event.destination:
+                dest_concrete = event.destination.get_concrete_instance()
+                current = dest_concrete
+                while current:
+                    if isinstance(current, StarSystem):
+                        dest_system = current
+                        break
+                    if hasattr(current, 'orbits') and current.orbits:
+                        current = current.orbits.get_concrete_instance()
+                    else:
+                        break
+            
+            # Canonical hyperspace speed: 1000c
+            context["velocity_c"] = 1000.0
+            
+            # Calculate distance if both systems have coordinates
+            if origin_system and dest_system:
+                distance_ly = origin_system.get_distance_to_ly(dest_system)
+                if distance_ly != float('inf'):
+                    context["distance_ly"] = distance_ly
+                else:
+                    # Default to 10 light-years if coordinates missing
+                    context["distance_ly"] = 10.0
+            else:
+                # Default to 10 light-years if systems not found
+                context["distance_ly"] = 10.0
         
         # Get target altitude if body provides it
         if body and hasattr(body, 'get_leo_band_altitude_km'):
