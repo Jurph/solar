@@ -48,8 +48,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--temperature',
             type=float,
-            default=0.7,
-            help='Temperature setting for the LLM (0.0-1.0, default: 0.7)',
+            default=0.25,
+            help='Temperature setting for the LLM (0.0-1.0, default: 0.25)',
         )
         parser.add_argument(
             '--debug',
@@ -70,15 +70,11 @@ class Command(BaseCommand):
 
     def ensure_controllers_exist(self):
         """Ensure that all control stations have associated Controller actors."""
-        control_stations = Location.objects.filter(name__icontains="Control")
-        for station in control_stations:
-            # Only check for controller by name, don't try to use location field
-            controller = Controller.objects.filter(name=station.name).first()
-            if not controller:
-                self.stdout.write(self.style.WARNING(f"{station.name} controller not found, creating it..."))
-                # Create controller with just the name, don't try to set location
-                controller = Controller.create(name=station.name)
-                self.stdout.write(self.style.SUCCESS(f"Created controller: {controller.name}"))
+        from mysite.universe.services.actor_server import ActorService
+        # Deploy controllers once using the canonical method
+        results = ActorService.deploy_controllers()
+        total = sum(len(v) for v in results.values())
+        self.stdout.write(self.style.SUCCESS(f"Deployed {total} controllers"))
 
     def handle(self, *args, **options):
         # Get the temperature setting

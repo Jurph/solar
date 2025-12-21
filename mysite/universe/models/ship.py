@@ -93,7 +93,7 @@ class Ship(models.Model):
         if name is None:
             name = cls.generate_name()
         if location is None:
-            location = cls.get_random_station()
+            location = cls.get_random_cargo_origin()
         if size is None:
             size = random.choice(cls.Size.choices)[0]
         # Generate cargo using a temporary unsaved Ship instance to supply its characteristics.
@@ -122,6 +122,51 @@ class Ship(models.Model):
         if station is None:
             raise ValueError("No station locations available in the database.")
         return station
+
+    @classmethod
+    def get_valid_cargo_locations(cls) -> list:
+        """
+        Get all valid locations for cargo missions.
+        
+        Valid cargo endpoints are:
+        - Planets
+        - Moons
+        - Stations with at least one berth (large, medium, or small)
+        
+        Returns:
+            List of Location objects that are valid cargo mission endpoints.
+        """
+        from .celestial import Planet, Moon
+        from .station import Station
+        from django.db.models import Q
+        
+        # Get all planets and moons
+        planets = list(Planet.objects.all())
+        moons = list(Moon.objects.all())
+        
+        # Get stations with at least one berth
+        stations_with_berths = list(
+            Station.objects.filter(
+                Q(large_berths__gt=0) | Q(medium_berths__gt=0) | Q(small_berths__gt=0)
+            )
+        )
+        
+        return planets + moons + stations_with_berths
+
+    @classmethod
+    def get_random_cargo_origin(cls) -> Location:
+        """
+        Get a random valid origin for a cargo mission.
+        
+        Valid origins are planets, moons, or stations with berths.
+        
+        Returns:
+            A randomly selected valid cargo location.
+        """
+        valid_locations = cls.get_valid_cargo_locations()
+        if not valid_locations:
+            raise ValueError("No valid cargo mission locations in the database.")
+        return random.choice(valid_locations)
 
     def __str__(self):
         return f"{self.name} ({self.get_status_display()} at {self.current_location.name})"

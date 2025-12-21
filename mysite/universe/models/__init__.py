@@ -7,6 +7,7 @@ from mysite.universe.models.station import Station, BerthAssignment
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.actor import Actor, Pilot, Controller, Satellite
 from mysite.universe.models.physics import Atmosphere
+from mysite.universe.models.simulation import SimulationState, get_simulation_time
 from mysite.universe.models import display
 
 __all__ = [
@@ -27,5 +28,7 @@ __all__ = [
     'BerthAssignment',
     'Ship',
     'Atmosphere',
+    'SimulationState',
+    'get_simulation_time',
     'display',
 ]

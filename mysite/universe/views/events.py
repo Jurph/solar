@@ -27,19 +27,28 @@ def event_feed(request):
     """
     API endpoint that returns dialogue events as JSON for real-time display.
     
+    Only returns events whose timestamp <= current simulation time.
+    This allows events to be scheduled for the future and appear when
+    simulation time reaches them.
+    
     Query parameters:
         after_id: (optional int) Return events with id > after_id
         limit: (optional int, default=100) Maximum events to return
     
     Returns:
-        JSON response with events array and latest_id
+        JSON response with events array, latest_id, and simulation_time
     """
+    from mysite.universe.models.simulation import get_simulation_time
+    
+    # Get current simulation time
+    sim_time = get_simulation_time()
+    
     # Get query parameters
     after_id = request.GET.get('after_id')
     limit = int(request.GET.get('limit', 100))
     
-    # Build query
-    queryset = DialogueEventLog.objects.all()
+    # Build query - only events whose time has arrived
+    queryset = DialogueEventLog.objects.filter(timestamp__lte=sim_time)
     
     # Filter by ID if 'after_id' parameter provided
     if after_id:
@@ -69,7 +78,8 @@ def event_feed(request):
     
     return JsonResponse({
         'events': events,
-        'latest_id': latest_id
+        'latest_id': latest_id,
+        'simulation_time': sim_time,
     })
 
 
@@ -91,15 +101,37 @@ def event_scroller_wrapper(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def clear_events(request):
+    """
+    API endpoint to clear all dialogue events from the database.
+    Useful for starting fresh without restarting the server.
+    """
+    try:
+        count = DialogueEventLog.objects.count()
+        DialogueEventLog.objects.all().delete()
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Cleared {count} events from the database'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Failed to clear events: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def run_demo(request):
     """
     API endpoint to run the character dialogue demo in the background.
+    DEPRECATED: Use spawn_mission instead for variety.
     """
     def run_demo_command():
         """Run the demo command in a background thread."""
         try:
-            # Run the management command with default temperature
-            call_command('character_dialogue_demo', temperature=0.7, use_json=True)
+            # Run the management command with low temperature for consistent dialogue
+            call_command('character_dialogue_demo', temperature=0.25, use_json=True)
         except Exception as e:
             print(f"Error running demo: {e}")
     
@@ -108,6 +140,221 @@ def run_demo(request):
     thread.start()
     
     return JsonResponse({'status': 'started', 'message': 'Demo started in background'})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def spawn_mission(request):
+    """
+    API endpoint to spawn a complete mission: ship, pilot, cargo, route, and dialogue.
+    
+    Creates a new ship with pilot and cargo, picks a random destination,
+    plans the route, generates dialogue events with physics-based timing,
+    and schedules them for display based on simulation time.
+    
+    Events are saved directly to DialogueEventLog with timestamps in simulation
+    time. They will appear in the event feed when simulation time reaches them.
+    """
+    from mysite.universe.models.ship import Ship
+    from mysite.universe.models.actor import Pilot
+    from mysite.universe.services.route_server import RouteService
+    from mysite.universe.services.script_server import ScriptService
+    from mysite.universe.services.llm_service import LLMService
+    from mysite.universe.models.simulation import get_simulation_time
+    import threading
+    
+    def process_mission_in_background():
+        """Process the mission in a background thread to avoid blocking the request."""
+        import sys
+        
+        try:
+            print(f"[SPAWN] Starting mission generation...", flush=True)
+            
+            # Create ship and pilot (controllers should already exist from XML import)
+            ship = Ship.create()
+            print(f"[SPAWN] Created ship: {ship.name} at {ship.current_location.name}", flush=True)
+            
+            pilot = Pilot.create(ship=ship)
+            print(f"[SPAWN] Created pilot: {pilot.name}", flush=True)
+            
+            # Pick a random destination (different from origin)
+            # For cargo missions, only valid endpoints (planets, moons, stations with berths)
+            route_service = RouteService()
+            destination = route_service.pick_random_destination(
+                excluding=ship.current_location,
+                cargo_mission=True
+            )
+            print(f"[SPAWN] Destination: {destination.name}", flush=True)
+            
+            # Plan the route
+            route_events = route_service.plan_route(
+                origin=ship.current_location,
+                destination=destination
+            )
+            
+            if not route_events:
+                print(f"[SPAWN] ERROR: Failed to generate route for {ship.name}", flush=True)
+                return
+            
+            print(f"[SPAWN] Planned route with {len(route_events)} navigation events", flush=True)
+            
+            # Initialize LLM with low temperature for consistent dialogue
+            llm = LLMService(quiet_mode=True)
+            llm.temperature = 0.25
+            print(f"[SPAWN] LLM initialized with temperature {llm.temperature}", flush=True)
+            
+            # Create a fresh ScriptService instance for this mission
+            script_service = ScriptService(llm=llm)
+            
+            # Generate dialogue events from navigation events
+            # Use physics_delays=True for realistic timing between maneuvers
+            print(f"[SPAWN] Generating dialogue events with physics delays...", flush=True)
+            dialogue_events = script_service.parse_navigation_events(
+                route_events, ship, use_physics_delays=True
+            )
+            
+            if not dialogue_events:
+                print(f"[SPAWN] ERROR: No dialogue events generated for {ship.name}", flush=True)
+                return
+            
+            print(f"[SPAWN] Generated {len(dialogue_events)} dialogue events", flush=True)
+            
+            # Get current simulation time as the base for this mission's events
+            # Events are scheduled relative to simulation time, not wall-clock
+            base_sim_time = get_simulation_time()
+            
+            # Save events directly to DialogueEventLog
+            # Each event.timestamp is journey-relative (0.0, 45.0, 2700.0, etc.)
+            # We add the base simulation time to schedule them correctly
+            events_saved = 0
+            for event in dialogue_events:
+                scheduled_time = base_sim_time + event.timestamp
+                DialogueEventLog.objects.create(
+                    timestamp=scheduled_time,
+                    actor_name=event.actor.name,
+                    text=event.text
+                )
+                events_saved += 1
+            
+            # Calculate mission duration for logging
+            if dialogue_events:
+                mission_duration = dialogue_events[-1].timestamp
+                hours = int(mission_duration // 3600)
+                minutes = int((mission_duration % 3600) // 60)
+                seconds = int(mission_duration % 60)
+                duration_str = f"{hours}h {minutes}m {seconds}s"
+            else:
+                duration_str = "0s"
+            
+            print(f"[SPAWN] Mission scheduled: {ship.name} from {ship.current_location.name} to {destination.name}", flush=True)
+            print(f"[SPAWN] Saved {events_saved} events spanning {duration_str}", flush=True)
+                
+        except Exception as e:
+            print(f"[SPAWN] ERROR: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            sys.stdout.flush()
+    
+    try:
+        # Start mission processing in background thread
+        thread = threading.Thread(target=process_mission_in_background, daemon=True)
+        thread.start()
+        
+        return JsonResponse({
+            'status': 'started',
+            'message': 'Mission spawned and processing in background'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Failed to spawn mission: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def set_time_scale(request):
+    """
+    API endpoint to set the simulation time scale.
+    
+    Time scale controls how fast simulation time advances relative to wall-clock:
+    - 1.0 = real-time (1 second real = 1 second simulation)
+    - 60.0 = 1 minute real = 1 hour simulation
+    - 3600.0 = 1 second real = 1 hour simulation
+    
+    POST body (JSON):
+        time_scale: float - the new time scale multiplier
+    
+    Returns:
+        JSON with status, current simulation_time, and time_scale
+    """
+    import json
+    from mysite.universe.models.simulation import SimulationState
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        new_scale = float(data.get('time_scale', 1.0))
+        
+        if new_scale <= 0:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'time_scale must be positive'
+            }, status=400)
+        
+        # Update the simulation state
+        state = SimulationState.get_instance()
+        state.set_time_scale(new_scale)
+        
+        return JsonResponse({
+            'status': 'success',
+            'simulation_time': state.get_simulation_time(),
+            'time_scale': state.time_scale,
+        })
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Invalid request: {str(e)}'
+        }, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def get_simulation_status(request):
+    """
+    API endpoint to get current simulation time and scale.
+    
+    Returns:
+        JSON with simulation_time, time_scale, and anchor information
+    """
+    from mysite.universe.models.simulation import SimulationState
+    
+    state = SimulationState.get_instance()
+    
+    return JsonResponse({
+        'simulation_time': state.get_simulation_time(),
+        'time_scale': state.time_scale,
+        'anchor_sim_time': state.anchor_sim_time,
+        'anchor_wall_clock': state.anchor_wall_clock,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def clear_all_events(request):
+    """
+    API endpoint to clear all DialogueEventLog entries from the database.
+    """
+    try:
+        count, _ = DialogueEventLog.objects.all().delete()
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Cleared {count} dialogue events from the database.'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Failed to clear events: {str(e)}'
+        }, status=500)
 
 
 def object_details(request, object_type, object_id):

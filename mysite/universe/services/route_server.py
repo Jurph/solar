@@ -7,13 +7,16 @@ The approach is:
 3. Generate detailed maneuvers from the transfer plan.
 """
 
-from typing import List, Union, Optional
+from typing import List, Union, Optional, TYPE_CHECKING
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
 from ..models.navigation import ManeuverType, UniverseGraph, NavigationEvent, is_planetary
 from dataclasses import dataclass
 import random
 from mysite.universe.models.actor import Controller
+
+if TYPE_CHECKING:
+    from mysite.universe.models.celestial import PhysicalBody
 
 @dataclass(frozen=True)
 class TransferSegment:
@@ -452,11 +455,16 @@ class RouteService:
                 
         if control_stations:
             station = min(control_stations, key=distance)
-            # Look up or create the Controller actor for this station
-            controller = Controller.objects.filter(name=station.name).first()
+            # Look up the Controller actor for this station
+            # Controllers should be created at universe initialization time via ActorService.deploy_controllers()
+            controller = Controller.objects.filter(location=station).first()
             if not controller:
-                controller = Controller.create(name=station.name, location=station)
-            return controller
+                controller = Controller.objects.filter(name=station.name).first()
+            if controller:
+                return controller
+            # If no controller exists, return the station itself (Location)
+            # The calling code will handle looking up the controller
+            return station
             
         # 2. Find nearest Station
         stations = []
@@ -482,37 +490,65 @@ class RouteService:
         # 4. Return the location itself
         return concrete_location
 
-    def pick_random_destination(self, excluding: Location, max_scale: Scale = None) -> Location:
+    def pick_random_destination(
+        self, 
+        excluding: Location, 
+        max_scale: Scale = None,
+        cargo_mission: bool = False
+    ) -> Location:
         """
         Picks a random destination from all Location objects (excluding the one provided),
         optionally filtering for those with scale <= max_scale.
+        
+        Args:
+            excluding: Location to exclude from selection (typically the origin)
+            max_scale: Optional maximum scale for destinations
+            cargo_mission: If True, only select valid cargo endpoints 
+                          (planets, moons, stations with berths)
+        
+        Returns:
+            A randomly selected destination Location.
         """
-        all_locations = list(Location.objects.exclude(id=excluding.id))
-        eligible = [loc for loc in all_locations if not max_scale or loc.scale <= max_scale]
+        if cargo_mission:
+            # Use the Ship model's method to get valid cargo locations
+            from mysite.universe.models.ship import Ship
+            all_locations = Ship.get_valid_cargo_locations()
+            eligible = [loc for loc in all_locations if loc.id != excluding.id]
+        else:
+            all_locations = list(Location.objects.exclude(id=excluding.id))
+            eligible = [loc for loc in all_locations if not max_scale or loc.scale <= max_scale]
+        
         if not eligible:
             raise ValueError("No available destination in the universe matching criteria.")
         return random.choice(eligible)
 
-    def random_journey(self, ship) -> List[NavigationEvent]:
+    def random_journey(self, ship, cargo_mission: bool = True) -> List[NavigationEvent]:
         """
         Plans a random journey for a given ship.
         
         This method:
-            - Assigns a random origin to the ship if its current_location is None or is above Planet scale.
-            - Chooses a random destination (with scale at or below Planet) different from the origin.
+            - Assigns a random origin to the ship if its current_location is None or invalid.
+            - Chooses a random destination different from the origin.
             - Builds and returns a sequence of NavigationEvent objects for the journey.
+        
+        Args:
+            ship: The ship to plan a journey for
+            cargo_mission: If True (default), only use valid cargo endpoints
+                          (planets, moons, stations with berths)
         """
-        if not ship.current_location or ship.current_location.scale > Scale.PLANET:
-            eligible_origins = [loc for loc in Location.objects.all() if loc.scale <= Scale.PLANET]
-            if not eligible_origins:
-                raise ValueError("No eligible origin locations (scale <= Planet) found in the universe.")
-            origin = random.choice(eligible_origins)
+        from mysite.universe.models.ship import Ship
+        
+        if not ship.current_location:
+            # No location set - pick a valid cargo origin
+            origin = Ship.get_random_cargo_origin() if cargo_mission else random.choice(
+                [loc for loc in Location.objects.all() if loc.scale <= Scale.PLANET]
+            )
             ship.current_location = origin
             ship.save()
         else:
             origin = ship.current_location
 
-        destination = self.pick_random_destination(excluding=origin, max_scale=Scale.PLANET)
+        destination = self.pick_random_destination(excluding=origin, cargo_mission=cargo_mission)
         print(f"Random journey: {origin.name} -> {destination.name}")
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
@@ -647,7 +683,6 @@ class RouteService:
             Duration in seconds
         """
         from mysite.universe.services.maneuver_physics import get_maneuver_physics_service
-        from mysite.universe.models.celestial import Planet, Moon, PhysicalBody
         
         physics = get_maneuver_physics_service()
         maneuver_type = event.maneuver.value if hasattr(event.maneuver, 'value') else str(event.maneuver)
@@ -677,7 +712,7 @@ class RouteService:
         - Departure maneuvers (LAUNCH, UNDOCK): use origin/current
         - Transfer maneuvers: use origin for departure calculations
         """
-        from mysite.universe.models.celestial import Planet, Moon, PhysicalBody
+        from mysite.universe.models.celestial import Planet, Moon
         from mysite.universe.models.station import Station
         
         maneuver = event.maneuver.value.upper() if hasattr(event.maneuver, 'value') else str(event.maneuver).upper()
@@ -831,7 +866,7 @@ class RouteService:
         if body and hasattr(body, 'get_leo_band_altitude_km'):
             try:
                 context["altitude_km"] = body.get_leo_band_altitude_km()
-            except:
+            except Exception:
                 pass
         
         return context

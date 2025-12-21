@@ -1,11 +1,11 @@
-<?xml version="1.0" ?>
+<?xml version='1.0' encoding='utf-8'?>
 <universe seed="20250607">
   <galaxy>
     <name>Milky Way</name>
     <type>SP</type>
     <size>L</size>
     <system>
-      <name>Sol</name>
+      <name>Sol System</name>
       <galactic_x_ly>27000</galactic_x_ly>
       <galactic_y_ly>0</galactic_y_ly>
       <galactic_z_ly>65</galactic_z_ly>
@@ -944,7 +944,7 @@
       </star>
     </system>
     <system>
-      <name>Proxima Centauri</name>
+      <name>Proxima Centauri System</name>
       <galactic_x_ly>27003</galactic_x_ly>
       <galactic_y_ly>-3</galactic_y_ly>
       <galactic_z_ly>65</galactic_z_ly>
@@ -974,7 +974,7 @@
       </star>
     </system>
     <system>
-      <name>TRAPPIST-1</name>
+      <name>TRAPPIST-1 System</name>
       <galactic_x_ly>26992</galactic_x_ly>
       <galactic_y_ly>-35</galactic_y_ly>
       <galactic_z_ly>81</galactic_z_ly>
@@ -1024,7 +1024,7 @@
       </star>
     </system>
     <system>
-      <name>Tau Ceti</name>
+      <name>Tau Ceti System</name>
       <galactic_x_ly>26997</galactic_x_ly>
       <galactic_y_ly>0</galactic_y_ly>
       <galactic_z_ly>54</galactic_z_ly>
@@ -1062,7 +1062,7 @@
       </star>
     </system>
     <system>
-      <name>Alpha Centauri</name>
+      <name>Alpha Centauri System</name>
       <galactic_x_ly>27003</galactic_x_ly>
       <galactic_y_ly>-3</galactic_y_ly>
       <galactic_z_ly>65</galactic_z_ly>
@@ -1091,7 +1091,7 @@
       </star>
     </system>
     <system>
-      <name>Sirius</name>
+      <name>Sirius System</name>
       <galactic_x_ly>26994</galactic_x_ly>
       <galactic_y_ly>-6</galactic_y_ly>
       <galactic_z_ly>64</galactic_z_ly>
@@ -1116,7 +1116,7 @@
       </star>
     </system>
     <system>
-      <name>Epsilon Eridani</name>
+      <name>Epsilon Eridani System</name>
       <galactic_x_ly>26993</galactic_x_ly>
       <galactic_y_ly>-2</galactic_y_ly>
       <galactic_z_ly>57</galactic_z_ly>
@@ -1140,7 +1140,7 @@
       </star>
     </system>
     <system>
-      <name>61 Cygni</name>
+      <name>61 Cygni System</name>
       <galactic_x_ly>27002</galactic_x_ly>
       <galactic_y_ly>11</galactic_y_ly>
       <galactic_z_ly>64</galactic_z_ly>
@@ -1177,7 +1177,7 @@
       </star>
     </system>
     <system>
-      <name>Altair</name>
+      <name>Altair System</name>
       <galactic_x_ly>27011</galactic_x_ly>
       <galactic_y_ly>12</galactic_y_ly>
       <galactic_z_ly>62</galactic_z_ly>
@@ -1193,7 +1193,7 @@
       </star>
     </system>
     <system>
-      <name>Vega</name>
+      <name>Vega System</name>
       <galactic_x_ly>27009</galactic_x_ly>
       <galactic_y_ly>22</galactic_y_ly>
       <galactic_z_ly>73</galactic_z_ly>
@@ -1209,7 +1209,7 @@
       </star>
     </system>
     <system>
-      <name>Fomalhaut</name>
+      <name>Fomalhaut System</name>
       <galactic_x_ly>27010</galactic_x_ly>
       <galactic_y_ly>4</galactic_y_ly>
       <galactic_z_ly>42</galactic_z_ly>
@@ -1235,7 +1235,7 @@
       </star>
     </system>
     <system>
-      <name>HD 40307</name>
+      <name>HD 40307 System</name>
       <galactic_x_ly>26983</galactic_x_ly>
       <galactic_y_ly>-36</galactic_y_ly>
       <galactic_z_ly>50</galactic_z_ly>
@@ -1275,7 +1275,7 @@
       </star>
     </system>
     <system>
-      <name>Gliese 581</name>
+      <name>Gliese 581 System</name>
       <galactic_x_ly>27011</galactic_x_ly>
       <galactic_y_ly>-10</galactic_y_ly>
       <galactic_z_ly>79</galactic_z_ly>
@@ -1303,7 +1303,7 @@
       </star>
     </system>
     <system>
-      <name>Kepler-186</name>
+      <name>Kepler-186 System</name>
       <galactic_x_ly>26562</galactic_x_ly>
       <galactic_y_ly>375</galactic_y_ly>
       <galactic_z_ly>145</galactic_z_ly>
@@ -1345,7 +1345,7 @@
       </star>
     </system>
     <system>
-      <name>Wolf 359</name>
+      <name>Wolf 359 System</name>
       <galactic_x_ly>26998</galactic_x_ly>
       <galactic_y_ly>-4</galactic_y_ly>
       <galactic_z_ly>72</galactic_z_ly>
@@ -1361,7 +1361,7 @@
       </star>
     </system>
     <system>
-      <name>Barnard</name>
+      <name>Barnard System</name>
       <galactic_x_ly>27005</galactic_x_ly>
       <galactic_y_ly>3</galactic_y_ly>
       <galactic_z_ly>66</galactic_z_ly>
@@ -1382,4 +1382,3 @@
     </system>
   </galaxy>
 </universe>
-
