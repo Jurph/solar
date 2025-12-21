@@ -115,7 +115,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Implement dialogue event generation from navigation events ✓
 - Add timestamps to dialogue events based on maneuver durations ✓
 - Create view layer for displaying dialogue events as they unfold ✓
-- Develop admin controls for spawning missions and anomalies
+- Develop admin controls for spawning missions and anomalies ✓
 - Script a small number of "anomalies" with simple resolutions
 
 ### Four - Character Development
@@ -180,7 +180,9 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - Explain test fixtures and setup requirements
    - Note any tests that require LLM API access (mark as slow tests)
 
-#### Problem 2: Unified Simulation Time System and Commands API
+#### Problem 2: Unified Simulation Time System and Commands API ✓ (Mostly Complete)
+
+**Status:** Core functionality implemented Dec 2025. SimulationState model provides time scaling (1x-3600x). spawn-mission API generates physics-based journeys. Events scheduled at simulation time, appear when time arrives. Remaining: LLM service consolidation (see LLM_SERVICE_DEDUPLICATION_TODO.md).
 
 **Big Picture:** The simulation currently has multiple time systems and queue implementations scattered across different commands. The web interface needs to be driven by a real, unified simulation loop rather than artificial backdrops. We need a global simulation queue, consistent timestamp management, and a Commands API to control journey generation and scheduling from the web interface.
 
