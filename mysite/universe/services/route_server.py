@@ -7,7 +7,7 @@ The approach is:
 3. Generate detailed maneuvers from the transfer plan.
 """
 
-from typing import List, Union
+from typing import List, Union, Optional
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
 from ..models.navigation import ManeuverType, UniverseGraph, NavigationEvent, is_planetary
@@ -633,12 +633,142 @@ class RouteService:
 
     def get_event_duration(self, event: NavigationEvent) -> float:
         """
-        Returns the duration of a navigation event based on its maneuver type.
+        Returns the physics-based duration of a navigation event.
+        
+        Uses ManeuverPhysicsService to calculate realistic durations based on:
+        - Maneuver type (LAUNCH, CIRCULARIZE, SUBLIGHT, etc.)
+        - Planetary properties (gravity, radius, atmosphere)
+        - Orbital mechanics (distances, velocities)
         
         Args:
             event: NavigationEvent object
-        Returns the duration of a navigation event based on its maneuver type.
+            
+        Returns:
+            Duration in seconds
         """
-        # TODO: vary this based on maneuver type, distance between locations, planetary radius/gravity, etc. 
-        # TODO: add some randomness as well 
-        return 30.0
+        from mysite.universe.services.maneuver_physics import get_maneuver_physics_service
+        from mysite.universe.models.celestial import Planet, Moon, PhysicalBody
+        
+        physics = get_maneuver_physics_service()
+        maneuver_type = event.maneuver.value if hasattr(event.maneuver, 'value') else str(event.maneuver)
+        
+        # Get the relevant body for this maneuver
+        body = self._get_relevant_body_for_maneuver(event)
+        body_params = self._extract_body_params(body) if body else {}
+        
+        # Build navigation context
+        nav_context = self._build_physics_nav_context(event, body)
+        
+        # Calculate duration using physics service
+        duration = physics.get_maneuver_duration(
+            maneuver_type=maneuver_type,
+            body_params=body_params,
+            nav_context=nav_context,
+        )
+        
+        return duration
+    
+    def _get_relevant_body_for_maneuver(self, event: NavigationEvent) -> Optional["PhysicalBody"]:
+        """
+        Determine the relevant planet/moon for physics calculations.
+        
+        Rules:
+        - Arrival maneuvers (DEORBIT, LANDING, DOCK, INSERTION): use destination
+        - Departure maneuvers (LAUNCH, UNDOCK): use origin/current
+        - Transfer maneuvers: use origin for departure calculations
+        """
+        from mysite.universe.models.celestial import Planet, Moon, PhysicalBody
+        from mysite.universe.models.station import Station
+        
+        maneuver = event.maneuver.value.upper() if hasattr(event.maneuver, 'value') else str(event.maneuver).upper()
+        
+        # Determine which location to use
+        if maneuver in ["DEORBIT", "LANDING", "DOCK", "INSERTION"]:
+            target_location = event.next or event.destination
+        else:
+            target_location = event.current or event.origin
+        
+        if not target_location:
+            return None
+        
+        concrete = target_location.get_concrete_instance()
+        
+        # If it's already a planet/moon, return it
+        if isinstance(concrete, (Planet, Moon)):
+            return concrete
+        
+        # If it's a station, get what it orbits
+        if isinstance(concrete, Station) and concrete.orbits:
+            parent = concrete.orbits.get_concrete_instance()
+            if isinstance(parent, (Planet, Moon)):
+                return parent
+        
+        return None
+    
+    def _extract_body_params(self, body) -> dict:
+        """Extract physical parameters from a celestial body."""
+        if body is None:
+            return {}
+        
+        params = {
+            "radius_km": getattr(body, 'radius_km', 6371),
+            "mass_kg": getattr(body, 'mass_kg', 5.97e24),
+            "gravity_gees": getattr(body, 'surface_gravity_gees', None),
+            "atmospheric_height_km": getattr(body, 'atmospheric_height_km', 100),
+            "rotation_period_seconds": getattr(body, 'rotation_period_seconds', 86400),
+            "has_atmosphere": getattr(body, 'atmospheric_height_km', 0) > 0,
+        }
+        
+        # Calculate gravity from mass and radius if not provided
+        if params["gravity_gees"] is None and params["mass_kg"] and params["radius_km"]:
+            G = 6.67430e-11
+            EARTH_G = 9.80665
+            surface_g = (G * params["mass_kg"]) / ((params["radius_km"] * 1000) ** 2)
+            params["gravity_gees"] = surface_g / EARTH_G
+        
+        return params
+    
+    def _build_physics_nav_context(self, event: NavigationEvent, body) -> dict:
+        """Build navigation context for physics calculations."""
+        from mysite.universe.models.celestial import Planet
+        
+        context = {
+            "altitude_km": 300,  # Default LEO altitude
+            "entry_interface_km": 100,  # Default entry interface
+            "orbit_altitude_km": 300,
+        }
+        
+        # For sublight/transfer maneuvers, calculate distance
+        maneuver = event.maneuver.value.upper() if hasattr(event.maneuver, 'value') else str(event.maneuver).upper()
+        
+        if maneuver in ["SUBLIGHT", "TRANSFER"]:
+            # Try to get orbital distances for origin and destination
+            origin_au = None
+            dest_au = None
+            
+            if event.origin:
+                origin_concrete = event.origin.get_concrete_instance()
+                if isinstance(origin_concrete, Planet):
+                    origin_au = getattr(origin_concrete, 'orbital_distance_au', None)
+            
+            if event.destination:
+                dest_concrete = event.destination.get_concrete_instance()
+                if isinstance(dest_concrete, Planet):
+                    dest_au = getattr(dest_concrete, 'orbital_distance_au', None)
+            
+            if origin_au and dest_au:
+                context["distance_au"] = abs(dest_au - origin_au)
+                context["origin_orbit_au"] = origin_au
+                context["dest_orbit_au"] = dest_au
+            else:
+                # Default to Mars-Earth distance (~0.5 AU average)
+                context["distance_au"] = 0.5
+        
+        # Get target altitude if body provides it
+        if body and hasattr(body, 'get_leo_band_altitude_km'):
+            try:
+                context["altitude_km"] = body.get_leo_band_altitude_km()
+            except:
+                pass
+        
+        return context

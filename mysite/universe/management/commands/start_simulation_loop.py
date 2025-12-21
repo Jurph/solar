@@ -180,5 +180,91 @@ class SimulationQueue:
                 # Continue processing other events even if one fails
 
 
+class DemoQueue(SimulationQueue):
+    """
+    A queue that fast-forwards through events with a fixed delay between each.
+    
+    Unlike SimulationQueue which respects actual timestamps, DemoQueue processes
+    events sequentially with a configurable delay (default 5 seconds) between each.
+    This is useful for demos where you want to see the dialogue flow without waiting
+    for realistic physics-based delays.
+    
+    Usage:
+        queue = DemoQueue(delay_seconds=3.0)  # 3 seconds between events
+        queue.add_event(event1)
+        queue.add_event(event2)
+        queue.process_all_events()  # Processes all events with delays
+    """
+    
+    def __init__(self, delay_seconds: float = 5.0):
+        """
+        Initialize DemoQueue with a fixed delay between events.
+        
+        Args:
+            delay_seconds: Time to wait between processing events (default: 5.0)
+        """
+        super().__init__()
+        self.delay_seconds = delay_seconds
+    
+    def process_all_events(self, callback=None) -> int:
+        """
+        Process all events in order with fixed delays between each.
+        
+        Ignores actual event timestamps and processes events sequentially
+        with self.delay_seconds between each event.
+        
+        Args:
+            callback: Optional function to call after each event is processed.
+                      Receives the event as its argument.
+        
+        Returns:
+            Number of events processed.
+        """
+        events_processed = 0
+        
+        while self._queue:
+            event = self.get_next_event()
+            
+            try:
+                # Emit the appropriate signal for this event
+                if isinstance(event, DialogueEvent):
+                    dialogue_event_processed.send(sender=DemoQueue, event=event)
+                elif isinstance(event, NavigationEvent):
+                    navigation_event_processed.send(sender=DemoQueue, event=event)
+                
+                events_processed += 1
+                
+                # Call optional callback
+                if callback:
+                    callback(event)
+                
+                # Wait before processing next event (if there are more)
+                if self._queue and self.delay_seconds > 0:
+                    time.sleep(self.delay_seconds)
+                    
+            except Exception as e:
+                print(f"Error processing event: {e}")
+                # Continue processing other events even if one fails
+        
+        return events_processed
+    
+    def process_all_events_instant(self, callback=None) -> int:
+        """
+        Process all events instantly with no delays (for testing).
+        
+        Args:
+            callback: Optional function to call after each event is processed.
+        
+        Returns:
+            Number of events processed.
+        """
+        original_delay = self.delay_seconds
+        self.delay_seconds = 0
+        try:
+            return self.process_all_events(callback=callback)
+        finally:
+            self.delay_seconds = original_delay
+
+
 # Expose the global dialogue events list as an attribute on the Command class for testing
 Command.dialogue_events_received = DIALOGUE_EVENTS_RECEIVED

@@ -30,6 +30,7 @@ from mysite.universe.services.llm_service import LLMService
 from mysite.universe.import_xml import UniverseImporter
 from mysite.universe.management.commands.start_simulation_loop import (
     SimulationQueue,
+    DemoQueue,
     DIALOGUE_EVENTS_RECEIVED,
     DIALOGUE_EVENTS_RECEIVED_LOCK
 )
@@ -59,6 +60,12 @@ class Command(BaseCommand):
             '--use-json',
             action='store_true',
             help='Use JSON-structured dialogue format',
+        )
+        parser.add_argument(
+            '--delay',
+            type=float,
+            default=2.0,
+            help='Delay in seconds between dialogue events (default: 2.0)',
         )
 
     def ensure_controllers_exist(self):
@@ -144,7 +151,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f"Generated route with {len(route_events)} navigation events"))
             
             # Process the navigation events to generate dialogue events
-            script_events = ScriptService.get_instance().parse_navigation_events(route_events, ship)
+            # Demo mode: use_physics_delays=False for fast playback
+            # Real simulation would use True for realistic timing
+            script_events = ScriptService.get_instance().parse_navigation_events(
+                route_events, ship, use_physics_delays=False
+            )
             
             # Insert a comms check with the satellite after the first few events
             comms_check_position = min(3, len(script_events) - 1)
@@ -168,78 +179,36 @@ class Command(BaseCommand):
             with DIALOGUE_EVENTS_RECEIVED_LOCK:
                 DIALOGUE_EVENTS_RECEIVED.clear()
             
-            # Create a simulation queue
-            sim_queue = SimulationQueue()
+            # Create a demo queue with configurable delay
+            delay_seconds = options['delay']
+            demo_queue = DemoQueue(delay_seconds=delay_seconds)
             
             # Add all events to the queue
             for event in script_events:
-                sim_queue.add_event(event)
+                demo_queue.add_event(event)
             
-            # Start the simulation loop in a separate thread
-            stop_event = threading.Event()
-            
-            def run_simulation():
-                try:
-                    start_time = time.time()
-                    
-                    while not stop_event.is_set() and sim_queue.peek_next_event():
-                        current_time = time.time() - start_time
-                        sim_queue.process_due_events(current_time)
-                        
-                        # Sleep a bit to avoid busy waiting
-                        next_event = sim_queue.peek_next_event()
-                        if next_event:
-                            sleep_time = min(0.1, max(0, next_event.timestamp - current_time))
-                            time.sleep(sleep_time)
-                        else:
-                            break
-                except Exception as e:
-                    self.stdout.write(self.style.ERROR(f"Error in simulation loop: {e}"))
-                finally:
-                    stop_event.set()
-            
-            # Start the simulation thread
             self.stdout.write(self.style.SUCCESS("Starting simulation..."))
-            thread = threading.Thread(target=run_simulation)
-            thread.daemon = True
-            thread.start()
             
-            # Print dialogue events as they are processed
-            last_event_count = 0
+            # Define callback to print events as they're processed
+            def print_event(event):
+                if isinstance(event, DialogueEvent):
+                    self._print_message(event.actor.name, event.text)
+                elif isinstance(event, NavigationEvent):
+                    self._print_message(
+                        "NAVIGATION",
+                        f"{event.maneuver.name} to {event.target.name}"
+                    )
+            
+            # Process all events with the demo queue (fast-forward mode)
             try:
-                while thread.is_alive():
-                    with DIALOGUE_EVENTS_RECEIVED_LOCK:
-                        current_count = len(DIALOGUE_EVENTS_RECEIVED)
-                        
-                        # Print any new events
-                        for i in range(last_event_count, current_count):
-                            event = DIALOGUE_EVENTS_RECEIVED[i]
-                            if isinstance(event, DialogueEvent):
-                                self._print_message(event.actor.name, event.text)
-                            elif isinstance(event, NavigationEvent):
-                                self._print_message(
-                                    "NAVIGATION",
-                                    f"{event.maneuver.name} to {event.target.name}"
-                                )
-                        
-                        last_event_count = current_count
-                    
-                    # Check if all events have been processed
-                    if not sim_queue.peek_next_event():
-                        break
-                    
-                    time.sleep(0.1)
+                events_processed = demo_queue.process_all_events(callback=print_event)
             except KeyboardInterrupt:
                 self.stdout.write(self.style.WARNING("Simulation interrupted by user"))
-            finally:
-                # Stop the simulation thread
-                stop_event.set()
-                thread.join(timeout=1.0)
             
             # Print summary
             self.stdout.write("\n" + "="*80)
             self.stdout.write(self.style.SUCCESS("Simulation complete"))
-            self.stdout.write(f"Processed {len(DIALOGUE_EVENTS_RECEIVED)} dialogue events")
+            self.stdout.write(f"Processed {events_processed} dialogue events")
             self.stdout.write("="*80)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error: {e}"))
