@@ -8,10 +8,24 @@
 </head>
 <body>
     <div class="control-panel">
+        <div class="simulation-status">
+            <span class="status-label">Simulation Time:</span>
+            <span id="simTimeDisplay" class="status-value">--:--:--</span>
+            <span class="status-divider">|</span>
+            <span class="status-label">Scale:</span>
+            <span id="timeScaleDisplay" class="status-value">1x</span>
+        </div>
         <div class="controls">
-            <button id="runDemoButton" class="control-button">Run Demo</button>
-            <button id="clearButton" class="control-button">Clear Terminal</button>
-            <!-- Placeholder for future control buttons -->
+            <button id="spawnMissionButton" class="control-button primary">Spawn Mission</button>
+            <button id="clearEventsButton" class="control-button danger">Clear All Events</button>
+            <button id="clearDisplayButton" class="control-button">Clear Display</button>
+            <div class="time-scale-controls">
+                <span>Time Scale:</span>
+                <button class="scale-btn" data-scale="1">1x</button>
+                <button class="scale-btn" data-scale="60">60x</button>
+                <button class="scale-btn" data-scale="600">600x</button>
+                <button class="scale-btn" data-scale="3600">3600x</button>
+            </div>
         </div>
     </div>
     
@@ -24,27 +38,55 @@
     <script>
         // Configuration
         const POLL_INTERVAL = 2000; // Poll every 2 seconds
+        const STATUS_INTERVAL = 1000; // Update status every second
         const API_ENDPOINT = '{% url "event_feed" %}';
+        const STATUS_ENDPOINT = '{% url "simulation_status" %}';
+        const TIME_SCALE_ENDPOINT = '{% url "set_time_scale" %}';
         
         // State
         let lastEventId = null;
         let isPolling = true;
         let eventQueue = []; // Queue for events to type out sequentially
         let isTyping = false; // Track if we're currently typing an event
+        let currentTimeScale = 1.0;
+        let currentSimTime = 0.0;
         
         // DOM elements
         const eventLog = document.getElementById('eventLog');
         const eventContainer = document.getElementById('eventContainer');
-        const clearButton = document.getElementById('clearButton');
-        const runDemoButton = document.getElementById('runDemoButton');
+        const clearEventsButton = document.getElementById('clearEventsButton');
+        const clearDisplayButton = document.getElementById('clearDisplayButton');
+        const spawnMissionButton = document.getElementById('spawnMissionButton');
+        const simTimeDisplay = document.getElementById('simTimeDisplay');
+        const timeScaleDisplay = document.getElementById('timeScaleDisplay');
+        const scaleBtns = document.querySelectorAll('.scale-btn');
         
         /**
-         * Format timestamp as HH:MM:SS
+         * Format timestamp as HH:MM:SS (relative to an epoch)
          */
         function formatTimestamp(timestamp) {
-            const hours = Math.floor(timestamp / 3600);
+            // For display, we show time relative to when simulation started
+            // This gives us a nice incrementing clock
+            const hours = Math.floor(timestamp / 3600) % 100;
             const minutes = Math.floor((timestamp % 3600) / 60);
             const seconds = Math.floor(timestamp % 60);
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+        
+        /**
+         * Format simulation time for display
+         */
+        function formatSimTime(simTime) {
+            // Show as days, hours, minutes since simulation epoch
+            const totalSeconds = simTime;
+            const days = Math.floor(totalSeconds / 86400);
+            const hours = Math.floor((totalSeconds % 86400) / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = Math.floor(totalSeconds % 60);
+            
+            if (days > 0) {
+                return `D${days} ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
         
@@ -61,13 +103,13 @@
                     
                     // Variable delay: faster for spaces, slower for punctuation
                     // Slightly slower for a more relaxed teletype effect
-                    let delay = 12; // Default 12ms for regular characters (was 8ms)
+                    let delay = 12; // Default 12ms for regular characters
                     if (char === ' ') {
-                        delay = 3; // Quick for spaces (was 2ms)
+                        delay = 3; // Quick for spaces
                     } else if (char.match(/[.,!?;:]/)) {
-                        delay = 20; // Slight pause for punctuation (was 15ms)
+                        delay = 20; // Slight pause for punctuation
                     } else if (char === '\n') {
-                        delay = 15; // Brief pause for newlines (was 10ms)
+                        delay = 15; // Brief pause for newlines
                     }
                     
                     index++;
@@ -162,6 +204,11 @@
                 
                 const data = await response.json();
                 
+                // Update simulation time from response
+                if (data.simulation_time !== undefined) {
+                    currentSimTime = data.simulation_time;
+                }
+                
                 if (data.events && data.events.length > 0) {
                     appendEvents(data.events);
                     // Update to the latest ID from the response
@@ -173,26 +220,94 @@
         }
         
         /**
+         * Fetch simulation status (time and scale)
+         */
+        async function fetchStatus() {
+            try {
+                const response = await fetch(STATUS_ENDPOINT);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                currentSimTime = data.simulation_time;
+                currentTimeScale = data.time_scale;
+                
+                // Update display
+                simTimeDisplay.textContent = formatSimTime(currentSimTime);
+                timeScaleDisplay.textContent = `${currentTimeScale}x`;
+                
+                // Highlight active scale button
+                scaleBtns.forEach(btn => {
+                    const btnScale = parseFloat(btn.dataset.scale);
+                    btn.classList.toggle('active', Math.abs(btnScale - currentTimeScale) < 0.01);
+                });
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+        
+        /**
+         * Set time scale
+         */
+        async function setTimeScale(scale) {
+            try {
+                const response = await fetch(TIME_SCALE_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ time_scale: scale })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentTimeScale = data.time_scale;
+                    currentSimTime = data.simulation_time;
+                    timeScaleDisplay.textContent = `${currentTimeScale}x`;
+                    console.log(`Time scale set to ${currentTimeScale}x`);
+                }
+            } catch (error) {
+                console.error('Error setting time scale:', error);
+            }
+        }
+        
+        /**
          * Start polling for events
          */
         function startPolling() {
             // Initial fetch
             fetchEvents();
+            fetchStatus();
             
-            // Set up interval
+            // Set up intervals
             setInterval(fetchEvents, POLL_INTERVAL);
+            setInterval(fetchStatus, STATUS_INTERVAL);
         }
         
         /**
-         * Run the dialogue demo
+         * Clear the display only (keeps database events)
          */
-        runDemoButton.addEventListener('click', async () => {
-            // Disable button while running
-            runDemoButton.disabled = true;
-            runDemoButton.textContent = 'Running...';
+        clearDisplayButton.addEventListener('click', () => {
+            // Clear all events from the display (like a terminal clear command)
+            // Keep lastEventId so we don't re-fetch old events
+            eventLog.innerHTML = '';
+            eventQueue = []; // Clear pending events too
+            // Reset scroll position
+            eventContainer.scrollTop = 0;
+        });
+        
+        /**
+         * Clear ALL events from database (fresh start)
+         */
+        clearEventsButton.addEventListener('click', async () => {
+            if (!confirm('Clear ALL events from the database? This cannot be undone.')) {
+                return;
+            }
+            
+            clearEventsButton.disabled = true;
+            clearEventsButton.textContent = 'Clearing...';
             
             try {
-                const response = await fetch('{% url "run_demo" %}', {
+                const response = await fetch('{% url "clear_all_events" %}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -201,32 +316,63 @@
                 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Demo started:', data.message);
-                    // Re-enable button after a moment
-                    setTimeout(() => {
-                        runDemoButton.disabled = false;
-                        runDemoButton.textContent = 'Run Demo';
-                    }, 2000);
+                    console.log('Events cleared:', data.message);
+                    // Clear the display too
+                    eventLog.innerHTML = '';
+                    eventQueue = [];
+                    lastEventId = null; // Reset so we fetch from beginning
+                    eventContainer.scrollTop = 0;
                 } else {
-                    throw new Error('Failed to start demo');
+                    throw new Error('Failed to clear events');
                 }
             } catch (error) {
-                console.error('Error starting demo:', error);
-                runDemoButton.disabled = false;
-                runDemoButton.textContent = 'Run Demo';
-                alert('Failed to start demo. Check console for details.');
+                console.error('Error clearing events:', error);
+                alert('Failed to clear events. Check console for details.');
+            } finally {
+                clearEventsButton.disabled = false;
+                clearEventsButton.textContent = 'Clear All Events';
             }
         });
         
         /**
-         * Clear the terminal
+         * Spawn a complete mission (ship + cargo + journey)
          */
-        clearButton.addEventListener('click', () => {
-            // Clear all events from the display (like a terminal clear command)
-            // Keep lastEventId so we don't re-fetch old events
-            eventLog.innerHTML = '';
-            // Reset scroll position
-            eventContainer.scrollTop = 0;
+        spawnMissionButton.addEventListener('click', async () => {
+            spawnMissionButton.disabled = true;
+            spawnMissionButton.textContent = 'Spawning...';
+            
+            try {
+                const response = await fetch('{% url "spawn_mission" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Mission spawned:', data.message);
+                    spawnMissionButton.textContent = 'Spawn Mission';
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to spawn mission');
+                }
+            } catch (error) {
+                console.error('Error spawning mission:', error);
+                alert('Failed to spawn mission. Check console for details.');
+            } finally {
+                spawnMissionButton.disabled = false;
+            }
+        });
+        
+        /**
+         * Time scale button handlers
+         */
+        scaleBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const scale = parseFloat(btn.dataset.scale);
+                setTimeScale(scale);
+            });
         });
         
         // Start polling when page loads
@@ -234,4 +380,3 @@
     </script>
 </body>
 </html>
-

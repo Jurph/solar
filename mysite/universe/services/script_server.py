@@ -29,14 +29,28 @@ class ScriptService:
     
     @classmethod
     def get_instance(cls, llm=None):
-        """Get or create the ScriptService instance with optional LLM configuration."""
+        """
+        Get or create the ScriptService instance with optional LLM configuration.
+        
+        If an LLM is provided and differs from the current one, updates the instance
+        to use the new LLM configuration (e.g., different temperature).
+        """
         if cls._instance is None:
             if llm is None:
                 # Use unified LLMService for structured JSON dialogue generation
                 from mysite.universe.services.llm_service import LLMService
                 llm = LLMService(quiet_mode=True)
             cls._instance = cls(llm)
+        elif llm is not None:
+            # Update the LLM if a new one is provided (e.g., different temperature)
+            cls._instance.llm = llm
+            cls._instance.dialogue_service = DialogueService(llm)
         return cls._instance
+    
+    @classmethod
+    def reset_instance(cls):
+        """Reset the singleton instance (useful for testing)."""
+        cls._instance = None
 
     def __init__(self, llm):
         self.llm = llm
@@ -253,10 +267,16 @@ class ScriptService:
             if isinstance(nav_event.controller, Controller):
                 return nav_event.controller
             elif hasattr(nav_event.controller, 'name'):
-                # It's a Location (station), get or create the Controller actor
-                controller = Controller.objects.filter(name=nav_event.controller.name).first()
+                # It's a Location (station), look up the Controller actor
+                # Controllers should be created at universe initialization time via ActorService.deploy_controllers()
+                controller = Controller.objects.filter(location=nav_event.controller).first()
                 if not controller:
-                    controller = Controller.create(name=nav_event.controller.name, location=nav_event.controller)
+                    controller = Controller.objects.filter(name=nav_event.controller.name).first()
+                if not controller:
+                    raise ValueError(
+                        f"No controller found for location '{nav_event.controller.name}'. "
+                        "Controllers should be deployed at universe initialization via ActorService.deploy_controllers()."
+                    )
                 return controller
         
         # Determine controller based on maneuver type
@@ -298,18 +318,29 @@ class ScriptService:
         if isinstance(effective_controller, Controller):
             return effective_controller
         
-        # If effective_controller is a Location (station), get or create the Controller actor
+        # If effective_controller is a Location (station), look up the Controller actor
+        # Controllers should be created at universe initialization time via ActorService.deploy_controllers()
         if hasattr(effective_controller, 'name'):
-            controller = Controller.objects.filter(name=effective_controller.name).first()
+            controller = Controller.objects.filter(location=effective_controller).first()
             if not controller:
-                controller = Controller.create(name=effective_controller.name, location=effective_controller)
+                controller = Controller.objects.filter(name=effective_controller.name).first()
+            if not controller:
+                raise ValueError(
+                    f"No controller found for location '{effective_controller.name}'. "
+                    "Controllers should be deployed at universe initialization via ActorService.deploy_controllers()."
+                )
             return controller
         
-        # Fallback: create a controller with the location's name
-        controller_name = f"{target_location.name} Control"
-        controller = Controller.objects.filter(name=controller_name).first()
+        # Fallback: look up a controller for the target location
+        controller = Controller.objects.filter(location=target_location).first()
         if not controller:
-            controller = Controller.create(name=controller_name, location=target_location)
+            controller_name = f"{target_location.name} Control"
+            controller = Controller.objects.filter(name=controller_name).first()
+        if not controller:
+            raise ValueError(
+                f"No controller found for location '{target_location.name}'. "
+                "Controllers should be deployed at universe initialization via ActorService.deploy_controllers()."
+            )
         return controller
     
     def _convert_messages_to_events(

@@ -17,7 +17,17 @@ urlpatterns = [
     path("events/scroller/", views.event_scroller, name="event_scroller"),
     # The JSON API endpoint for polling events:
     path("api/events/", views.event_feed, name="event_feed"),
-    # API endpoint to run the dialogue demo:
+    # API endpoint to run the dialogue demo (deprecated - use spawn_mission):
     path("api/run-demo/", views.run_demo, name="run_demo"),
+    # API endpoint to spawn a complete mission (ship + cargo + journey):
+    path("api/spawn-mission/", views.spawn_mission, name="spawn_mission"),
+    # API endpoint to clear display events:
+    path("api/clear-events/", views.clear_events, name="clear_events"),
+    # API endpoint to clear all events from DB (fresh start):
+    path("api/clear-all-events/", views.clear_all_events, name="clear_all_events"),
+    # API endpoint to set simulation time scale:
+    path("api/simulation/time-scale/", views.set_time_scale, name="set_time_scale"),
+    # API endpoint to get simulation status:
+    path("api/simulation/status/", views.get_simulation_status, name="simulation_status"),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

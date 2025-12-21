@@ -70,8 +70,9 @@ class ControllerPhysicsService:
         from mysite.universe.models.base import Location
         
         # Try to find target location by name
-        try:
-            target_location = Location.objects.get(name=target_location_name)
+        # Use filter().first() to handle duplicate names gracefully
+        target_location = Location.objects.filter(name=target_location_name).first()
+        if target_location:
             concrete = target_location.get_concrete_instance()
             
             if isinstance(concrete, (Planet, Moon)):
@@ -82,8 +83,6 @@ class ControllerPhysicsService:
                 parent = concrete.orbits.get_concrete_instance()
                 if isinstance(parent, (Planet, Moon)):
                     return parent
-        except Location.DoesNotExist:
-            pass
         
         # Fallback: use what the controller's station orbits
         if station.orbits:

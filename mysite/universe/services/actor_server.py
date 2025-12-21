@@ -77,7 +77,10 @@ class ActorService:
             
             for station in stations:
                 controller_name = ActorService._generate_controller_name(station)
-                controller = Controller.objects.filter(name=controller_name).first()
+                # Check by location first (OneToOne constraint), then by name
+                controller = Controller.objects.filter(location=station).first()
+                if not controller:
+                    controller = Controller.objects.filter(name=controller_name).first()
                 
                 if not controller:
                     controller = Controller.create(
@@ -98,7 +101,10 @@ class ActorService:
             
             for planet in planets:
                 controller_name = ActorService._generate_controller_name(planet)
-                controller = Controller.objects.filter(name=controller_name).first()
+                # Check by location first (OneToOne constraint), then by name
+                controller = Controller.objects.filter(location=planet).first()
+                if not controller:
+                    controller = Controller.objects.filter(name=controller_name).first()
                 if not controller:
                     controller = Controller.create(
                         name=controller_name,
@@ -113,7 +119,10 @@ class ActorService:
             
             for moon in moons:
                 controller_name = ActorService._generate_controller_name(moon)
-                controller = Controller.objects.filter(name=controller_name).first()
+                # Check by location first (OneToOne constraint), then by name
+                controller = Controller.objects.filter(location=moon).first()
+                if not controller:
+                    controller = Controller.objects.filter(name=controller_name).first()
                 if not controller:
                     controller = Controller.create(
                         name=controller_name,

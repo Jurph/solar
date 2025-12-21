@@ -3,7 +3,7 @@ from .scale import Scale, OrderedScale  # Import the enhanced Scale class
 # Contains the base "Location" model that we can use to instantiate other stuff
 
 class Location(models.Model):
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255, unique=True)
     # orbits = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE)
 
     # Use the enhanced Scale class for assigning and comparing scales.

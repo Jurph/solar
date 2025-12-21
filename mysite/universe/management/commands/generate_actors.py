@@ -44,23 +44,22 @@ class Command(BaseCommand):
             self.stdout.write(f"Years of Experience: {pilot.years_of_experience}")
             self.stdout.write(f"Prompt: {pilot.prompt}")
         
-        # Generate controllers
+        # Deploy controllers using the canonical method
         self.stdout.write(self.style.NOTICE("\n=== CONTROLLERS ==="))
-        for i in range(count):
-            # Get or create a location for the controller
-            locations = Location.objects.all()
-            location = locations[i] if i < len(locations) else None
-            
-            if location is None:
-                self.stdout.write(self.style.WARNING(f"No location available for controller {i+1}. Skipping."))
-                continue
-            
-            # Create a controller
-            controller = Controller.create(location=location)
-            
-            # Display controller information
+        from mysite.universe.services.actor_server import ActorService
+        results = ActorService.deploy_controllers()
+        
+        # Display first 'count' controllers
+        all_controllers = (
+            results.get('control_stations', []) + 
+            results.get('regular_stations', []) + 
+            results.get('planets', []) + 
+            results.get('moons', [])
+        )
+        for controller in all_controllers[:count]:
             self.stdout.write(f"\nController: {controller.name}")
-            self.stdout.write(f"Location: {location.name}")
+            if controller.location:
+                self.stdout.write(f"Location: {controller.location.name}")
             self.stdout.write(f"Traits: {controller.traits}")
             self.stdout.write(f"Years of Experience: {controller.years_of_experience}")
             self.stdout.write(f"Prompt: {controller.prompt}")
