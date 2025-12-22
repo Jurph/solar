@@ -14,9 +14,16 @@
             <span class="status-divider">|</span>
             <span class="status-label">Scale:</span>
             <span id="timeScaleDisplay" class="status-value">1x</span>
+            <span class="status-divider">|</span>
+            <span class="status-label">Queue:</span>
+            <span id="pendingEventsDisplay" class="status-value pending-count">0 pending</span>
+            <span class="status-divider">|</span>
+            <span class="status-label">Next in:</span>
+            <span id="nextEventDisplay" class="status-value next-event-time">--</span>
         </div>
         <div class="controls">
             <button id="spawnMissionButton" class="control-button primary">Spawn Mission</button>
+            <button id="skipToNextButton" class="control-button">⏭ Skip to Next</button>
             <button id="clearEventsButton" class="control-button danger">Clear All Events</button>
             <button id="clearDisplayButton" class="control-button">Clear Display</button>
             <div class="time-scale-controls">
@@ -37,19 +44,31 @@
 
     <script>
         // Configuration
-        const POLL_INTERVAL = 2000; // Poll every 2 seconds
-        const STATUS_INTERVAL = 1000; // Update status every second
+        const POLL_INTERVAL = 1000; // Poll for new events every 1 second
+        const STATUS_POLL_INTERVAL = 2000; // Poll server for status every 2 seconds
+        const DISPLAY_UPDATE_INTERVAL = 200; // Update display at 5Hz for smooth countdown
         const API_ENDPOINT = '{% url "event_feed" %}';
         const STATUS_ENDPOINT = '{% url "simulation_status" %}';
         const TIME_SCALE_ENDPOINT = '{% url "set_time_scale" %}';
+        const SKIP_TO_NEXT_ENDPOINT = '{% url "skip_to_next_event" %}';
         
         // State
         let lastEventId = null;
         let isPolling = true;
         let eventQueue = []; // Queue for events to type out sequentially
         let isTyping = false; // Track if we're currently typing an event
+        let isFetching = false; // Prevent concurrent fetches
         let currentTimeScale = 1.0;
         let currentSimTime = 0.0;
+        let displayedEventIds = new Set(); // Track which events have been displayed
+        let pageLoadSimTime = null; // Simulation time when page loaded (for catch-up mode)
+        let catchUpComplete = false; // True once we've caught up to real-time
+        
+        // For smooth countdown interpolation
+        let lastStatusFetchTime = null; // Wall-clock time of last status fetch
+        let lastFetchedSimTime = null; // Sim time at last fetch
+        let nextEventTimestamp = null; // Timestamp of next pending event
+        let pendingEventCount = 0; // Number of pending events
         
         // DOM elements
         const eventLog = document.getElementById('eventLog');
@@ -57,8 +76,11 @@
         const clearEventsButton = document.getElementById('clearEventsButton');
         const clearDisplayButton = document.getElementById('clearDisplayButton');
         const spawnMissionButton = document.getElementById('spawnMissionButton');
+        const skipToNextButton = document.getElementById('skipToNextButton');
         const simTimeDisplay = document.getElementById('simTimeDisplay');
         const timeScaleDisplay = document.getElementById('timeScaleDisplay');
+        const pendingEventsDisplay = document.getElementById('pendingEventsDisplay');
+        const nextEventDisplay = document.getElementById('nextEventDisplay');
         const scaleBtns = document.querySelectorAll('.scale-btn');
         
         /**
@@ -91,9 +113,48 @@
         }
         
         /**
-         * Type out text character by character (like a serial/modem feed)
+         * Format time until next event for display
          */
-        function typeText(element, text, callback) {
+        function formatTimeUntil(seconds) {
+            if (seconds === null || seconds === undefined) {
+                return '--';
+            }
+            if (seconds <= 0) {
+                return 'now';
+            }
+            if (seconds < 60) {
+                return `${Math.ceil(seconds)}s`;
+            }
+            if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}m ${secs}s`;
+            }
+            if (seconds < 86400) {
+                const hrs = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return `${hrs}h ${mins}m`;
+            }
+            const days = Math.floor(seconds / 86400);
+            const hrs = Math.floor((seconds % 86400) / 3600);
+            return `${days}d ${hrs}h`;
+        }
+        
+        /**
+         * Type out text character by character (like a serial/modem feed)
+         * @param {Element} element - DOM element to type into
+         * @param {string} text - Text to type
+         * @param {function} callback - Called when typing completes
+         * @param {boolean} fastMode - If true, use rapid typing for catch-up
+         */
+        function typeText(element, text, callback, fastMode = false) {
+            // In fast mode, display instantly
+            if (fastMode) {
+                element.textContent = text;
+                if (callback) callback();
+                return;
+            }
+            
             let index = 0;
             
             function typeChar() {
@@ -124,8 +185,11 @@
         
         /**
          * Create and type out an event line element
+         * @param {Object} event - Event data to display
+         * @param {function} callback - Called when display completes
+         * @param {boolean} fastMode - If true, use rapid display for catch-up
          */
-        function typeEventLine(event, callback) {
+        function typeEventLine(event, callback, fastMode = false) {
             const line = document.createElement('div');
             line.className = 'event-line';
             
@@ -154,8 +218,8 @@
                     eventContainer.scrollTop = eventContainer.scrollHeight;
                     // Call callback when this event is completely done
                     if (callback) callback();
-                });
-            });
+                }, fastMode);
+            }, fastMode);
         }
         
         /**
@@ -169,19 +233,50 @@
             isTyping = true;
             const event = eventQueue.shift();
             
+            // Use fast mode for historical events (before page load time)
+            // Once we've caught up, all subsequent events use normal speed
+            const useFastMode = !catchUpComplete && pageLoadSimTime !== null && 
+                                event.timestamp < pageLoadSimTime;
+            
+            // If this event is at or after page load time, we've caught up
+            if (pageLoadSimTime !== null && event.timestamp >= pageLoadSimTime) {
+                catchUpComplete = true;
+            }
+            
             typeEventLine(event, () => {
                 // This event is done, process the next one
                 isTyping = false;
-                processNextEvent();
-            });
+                // In fast mode, add a tiny delay between lines for visual effect
+                // (rapid scroll rather than instant flash)
+                if (useFastMode && eventQueue.length > 0) {
+                    setTimeout(processNextEvent, 50); // 50ms between rapid lines
+                } else {
+                    processNextEvent();
+                }
+            }, useFastMode);
         }
         
         /**
          * Append events to the log with trickle effect (queued sequentially)
          */
         function appendEvents(events) {
-            // Add all events to the queue
-            eventQueue.push(...events);
+            // Filter out events we've already displayed (prevent duplicates)
+            const newEvents = events.filter(e => !displayedEventIds.has(e.id));
+            
+            if (newEvents.length === 0) {
+                if (events.length > 0) {
+                    console.log(`[APPEND] All ${events.length} events already displayed (IDs: ${events.map(e => e.id).join(', ')})`);
+                }
+                return;
+            }
+            
+            console.log(`[APPEND] Adding ${newEvents.length} new events (IDs: ${newEvents.map(e => e.id).join(', ')})`);
+            
+            // Mark these events as displayed
+            newEvents.forEach(e => displayedEventIds.add(e.id));
+            
+            // Add to the queue
+            eventQueue.push(...newEvents);
             // Start processing if not already typing
             processNextEvent();
         }
@@ -191,7 +286,9 @@
          */
         async function fetchEvents() {
             if (!isPolling) return;
+            if (isFetching) return; // Prevent concurrent fetches
             
+            isFetching = true;
             try {
                 const url = lastEventId 
                     ? `${API_ENDPOINT}?after_id=${lastEventId}&limit=100`
@@ -209,18 +306,37 @@
                     currentSimTime = data.simulation_time;
                 }
                 
+                // Store values for display interpolation
+                if (data.debug) {
+                    pendingEventCount = data.debug.pending_events || 0;
+                    nextEventTimestamp = data.debug.next_event_timestamp;
+                    // Update current sim time from the authoritative source
+                    if (data.simulation_time) {
+                        lastFetchedSimTime = data.simulation_time;
+                        lastStatusFetchTime = Date.now();
+                    }
+                }
+                
                 if (data.events && data.events.length > 0) {
+                    console.log(`[FETCH] Got ${data.events.length} events, lastEventId was ${lastEventId}, will be ${data.latest_id}`);
                     appendEvents(data.events);
                     // Update to the latest ID from the response
                     lastEventId = data.latest_id;
+                } else if (data.debug && data.debug.pending_events > 0) {
+                    // Events are pending but not returned - might be an ID tracking issue
+                    console.log(`[FETCH] No events returned but ${data.debug.pending_events} pending. lastEventId=${lastEventId}, sim_time=${data.simulation_time?.toFixed(1)}, next_event=${data.debug.next_event_timestamp?.toFixed(1)}`);
                 }
+                // Note: If no events returned, we just wait for next poll.
+                // User can click "Clear Display" to reset if needed.
             } catch (error) {
                 console.error('Error fetching events:', error);
+            } finally {
+                isFetching = false;
             }
         }
         
         /**
-         * Fetch simulation status (time and scale)
+         * Fetch simulation status (time and scale) from server
          */
         async function fetchStatus() {
             try {
@@ -231,18 +347,65 @@
                 currentSimTime = data.simulation_time;
                 currentTimeScale = data.time_scale;
                 
-                // Update display
-                simTimeDisplay.textContent = formatSimTime(currentSimTime);
-                timeScaleDisplay.textContent = `${currentTimeScale}x`;
+                // Store for interpolation
+                lastStatusFetchTime = Date.now();
+                lastFetchedSimTime = currentSimTime;
+                
+                // Capture page load time on first status fetch (for catch-up mode)
+                if (pageLoadSimTime === null) {
+                    pageLoadSimTime = currentSimTime;
+                    console.log(`Page loaded at sim time ${pageLoadSimTime.toFixed(1)} - historical events will display rapidly`);
+                }
                 
                 // Highlight active scale button
                 scaleBtns.forEach(btn => {
                     const btnScale = parseFloat(btn.dataset.scale);
                     btn.classList.toggle('active', Math.abs(btnScale - currentTimeScale) < 0.01);
                 });
+                
+                // Update display immediately
+                updateDisplays();
             } catch (error) {
                 console.error('Error fetching status:', error);
             }
+        }
+        
+        /**
+         * Update display with interpolated time (called at 5Hz for smooth countdown)
+         */
+        function updateDisplays() {
+            // Interpolate current sim time based on wall clock elapsed since last fetch
+            if (lastStatusFetchTime !== null && lastFetchedSimTime !== null) {
+                const wallElapsed = (Date.now() - lastStatusFetchTime) / 1000;
+                currentSimTime = lastFetchedSimTime + (wallElapsed * currentTimeScale);
+            }
+            
+            // Update sim time display
+            simTimeDisplay.textContent = formatSimTime(currentSimTime);
+            timeScaleDisplay.textContent = `${currentTimeScale}x`;
+            
+            // Update pending events display
+            pendingEventsDisplay.textContent = `${pendingEventCount} pending`;
+            pendingEventsDisplay.classList.toggle('has-pending', pendingEventCount > 0);
+            
+            // Update time until next event (interpolated)
+            if (nextEventTimestamp !== null) {
+                const timeUntil = nextEventTimestamp - currentSimTime;
+                nextEventDisplay.textContent = formatTimeUntil(timeUntil > 0 ? timeUntil : 0);
+                nextEventDisplay.classList.toggle('imminent', timeUntil > 0 && timeUntil < 60);
+                
+                // If an event is due (time <= 0), trigger a fetch immediately
+                if (timeUntil <= 0 && !isFetching) {
+                    console.log(`[DISPLAY] Event due! Triggering immediate fetch. timeUntil=${timeUntil.toFixed(1)}`);
+                    fetchEvents();
+                }
+            } else {
+                nextEventDisplay.textContent = '--';
+                nextEventDisplay.classList.remove('imminent');
+            }
+            
+            // Disable skip button if no pending events
+            skipToNextButton.disabled = pendingEventCount === 0;
         }
         
         /**
@@ -279,8 +442,9 @@
             fetchStatus();
             
             // Set up intervals
-            setInterval(fetchEvents, POLL_INTERVAL);
-            setInterval(fetchStatus, STATUS_INTERVAL);
+            setInterval(fetchEvents, POLL_INTERVAL);  // Poll events every 2s
+            setInterval(fetchStatus, STATUS_POLL_INTERVAL);  // Poll server status every 2s
+            setInterval(updateDisplays, DISPLAY_UPDATE_INTERVAL);  // Update display at 5Hz
         }
         
         /**
@@ -288,9 +452,13 @@
          */
         clearDisplayButton.addEventListener('click', () => {
             // Clear all events from the display (like a terminal clear command)
-            // Keep lastEventId so we don't re-fetch old events
             eventLog.innerHTML = '';
             eventQueue = []; // Clear pending events too
+            displayedEventIds.clear(); // Allow re-display if events are re-fetched
+            lastEventId = null; // Reset so we can re-fetch from start
+            // Reset catch-up state - old events will display rapidly again
+            pageLoadSimTime = currentSimTime;
+            catchUpComplete = false;
             // Reset scroll position
             eventContainer.scrollTop = 0;
         });
@@ -320,7 +488,11 @@
                     // Clear the display too
                     eventLog.innerHTML = '';
                     eventQueue = [];
+                    displayedEventIds.clear();
                     lastEventId = null; // Reset so we fetch from beginning
+                    // Reset catch-up state - new events will use normal speed
+                    pageLoadSimTime = currentSimTime;
+                    catchUpComplete = true; // Start fresh, no catch-up needed
                     eventContainer.scrollTop = 0;
                 } else {
                     throw new Error('Failed to clear events');
@@ -339,7 +511,7 @@
          */
         spawnMissionButton.addEventListener('click', async () => {
             spawnMissionButton.disabled = true;
-            spawnMissionButton.textContent = 'Spawning...';
+            spawnMissionButton.textContent = 'Generating route & dialogue...';
             
             try {
                 const response = await fetch('{% url "spawn_mission" %}', {
@@ -352,6 +524,8 @@
                 if (response.ok) {
                     const data = await response.json();
                     console.log('Mission spawned:', data.message);
+                    // Note: Mission generates in background, events will appear in ~3-10 seconds
+                    // The polling interval will pick them up automatically
                     spawnMissionButton.textContent = 'Spawn Mission';
                 } else {
                     const errorData = await response.json();
@@ -362,9 +536,51 @@
                 alert('Failed to spawn mission. Check console for details.');
             } finally {
                 spawnMissionButton.disabled = false;
+                spawnMissionButton.textContent = 'Spawn Mission';
             }
         });
         
+        /**
+         * Skip to the next pending event
+         */
+        skipToNextButton.addEventListener('click', async () => {
+            skipToNextButton.disabled = true;
+            skipToNextButton.textContent = 'Skipping...';
+            
+            try {
+                const response = await fetch(SKIP_TO_NEXT_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Skip response:', data);
+                    if (data.status === 'success') {
+                        console.log(`Skipped ${data.skipped_seconds.toFixed(1)}s to ${data.next_event_actor}, new sim_time: ${data.simulation_time}`);
+                        // Update simulation status immediately
+                        await fetchStatus();
+                        // Small delay to ensure backend state is consistent
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        // Reset fetch guard and fetch events
+                        isFetching = false;
+                        await fetchEvents();
+                    } else {
+                        console.log('No events to skip to');
+                    }
+                } else {
+                    throw new Error('Failed to skip to next event');
+                }
+            } catch (error) {
+                console.error('Error skipping to next event:', error);
+            } finally {
+                skipToNextButton.disabled = false;
+                skipToNextButton.textContent = '⏭ Skip to Next';
+            }
+        });
+
         /**
          * Time scale button handlers
          */

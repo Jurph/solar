@@ -292,8 +292,10 @@ class InsertionRequest(PilotRequest):
     """
     Pilot requesting orbital insertion burn clearance.
     
-    Used when a pilot requests permission for an insertion burn into orbit around a destination.
-    Typically occurs after sublight travel when entering the destination's sphere of influence.
+    Used when a pilot requests permission for an insertion burn into orbit around the LOCAL body.
+    Typically occurs after sublight travel when entering a body's sphere of influence.
+    
+    NOTE: Uses current_location (where insertion happens), NOT destination (final journey endpoint).
     """
     
     def get_examples(self) -> List[str]:
@@ -303,17 +305,19 @@ class InsertionRequest(PilotRequest):
         Returns:
             List of example insertion request dialogue strings.
         """
-        destination = self.nav_context.get("destination", "destination")
+        # Use current_location - that's where the insertion is happening
+        # NOT destination, which is the final journey endpoint
+        local_body = self.nav_context.get("current_location", "destination")
         current_inclination = self.nav_context.get("current_inclination_deg", "twenty")
         if isinstance(current_inclination, (int, float)):
             current_inclination = f"{int(current_inclination)}"
         
         return [
-            f"Approaching {destination}. Requesting clearance for insertion burn. Can you give us approved orbit parameters?",
-            f"Ready for orbital insertion at {destination}. Our current inclination is {current_inclination} degrees. What orbit do you want us to establish?",
-            f"Requesting permission for insertion maneuver into {destination} orbit. Can you specify the target altitude and inclination?",
-            f"Entering {destination} sphere of influence. Requesting insertion clearance and orbit parameters.",
-            f"Approaching {destination}. We're at {current_inclination} degrees inclination. Requesting clearance for insertion burn - what orbit should we target?",
+            f"Approaching {local_body}. Requesting clearance for insertion burn. Can you give us approved orbit parameters?",
+            f"Ready for orbital insertion at {local_body}. Our current inclination is {current_inclination} degrees. What orbit do you want us to establish?",
+            f"Requesting permission for insertion maneuver into {local_body} orbit. Can you specify the target altitude and inclination?",
+            f"Entering {local_body} sphere of influence. Requesting insertion clearance and orbit parameters.",
+            f"Approaching {local_body}. We're at {current_inclination} degrees inclination. Requesting clearance for insertion burn - what orbit should we target?",
         ]
     
     def get_counterexample(self) -> str:
@@ -330,8 +334,10 @@ class DeorbitRequest(PilotRequest):
     """
     Pilot requesting deorbit burn clearance.
     
-    Used when a pilot requests permission to deorbit from orbit around a destination.
-    Typically occurs after circularization at destination, before landing.
+    Used when a pilot requests permission to deorbit from orbit around the LOCAL body.
+    Typically occurs after circularization, before landing.
+    
+    NOTE: Uses current_location (where deorbit happens), NOT destination (final journey endpoint).
     """
     
     def get_examples(self) -> List[str]:
@@ -341,17 +347,18 @@ class DeorbitRequest(PilotRequest):
         Returns:
             List of example deorbit request dialogue strings.
         """
-        destination = self.nav_context.get("destination", "destination")
+        # Use current_location - that's where the deorbit is happening
+        local_body = self.nav_context.get("current_location", "destination")
         current_altitude = self.nav_context.get("current_altitude_km", "two hundred")
         if isinstance(current_altitude, (int, float)):
             current_altitude = f"{int(current_altitude)}"
         
         return [
-            f"Orbit is stable at {current_altitude} kilometers. Requesting clearance for deorbit burn to {destination}. Can you give us entry parameters?",
+            f"Orbit is stable at {current_altitude} kilometers. Requesting clearance for deorbit burn to {local_body}. Can you give us entry parameters?",
             f"Ready for deorbit, requesting authorization. We're at {current_altitude} kilometers altitude. What entry angle do you want us to use?",
-            f"Requesting permission to deorbit for {destination}. Currently at {current_altitude} kilometers. Can you specify the deorbit burn parameters?",
+            f"Requesting permission to deorbit for {local_body}. Currently at {current_altitude} kilometers. Can you specify the deorbit burn parameters?",
             f"Request deorbit burn clearance. We're at {current_altitude} kilometers. What entry corridor should we target?",
-            f"Orbit is stable. Requesting clearance to begin deorbit sequence to {destination}. Can you give us approved entry parameters?",
+            f"Orbit is stable. Requesting clearance to begin deorbit sequence to {local_body}. Can you give us approved entry parameters?",
         ]
     
     def get_counterexample(self) -> str:
@@ -368,8 +375,10 @@ class LandingRequest(PilotRequest):
     """
     Pilot requesting landing clearance.
     
-    Used when a pilot requests permission to land on a planet or moon.
+    Used when a pilot requests permission to land on the LOCAL body (planet or moon).
     Typically the final maneuver in a flight sequence (after deorbit).
+    
+    NOTE: Uses current_location (where landing happens), NOT destination (final journey endpoint).
     """
     
     def get_examples(self) -> List[str]:
@@ -379,14 +388,15 @@ class LandingRequest(PilotRequest):
         Returns:
             List of example landing request dialogue strings.
         """
-        destination = self.nav_context.get("destination", "destination")
+        # Use current_location - that's where the landing is happening
+        local_body = self.nav_context.get("current_location", "destination")
         
         return [
-            f"Deorbit complete. Requesting clearance for final approach and landing on {destination}. Can you give us approach parameters?",
-            f"Ready for landing approach to {destination}, requesting authorization and approach heading.",
-            f"Requesting permission to land on {destination}. Can you specify our approach vector?",
-            f"Request landing clearance for {destination}. What approach parameters should we use?",
-            f"On final approach to {destination}. Requesting landing clearance and approach instructions.",
+            f"Deorbit complete. Requesting clearance for final approach and landing on {local_body}. Can you give us approach parameters?",
+            f"Ready for landing approach to {local_body}, requesting authorization and approach heading.",
+            f"Requesting permission to land on {local_body}. Can you specify our approach vector?",
+            f"Request landing clearance for {local_body}. What approach parameters should we use?",
+            f"On final approach to {local_body}. Requesting landing clearance and approach instructions.",
         ]
     
     def get_counterexample(self) -> str:
@@ -749,22 +759,34 @@ class RadioReadback(DialogueParticle):
         """
         Return examples of pilot readbacks.
         
+        Readbacks should echo the EXACT values from the controller's instructions.
+        We parse the previous dialogue (controller's response) to extract the 
+        instructed kilometers and degrees, so examples teach the LLM to read back
+        the actual values given.
+        
         Returns:
             List of example dialogue strings.
         """
-        
         maneuver = self.nav_context.get("maneuver_type", "maneuver").lower()
         if not maneuver:
             maneuver = "maneuver"
         
-        # Use None as default so falsy check works correctly
-        inclination_deg = self.nav_context.get("inclination_deg")
-        if not inclination_deg:
-            inclination_deg = random.randint(15, 45)
+        # Parse the controller's actual instructions from previous dialogue
+        # This is critical - readbacks must echo the EXACT values given
+        instructed = self.parse_instructed_values()
         
-        altitude_km = self.nav_context.get("altitude_km")
-        if not altitude_km:
+        # Use parsed values from controller, fall back to nav_context, then random
+        altitude_km = instructed.get('instructed_km')
+        if altitude_km is None:
+            altitude_km = self.nav_context.get("altitude_km")
+        if altitude_km is None:
             altitude_km = random.randint(200, 500)
+        
+        inclination_deg = instructed.get('instructed_deg')
+        if inclination_deg is None:
+            inclination_deg = self.nav_context.get("inclination_deg")
+        if inclination_deg is None:
+            inclination_deg = random.randint(15, 45)
             
         if maneuver in ["launch", "direct_ascent"]:
             verb = "launch"
@@ -775,19 +797,25 @@ class RadioReadback(DialogueParticle):
         else:
             verb = "maneuver"
         
-        heading = random.randint(1, 360)
-        number = random.randint(1, 100)
-                
-        return [
-            f"Roger, {verb}ing on heading {heading}.",
-            f"Copy, {maneuver} {verb} on bearing {heading} degrees.",
-            f"Got it, {altitude_km} kilometers, we'll {verb} now.",
-            f"Locking in your instructions... {inclination_deg} degrees, {altitude_km} kilometers. Okay, {verb}ing now.",
-            f"Copy, {maneuver} {verb} to {altitude_km} kilometers, {inclination_deg} degrees.",
-            f"Wilco, starting {verb}, setting heading to {heading} as directed.",
-            f"Okay, {verb}ing on {number} degrees.",
-            f"We copy. Proceeding with {maneuver} {verb} to {altitude_km} kilometers, {inclination_deg} degrees, bearing {heading} degrees.",
-        ]
+        # Build examples that demonstrate reading back the instructed values
+        # Some examples use just one value (for cases where only km or deg was given)
+        examples = []
+        
+        # Examples that use altitude only
+        examples.append(f"Roger, {altitude_km} kilometers, we'll {verb} now.")
+        examples.append(f"Copy, {verb}ing to {altitude_km} kilometers.")
+        
+        # Examples that use degrees only
+        examples.append(f"Roger, {verb}ing on {inclination_deg} degrees.")
+        examples.append(f"Okay, {inclination_deg} degrees, {verb}ing now.")
+        
+        # Examples that use both values (when both were instructed)
+        examples.append(f"Copy, {altitude_km} kilometers, {inclination_deg} degrees.")
+        examples.append(f"Locking in your instructions... {inclination_deg} degrees, {altitude_km} kilometers. Okay, {verb}ing now.")
+        examples.append(f"We copy. {altitude_km} kilometers, {inclination_deg} degrees. Proceeding with {maneuver}.")
+        examples.append(f"Roger, {maneuver} to {altitude_km} kilometers at {inclination_deg} degrees.")
+        
+        return examples
     
     def get_counterexample(self) -> str:
         """

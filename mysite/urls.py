@@ -29,5 +29,7 @@ urlpatterns = [
     path("api/simulation/time-scale/", views.set_time_scale, name="set_time_scale"),
     # API endpoint to get simulation status:
     path("api/simulation/status/", views.get_simulation_status, name="simulation_status"),
+    # API endpoint to skip to next event:
+    path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

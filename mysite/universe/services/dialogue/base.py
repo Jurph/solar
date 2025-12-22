@@ -105,6 +105,7 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
                 - pilot_name: Optional[str]
         """
         self.actor: Actor = actor
+        self.previous_dialogue: Optional[str] = None  # Set by build_user_prompt_data()
         self.recipient: str = recipient
         self.nav_context: Dict[str, Any] = nav_context
     
@@ -244,6 +245,9 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
         Returns:
             UserPromptData instance with all fields populated.
         """
+        # Store previous_dialogue so get_examples() can access it for context-aware examples
+        self.previous_dialogue = previous_dialogue
+        
         examples = self.select_examples(3)
         return UserPromptData(
             role=self.get_role_description(),
@@ -291,6 +295,48 @@ acknowledgment, etc.) with NO callsigns, NO station names, and NO greeting phras
             return Role.PILOT
         # Default to PILOT if unknown
         return Role.PILOT
+    
+    def parse_instructed_values(self, text: Optional[str] = None) -> dict:
+        """
+        Parse numeric values from dialogue text (e.g., controller instructions).
+        
+        Extracts numbers that precede specific unit keywords:
+        - "kilometers" / "km" → instructed_km
+        - "degrees" → instructed_deg
+        
+        This is useful for readback particles that need to echo the exact
+        values given by the controller.
+        
+        Args:
+            text: Dialogue text to parse. If None, uses self.previous_dialogue.
+            
+        Returns:
+            Dict with 'instructed_km' and 'instructed_deg' keys (values may be None).
+        """
+        import re
+        
+        source_text = text or getattr(self, 'previous_dialogue', None)
+        result = {'instructed_km': None, 'instructed_deg': None}
+        
+        if not source_text:
+            return result
+        
+        # Pattern for kilometers: number followed by "kilometers" or "km"
+        km_pattern = r'(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:kilometers|km)\b'
+        km_match = re.search(km_pattern, source_text, re.IGNORECASE)
+        if km_match:
+            # Remove commas and convert to int
+            result['instructed_km'] = int(float(km_match.group(1).replace(',', '')))
+        
+        # Pattern for degrees: number followed by "degrees" (but not part of "degrees inclination" which we also want)
+        # This captures values like "127 degrees", "0 degrees", "090 degrees"
+        deg_pattern = r'(\d+(?:\.\d+)?)\s*degrees?\b'
+        deg_matches = re.findall(deg_pattern, source_text, re.IGNORECASE)
+        if deg_matches:
+            # Take the first match (usually the most relevant - inclination/heading)
+            result['instructed_deg'] = int(float(deg_matches[0]))
+        
+        return result
     
     def generate_procedural_greeting(self) -> str:
         """

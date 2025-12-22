@@ -123,6 +123,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Persistent characters with personality notes
 - Build out source files for ship names, planets, stars &c. ✓
 - Implement a richer Mission model for narrative-driven journeys
+- Involve satellites more (check-ins, etc.) so they can beep and squawk 
 - Get a local LLM to respond to dialogue prompts "in character" ✓
 - Enhance Actor model with voice templates
 - Implement different mission types beyond transport
