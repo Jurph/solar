@@ -47,6 +47,28 @@ body {
     margin: 0 5px;
 }
 
+.pending-count {
+    min-width: 100px;
+}
+
+.pending-count.has-pending {
+    color: #90EE90; /* Light green when events are queued */
+}
+
+.next-event-time {
+    min-width: 70px;
+}
+
+.next-event-time.imminent {
+    color: #90EE90; /* Light green when event is coming soon */
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 .controls {
     display: flex;
     gap: 10px;

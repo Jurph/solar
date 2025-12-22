@@ -62,6 +62,16 @@ def event_feed(request):
     # Order by id (which also orders by insertion time) and limit results
     queryset = queryset.order_by('id')[:limit]
     
+    # Debug: Log what we're querying
+    count_before_limit = DialogueEventLog.objects.filter(timestamp__lte=sim_time).count()
+    if after_id:
+        count_with_id_filter = DialogueEventLog.objects.filter(timestamp__lte=sim_time, id__gt=int(after_id)).count()
+    else:
+        count_with_id_filter = count_before_limit
+    
+    if count_with_id_filter > 0:
+        print(f"[EVENT_FEED] sim_time={sim_time:.1f}, after_id={after_id}, due_events={count_before_limit}, filtered={count_with_id_filter}")
+    
     # Convert to list of dicts with only essential fields
     events = [
         {
@@ -76,8 +86,28 @@ def event_feed(request):
     # Get latest ID for client to track progress
     latest_id = events[-1]['id'] if events else None
     
+    # Debug: count how many events are pending (future) vs available (past)
+    total_events = DialogueEventLog.objects.count()
+    available_events = DialogueEventLog.objects.filter(timestamp__lte=sim_time).count()
+    pending_events = total_events - available_events
+    
+    # Find the next pending event (first event with timestamp > sim_time)
+    next_event = DialogueEventLog.objects.filter(timestamp__gt=sim_time).order_by('timestamp').first()
+    next_event_timestamp = next_event.timestamp if next_event else None
+    time_until_next = (next_event_timestamp - sim_time) if next_event_timestamp else None
+    
     return JsonResponse({
         'events': events,
+        'debug': {
+            'sim_time': sim_time,
+            'total_events': total_events,
+            'available_events': available_events,
+            'pending_events': pending_events,
+            'after_id': after_id,
+            'returned_count': len(events),
+            'next_event_timestamp': next_event_timestamp,
+            'time_until_next': time_until_next,
+        },
         'latest_id': latest_id,
         'simulation_time': sim_time,
     })
@@ -315,6 +345,62 @@ def set_time_scale(request):
             'status': 'error',
             'message': f'Invalid request: {str(e)}'
         }, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def skip_to_next_event(request):
+    """
+    API endpoint to advance simulation time to the next pending event.
+    
+    This allows users to "fast forward" to the next event without waiting
+    for real-time to pass. Useful for debugging and demonstration.
+    
+    Returns:
+        JSON with status, new simulation_time, and the skipped duration
+    """
+    import time as time_module
+    from mysite.universe.models.simulation import SimulationState, get_simulation_time
+    
+    current_sim_time = get_simulation_time()
+    
+    # Find the next pending event
+    next_event = DialogueEventLog.objects.filter(
+        timestamp__gt=current_sim_time
+    ).order_by('timestamp').first()
+    
+    if not next_event:
+        return JsonResponse({
+            'status': 'no_events',
+            'message': 'No pending events to skip to',
+            'simulation_time': current_sim_time,
+        })
+    
+    # Advance simulation time to just after the next event
+    # (add a small buffer so the event becomes available immediately)
+    new_sim_time = next_event.timestamp + 0.1
+    skipped_duration = new_sim_time - current_sim_time
+    
+    # Update simulation state anchor to the new time
+    # This re-anchors the simulation clock at the new time point
+    state = SimulationState.get_instance()
+    state.anchor_sim_time = new_sim_time
+    state.anchor_wall_clock = time_module.time()
+    state.time_scale = state.time_scale  # Preserve current time scale
+    state.save()
+    
+    # Verify the update took effect
+    actual_sim_time = get_simulation_time()
+    
+    print(f"[SKIP] Skipped from {current_sim_time:.1f} to {new_sim_time:.1f} (actual: {actual_sim_time:.1f})")
+    print(f"[SKIP] Next event: {next_event.actor_name} at {next_event.timestamp:.1f}")
+    
+    return JsonResponse({
+        'status': 'success',
+        'simulation_time': actual_sim_time,
+        'skipped_seconds': skipped_duration,
+        'next_event_actor': next_event.actor_name,
+    })
 
 
 @csrf_exempt
