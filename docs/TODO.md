@@ -148,7 +148,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 #### Problem 1: Update and Verify Test Suite for Dialogue System
 
-**Big Picture:** The test suite needs to be updated to work with the new structured dialogue system (`LLMJSONService`, `DialogueMessage` objects, etc.) and verified to catch regressions. Some tests may be using outdated patterns or may not adequately test the new JSON-based flow.
+**Big Picture:** The test suite needs to be updated to work with the structured dialogue system (`LLMService`, `DialogueMessage` objects, etc.) and verified to catch regressions. Some tests may be using outdated patterns or may not adequately test the JSON-based flow.
 
 **Overall Intent:** Ensure all tests pass reliably, properly test the structured dialogue system, and provide good coverage for dialogue generation, parsing, and validation.
 
@@ -161,7 +161,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - Fix any tests using v1 validation patterns
    - Update schema access patterns (`model_json_schema()` instead of `Config.schema_extra`)
    - Verify validation context handling works correctly
-3. Add integration tests for ScriptService with LLMJSONService
+3. Add integration tests for ScriptService with `LLMService`
    - Test `parse_navigation_event()` generates valid dialogue events
    - Test `parse_dialogue_event()` generates proper responses
    - Test multi-turn dialogue exchanges (request → response → readback)
