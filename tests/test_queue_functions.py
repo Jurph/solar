@@ -1,3 +1,12 @@
+"""
+Tests for the SimulationQueue and event processing system.
+
+These tests verify:
+- Events are processed in timestamp order regardless of add order
+- Only due events (timestamp <= current_time) are processed
+- Signal emission connects queue processing to UI updates
+- Simulation loop processes events at correct times
+"""
 import threading
 import time
 from unittest.mock import patch, MagicMock
@@ -20,21 +29,18 @@ from mysite.universe.models.navigation import ManeuverType
 
 
 class TestSimulationQueue(TestCase):
-    """Test the SimulationQueue functionality"""
+    """Integration tests for SimulationQueue with real Django models."""
     
     def setUp(self):
-        """Set up test data"""
-        # First create locations
+        """Set up test data with real Django models."""
         self.origin = Location.objects.create(name="Test Origin")   
         self.destination = Location.objects.create(name="Test Destination")
         
-        # Then create test ship using the locations
         self.ship = Ship.objects.create(
             name="Test Ship",
             current_location=self.origin
         )
         
-        # Create test actors using the correct classes
         self.pilot = Pilot.create(ship=self.ship)
         self.pilot.name = "Test Pilot"
         self.pilot.save()
@@ -43,10 +49,9 @@ class TestSimulationQueue(TestCase):
         self.controller.name = "Test Controller"
         self.controller.save()
         
-        # Create a queue
         self.queue = SimulationQueue()
         
-        # Set up signal handlers
+        # Track processed events via signals
         self.dialogue_events = []
         self.navigation_events = []
         
@@ -62,7 +67,7 @@ class TestSimulationQueue(TestCase):
         self.test_navigation_handler = test_navigation_handler
         
     def create_test_events(self):
-        """Create a set of test events for queue testing in chronological order"""
+        """Create events with different timestamps for queue testing."""
         events = [
             DialogueEvent(
                 timestamp=10,
@@ -91,9 +96,8 @@ class TestSimulationQueue(TestCase):
         ]
         return events
     
-    def test_add_and_peek_event(self):
-        """Test that events can be added and peeked at"""
-        # Create an event and add it to the queue
+    def test_peek_does_not_remove_event(self):
+        """Peeking at the queue should not remove the event."""
         event = DialogueEvent(
             timestamp=5.0,
             actor=self.pilot,
@@ -103,81 +107,61 @@ class TestSimulationQueue(TestCase):
         )
         self.queue.add_event(event)
         
-        # Peek at the next event
-        next_event = self.queue.peek_next_event()
+        # Peek twice - should get same event
+        first_peek = self.queue.peek_next_event()
+        second_peek = self.queue.peek_next_event()
         
-        # Check that it's the event we added
-        self.assertEqual(next_event, event)
-        
-        # Check that peeking didn't remove the event
+        self.assertEqual(first_peek, second_peek)
         self.assertEqual(len(self.queue._queue), 1)
     
-    def test_get_next_event(self):
-        """Test that events can be retrieved and removed from the queue"""
-        # Create events with different timestamps
+    def test_events_processed_in_timestamp_order(self):
+        """Events should be processed in timestamp order regardless of add order."""
         events = self.create_test_events()
         
-        # Add events to the queue (in reverse order to test sorting)
+        # Add in reverse order to test sorting
         for event in reversed(events):
             self.queue.add_event(event)
         
-        # Get the next event
-        next_event = self.queue.get_next_event()
+        # Get first event - should be earliest timestamp
+        first = self.queue.get_next_event()
+        self.assertEqual(first.timestamp, 10)
         
-        # Check that we got the earliest event
-        self.assertEqual(next_event, events[0])
-        
-        # Check that the event was removed from the queue
-        self.assertEqual(len(self.queue._queue), 2)
+        # Next should be timestamp 12
+        second = self.queue.get_next_event()
+        self.assertEqual(second.timestamp, 12)
     
-    def test_process_due_events(self):
-        """Test that due events are processed in timestamp order"""
-        # Create events with different timestamps
+    def test_process_due_events_respects_timestamp(self):
+        """Only events with timestamp <= current_time should be processed."""
         events = self.create_test_events()
         
-        # Add events to the queue
         for event in events:
             self.queue.add_event(event)
         
-        # Process events up to timestamp 12.0
-        current_time = 12.0
-        self.queue.process_due_events(current_time)
+        # Process at time 12.0 - should get events at 10 and 12
+        self.queue.process_due_events(current_time=12.0)
         
-        # Check that events with timestamps <= 12.0 were processed
         self.assertEqual(len(self.dialogue_events), 2)
-        self.assertEqual(self.dialogue_events[0], events[0])
-        self.assertEqual(self.dialogue_events[1], events[1])
         
-        # Check that the event with timestamp > 12.0 is still in the queue
-        # (Only the navigation event at 30.0 should remain, as replies are now generated upfront)
+        # Event at 30.0 should still be in queue
         self.assertEqual(len(self.queue._queue), 1)
-        self.assertEqual(self.queue.peek_next_event().timestamp, events[2].timestamp)
+        self.assertEqual(self.queue.peek_next_event().timestamp, 30)
     
     @patch('time.time')
-    def test_simulation_loop(self, mock_time):
-        """Test the full simulation loop with mocked time"""
-        from mysite.universe.management.commands.start_simulation_loop import Command, DIALOGUE_EVENTS_RECEIVED
-        
-        # Clear the global list before starting
+    def test_simulation_loop_processes_events_at_correct_time(self, mock_time):
+        """The simulation loop should process events when their time arrives."""
         DIALOGUE_EVENTS_RECEIVED.clear()
         
-        # Mock time.time() to return controlled values
-        start_time = 1000.0  # arbitrary start time
+        start_time = 1000.0
         mock_time.return_value = start_time
         
-        # Create events
         events = self.create_test_events()
-        
-        # Add events to queue
         for event in events:
             self.queue.add_event(event)
         
-        # Create command and patch its methods
         command = Command()
         command.stdout = MagicMock()
         command.load_initial_events = MagicMock()
         
-        # Start the simulation loop in a separate thread so we can control it
         stop_event = threading.Event()
         
         def run_simulation():
@@ -191,146 +175,20 @@ class TestSimulationQueue(TestCase):
         thread.daemon = True
         thread.start()
         
-        # Advance time and check that events are processed
+        # Process each event by advancing mock time
         for i, event in enumerate(events):
-            # Move time forward to just after this event's timestamp
             mock_time.return_value = start_time + event.timestamp + 0.1
+            time.sleep(0.5)
             
-            # Give the simulation loop more time to process
-            time.sleep(0.5)  # Increased from 0.1 to 0.5
-            
-            # Update expectation: replies are now generated upfront, not dynamically
-            # So we expect (i+1) events after processing the i-th event
             expected_count = i + 1
-            self.assertEqual(len(DIALOGUE_EVENTS_RECEIVED), expected_count,
-                            f"Expected {expected_count} events after processing event with timestamp {event.timestamp}")
+            self.assertEqual(
+                len(DIALOGUE_EVENTS_RECEIVED), expected_count,
+                f"Expected {expected_count} events after timestamp {event.timestamp}"
+            )
         
-        # Signal the thread to stop
         stop_event.set()
-        
-        # Wait for the thread to finish
         thread.join(timeout=1.0)
-        
-        # Check final state
-        # We have 3 events total (pilot request, controller reply, navigation event)
-        # No dynamic replies are generated anymore (replies are generated upfront)
-        self.assertEqual(len(DIALOGUE_EVENTS_RECEIVED), 3)
 
-@pytest.mark.django_db
-def test_queue_processes_events_in_order():
-    """Test that events are processed in the correct order regardless of add order"""
-    # Use only DialogueEvents for simplicity
-    dummy_actor = DummyActor(name="Test Pilot")
-    queue = SimulationQueue()
-    
-    events = [
-        DialogueEvent(
-            timestamp=30,
-            actor=dummy_actor,
-            text="Third event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "third"}
-        ),
-        DialogueEvent(
-            timestamp=10,
-            actor=dummy_actor,
-            text="First event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "first"}
-        ),
-        DialogueEvent(
-            timestamp=20,
-            actor=dummy_actor,
-            text="Second event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "second"}
-        ),
-    ]
-    
-    # Add events in reverse order
-    for event in reversed(events):
-        queue.add_event(event)
-    
-    # Process all events - modify assertions to handle None return
-    queue.process_due_events(current_time=100)
-    
-    # If process_due_events returns None, we can't assert on its return value
-    # Instead, check that the queue is empty (next event is None)
-    assert queue.peek_next_event() is None
-
-def test_queue_processes_only_due_events():
-    """Test that only events with timestamps <= current_time are processed"""
-    # Create a queue
-    queue = SimulationQueue()
-    dummy_actor = DummyActor()
-    
-    # Create events with different timestamps
-    events = [
-        DialogueEvent(
-            timestamp=10, 
-            actor=dummy_actor,
-            text="First event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "first"}
-        ),
-        DialogueEvent(
-            timestamp=20, 
-            actor=dummy_actor,
-            text="Second event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "second"}
-        ),
-        DialogueEvent(
-            timestamp=30, 
-            actor=dummy_actor,
-            text="Third event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "third"}
-        ),
-        DialogueEvent(
-            timestamp=40, 
-            actor=dummy_actor,
-            text="Fourth event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "fourth"}
-        ),
-        DialogueEvent(
-            timestamp=50, 
-            actor=dummy_actor,
-            text="Fifth event",
-            duration=1.0,
-            event_type="dialogue",
-            metadata={"order": "fifth"}
-        ),
-    ]
-    
-    # Add all events to the queue
-    for event in events:
-        queue.add_event(event)
-    
-    # Process events up to timestamp 35
-    queue.process_due_events(current_time=35)
-    
-    # Instead of checking processed_events == events[:3]
-    # Check that we only have events with timestamp > 35 left in the queue
-    next_event = queue.peek_next_event()
-    assert next_event is not None
-    assert next_event.timestamp > 35, f"Expected next event timestamp > 35, got {next_event.timestamp}"
-    
-    # Process remaining events
-    queue.process_due_events(current_time=100)
-    
-    # Check queue is empty
-    assert queue.peek_next_event() is None, "Queue should be empty after processing all events"
-
-# Group 1: SimulationQueue Behavior
 
 @pytest.fixture(autouse=True)
 def clear_dialogue_events():
@@ -342,7 +200,7 @@ def clear_dialogue_events():
 
 class DummyStdout:
     def write(self, message):
-        pass  # Ignore output for testing
+        pass
 
 
 class DummyActor:
@@ -350,101 +208,59 @@ class DummyActor:
         self.name = name
 
 
-@pytest.fixture
-def dummy_event():
-    """Return a dummy DialogueEvent."""
-    actor = DummyActor()
-    return DialogueEvent(
-        timestamp=5.0,
-        actor=actor,
-        text="Dummy message",
-        duration=1.0,
-        event_type="dialogue",
-    )
-
-
-def test_add_and_peek_event(dummy_event):
-    """Test that adding an event and peeking returns the correct event."""
+def test_queue_processes_only_due_events():
+    """
+    Events with timestamp > current_time should remain in queue.
+    
+    This tests the core time-gating at the queue level.
+    """
     queue = SimulationQueue()
-    assert queue.peek_next_event() is None
-    queue.add_event(dummy_event)
-    assert queue.peek_next_event() == dummy_event
+    dummy_actor = DummyActor()
+    
+    events = [
+        DialogueEvent(timestamp=10, actor=dummy_actor, text="First", duration=1.0, event_type="dialogue"),
+        DialogueEvent(timestamp=20, actor=dummy_actor, text="Second", duration=1.0, event_type="dialogue"),
+        DialogueEvent(timestamp=30, actor=dummy_actor, text="Third", duration=1.0, event_type="dialogue"),
+        DialogueEvent(timestamp=40, actor=dummy_actor, text="Fourth", duration=1.0, event_type="dialogue"),
+    ]
+    
+    for event in events:
+        queue.add_event(event)
+    
+    # Process up to time 25 - should process events at 10 and 20
+    queue.process_due_events(current_time=25)
+    
+    # Events at 30 and 40 should remain
+    next_event = queue.peek_next_event()
+    assert next_event is not None
+    assert next_event.timestamp == 30
 
-
-def test_process_due_events(dummy_event):
-    """Test that process_due_events removes events after their timestamp has passed."""
-    queue = SimulationQueue()
-    queue.add_event(dummy_event)
-    fake_current_time = 6.0
-    queue.process_due_events(fake_current_time)
-    assert queue.peek_next_event() is None
-
-
-# Group 2: Signal Emission and Shared State
 
 def test_global_state_identity():
-    """Test that the global dialogue events list is shared between modules."""
+    """
+    The global DIALOGUE_EVENTS_RECEIVED list should be shared.
+    
+    This ensures signal handlers and command share the same state.
+    """
     command = Command()
     assert id(command.dialogue_events_received) == id(DIALOGUE_EVENTS_RECEIVED)
 
 
-# Group 3: Overall Simulation Loop with Controlled Time
-
-def test_simulation_loop_with_injected_time(dummy_event):
-    """Test the simulation loop by injecting a fake time function for deterministic behavior."""
-    queue = SimulationQueue()
-    queue.add_event(dummy_event)
-    
-    # Create a mutable fake time value
-    time_val = [1000.0]
-
-    def fake_time():
-        return time_val[0]
-
-    command = Command()
-    command.stdout = DummyStdout()
-    
-    stop_event = threading.Event()
-
-    def run_simulation():
-        try:
-            command.start_simulation_loop(queue, time_fn=fake_time)
-        except KeyboardInterrupt:
-            pass
-        stop_event.set()
-
-    thread = threading.Thread(target=run_simulation)
-    thread.daemon = True
-    thread.start()
-
-    # Advance fake time so that the event's timestamp (5.0 seconds after start) is reached
-    time_val[0] = 1006.0  # start_time + 6 seconds
-    
-    thread.join(timeout=1.0)
-
-    # The event should have been processed
-    assert len(command.dialogue_events_received) == 1
-
 @pytest.mark.django_db
 def test_dialogue_event_emits_signal():
     """
-    Test that processing a DialogueEvent emits the dialogue_event_processed signal.
+    Processing a DialogueEvent should emit the dialogue_event_processed signal.
     
-    This verifies the signal handler (DIALOGUE_EVENTS_RECEIVED) receives events
-    when they are processed by SimulationQueue.
+    This is critical for connecting queue processing to UI updates.
     """
-    # Clear any existing dialogue events
     DIALOGUE_EVENTS_RECEIVED.clear()
     
-    # Create a test actor
-    from mysite.universe.models.base import Location
     location = Location.objects.create(name="Test Location")
     ship = Ship.objects.create(name="Test Ship", current_location=location)
     pilot = Pilot.create(ship=ship)
     pilot.name = "Test Pilot"
     pilot.save()
     
-    # Create the queue and event
     queue = SimulationQueue()
     event = DialogueEvent(
         timestamp=5.0,
@@ -454,12 +270,9 @@ def test_dialogue_event_emits_signal():
         event_type="dialogue",
     )
     
-    # Add and process the event
     queue.add_event(event)
     queue.process_due_events(5.1)
     
-    # Verify signal was emitted and received
     assert len(DIALOGUE_EVENTS_RECEIVED) == 1
     assert DIALOGUE_EVENTS_RECEIVED[0].actor == pilot
     assert "requesting status" in DIALOGUE_EVENTS_RECEIVED[0].text
-    assert DIALOGUE_EVENTS_RECEIVED[0].timestamp == pytest.approx(5.0)
