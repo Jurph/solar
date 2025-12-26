@@ -4,16 +4,35 @@ from unittest.mock import patch
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.base import Location
 from mysite.universe.models.scale import Scale
+from mysite.universe.models.station import Station
 from mysite.universe.services.cargo_server import CargoService
+
+
+def create_test_station():
+    """Helper to create a valid Station with berths for ship tests."""
+    # Create a parent location (e.g., a planet) for the station to orbit
+    parent, _ = Location.objects.get_or_create(
+        name="Test Planet",
+        defaults={"scale": Scale.PLANET}
+    )
+    # Create a Station with berths (required for cargo missions)
+    station, _ = Station.objects.get_or_create(
+        name="Test Station",
+        defaults={
+            "scale": Scale.STATION,
+            "orbits": parent,
+            "large_berths": 1,
+            "medium_berths": 2,
+            "small_berths": 4,
+        }
+    )
+    return station
+
 
 class ShipGenerateNameTests(TestCase):
     def setUp(self):
-        # Create a dummy station location so that Ship.create() can find it.
-        # Assuming Location has a 'name' and a 'scale' field.
-        self.station = Location.objects.create(
-            name="Test Station",
-            scale=Scale.STATION  # Use the proper constant from Scale
-        )
+        # Create a proper station with berths for Ship.create() to find
+        self.station = create_test_station()
         # Get the list of templates from the Ship model
         self.templates = Ship.NAME_TEMPLATES
 
@@ -45,11 +64,8 @@ class ShipGenerateNameTests(TestCase):
 
 class ShipCreationTests(TestCase):
     def setUp(self):
-        # Create a station location fixture necessary for Ship.create().
-        self.station = Location.objects.create(
-            name="Test Station",
-            scale=Scale.STATION
-        )
+        # Create a proper station with berths for Ship.create() to use
+        self.station = create_test_station()
 
     def test_create_ship_for_each_size(self):
         # Iterate over each size defined in the Ship model.

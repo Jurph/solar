@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, List, Any
@@ -7,6 +8,8 @@ from .station import Station
 from collections import deque
 from .scale import OrderedScale
 from ..models.scale import Scale
+
+logger = logging.getLogger(__name__)
 
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
@@ -263,16 +266,9 @@ class UniverseGraph:
         if self._graph is None:
             self.rebuild_graph()
         try:
-            path = []
             origin_id = origin.get_concrete_instance().id
             dest_id = destination.get_concrete_instance().id
             path_ids = nx.shortest_path(self._graph, origin_id, dest_id)
-            # print(f"Calculated path from {origin.name} to {destination.name}:")
-            for nid in path_ids:
-                path.append(Location.objects.get(id=nid).get_concrete_instance())
-            #for node in path:   
-            #    print(f" - {node.name} (Scale: {node.scale})")
-            #print(f"Total nodes in path: {len(path)}")
             return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
         except nx.NetworkXNoPath:
             raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
@@ -430,57 +426,78 @@ def _normalize(item: Any) -> Any:
         return item[0]
     return item
 
-def effective_controller(location: Location) -> Optional[Station]:
+
+# Keywords that identify a station as a "control" facility.
+# Extensible list - add new approved keywords here as needed.
+CONTROL_STATION_KEYWORDS = ["Control", "Dispatch"]
+
+
+def _is_control_station(station_name: str) -> bool:
+    """Check if a station name contains any control station keyword."""
+    return any(keyword in station_name for keyword in CONTROL_STATION_KEYWORDS)
+
+
+def find_controlling_station(location: Location) -> Optional[Station]:
     """
-    Recursively determine the controlling station for a given location.
-
-    World-building rules:
-    - If the concrete instance is a Station:
-           * If its name contains "Control", then that station controls departures.
-           * Otherwise, defer to its parent's controller.
-    - Otherwise, if the object (say, a Planet or Moon) has orbiting stations:
-           * Return the one whose name includes "Control" (if one exists),
-           * Or use the first available station as fallback.
-    - If there are no orbiting stations, repeat the process using the parent
-        (i.e. the object that this one orbits).
-
-    Assumes that each location's concrete type is available via get_concrete_instance().
-    """
-    concrete = location.get_concrete_instance()
-    print(f"[effective_controller] Checking {concrete.name} (type: {concrete.get_type_name()})")
-
-    if concrete.get_type_name() == "Station":
-        if "Control" in concrete.name:
-            print(f"[effective_controller] {concrete.name} is a control station.")
-            return concrete
-        else:
-            if concrete.orbits:
-                print(f"[effective_controller] {concrete.name} is a station but not a control station; deferring to parent {concrete.orbits.name}.")
-                return effective_controller(concrete.orbits)
-            else:
-                print(f"[effective_controller] {concrete.name} is a station with no parent; using self.")
-                return concrete
-
-    if hasattr(concrete, "orbiting_stations"):
-        stations = list(
-            concrete.orbiting_stations.all()
-            if hasattr(concrete.orbiting_stations, "all")
-            else concrete.orbiting_stations
-        )
-        if stations:
-            control_stations = [s for s in stations if "Control" in s.name]
-            if control_stations:
-                print(f"[effective_controller] Found control station orbiting {concrete.name}: {control_stations[0].name}")
-                return control_stations[0]
-            else:
-                print(f"[effective_controller] No control station orbiting {concrete.name}; using first available: {stations[0].name}")
-                return stations[0]
-
-    if concrete.orbits:
-        print(f"[effective_controller] No orbiting stations on {concrete.name}; checking parent {concrete.orbits.name}.")
-        return effective_controller(concrete.orbits)
+    Find the station that controls traffic for a given location.
     
-    print(f"[effective_controller] No controlling station found for {concrete.name}.")
+    This encodes the world-building rules for traffic control jurisdiction:
+    
+    1. Find the nearest Station whose name contains a control keyword
+       (e.g., "Control", "Dispatch") within the local area (PLANET scale).
+    2. If no control station exists, find the nearest any-Station.
+    3. If no stations exist, find the nearest Planet or Moon.
+    4. If nothing found, return None (remote/uncontrolled space).
+    
+    "Nearest" is defined by graph path distance within the local area.
+    
+    Args:
+        location: The Location to find a controller for.
+        
+    Returns:
+        The controlling Station, or nearest celestial body, or None if in
+        remote uncontrolled space.
+    """
+    from .scale import OrderedScale
+    
+    universe = UniverseGraph.get_instance()
+    concrete_location = location.get_concrete_instance()
+    local_nodes = universe.get_local_graph(concrete_location, OrderedScale(Scale.PLANET))
+    
+    # Helper function to compute path distance
+    def distance(node: Location) -> int:
+        path = universe.get_path(concrete_location, node)
+        return len(path) if path else float('inf')
+        
+    # Helper to get actual type name (Station, Planet, etc.)
+    def get_type_name(node: Location) -> str:
+        try:
+            return node.get_concrete_instance().__class__.__name__
+        except Exception:
+            return ""
+    
+    # 1. Find nearest Station with a control keyword in name
+    control_stations = [
+        node for node in local_nodes
+        if get_type_name(node) == "Station" and _is_control_station(node.name)
+    ]
+    if control_stations:
+        return min(control_stations, key=distance)
+        
+    # 2. Find nearest any-Station
+    stations = [node for node in local_nodes if get_type_name(node) == "Station"]
+    if stations:
+        return min(stations, key=distance)
+        
+    # 3. Find nearest Planet or Moon
+    celestials = [
+        node for node in local_nodes
+        if get_type_name(node) in ["Planet", "Moon"]
+    ]
+    if celestials:
+        return min(celestials, key=distance)
+        
+    # 4. Remote/uncontrolled space
     return None
 
 def print_tree(universe_graph, root_id, level=0, visited=None):
