@@ -1,30 +1,30 @@
 # Vestigial Code Cleanup Plan
 
-## Status: ⚠️ NOT YET READY FOR CLEANUP
+## Status: ⚠️ NEEDS UPDATE (document was written against an older code snapshot)
 
-**Important**: The old code is still in use. Cleanup can only happen after Phase 4 integration is complete.
+This document was written when reply generation and JSON-response helpers were still active.
+As of late Dec 2025, several items listed below no longer exist in the codebase and the line
+references are stale.
 
 ## Current Usage
 
-### Still Active (Cannot Remove Yet)
+### Previously Active (verify before acting)
 
 1. **`LLMService.get_actor_json_response()`**
-   - Called from: `script_server.py` lines 387, 548, 693
-   - Used by: `parse_navigation_event()` and `parse_dialogue_event()`
-   - Test: `test_LLM.py::test_json_dialogue_generation`
+   - **NOTE:** This method name no longer appears in the current codebase.
+   - If you see similar behavior today, it likely lives in `LLMService.chat()` and/or dialogue-server code.
 
 2. **`ScriptService.parse_dialogue_event()`**
-   - Called from: `event.py` lines 148, 153 (via `expect_reply_action()`)
-   - Used for: Dynamic reply generation when `expect_reply=True`
+   - **NOTE:** This method name no longer appears in the current `script_server.py`.
+   - Dialogue is generated as full chains via `ScriptService.parse_navigation_events()` and DialogueService.
 
 3. **Old Prompt Building Methods** (all in `script_server.py`):
-   - `build_situation_prompt()` - line 775
-   - `get_dialogue_context()` - line 783
-   - `format_context_for_llm()` - line 792
-   - `build_controller_examples()` - line 818
-   - `build_pilot_examples()` - line 831
+   - **NOTE:** These method names no longer appear in the current file; prompts are particle-driven.
 
-## Cleanup Plan (After Phase 4 Integration)
+## Cleanup Plan (rewrite needed)
+
+Recommendation: rewrite this document around *current* cleanup targets (if any) by first
+grepping the codebase for the methods you plan to remove and capturing their current call sites.
 
 ### Step 1: Remove Old Prompt Building Methods
 

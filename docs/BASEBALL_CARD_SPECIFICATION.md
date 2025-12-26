@@ -216,7 +216,7 @@ def get_day_night_cycle_summary(self) -> str:
 
 - **Backend (models/display.py):** All calculations and formatting
 - **Frontend (base.html):** Only display logic, no calculations
-- **API (views/events.py):** Return formatted strings, not raw numbers
+- **API (views/universe.py + views/serializers.py):** Return formatted strings, not raw numbers
 
 ### Missing Data Handling
 

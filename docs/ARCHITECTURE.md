@@ -74,9 +74,14 @@ solar/
             │       ├── maintenance.py
             │       └── movement.py
             │
-            ├── views/           # Django views
-            │   └── events.py   # universe_view, object_details, event_feed, 
-            │                    # event_scroller, event_scroller_wrapper, run_demo
+            ├── views/           # Django views (decomposed by domain concern)
+            │   ├── __init__.py  # Re-exports view callables for backward-compatible imports
+            │   ├── events.py    # event_feed, event_scroller(+wrapper), clear_events
+            │   ├── missions.py  # spawn_mission, run_demo (deprecated)
+            │   ├── simulation.py # set_time_scale, skip_to_next_event, get_simulation_status
+            │   ├── universe.py  # universe_view, object_details (delegates to serializers)
+            │   ├── serializers.py # "baseball card" data shaping (presentation-oriented)
+            │   └── audio.py     # placeholder for future audio/TTS endpoints
             │
             ├── templates/        # HTML templates
             │   └── universe/
@@ -149,7 +154,8 @@ solar/
 ### Services
 
 - **dictionary.py:** Provides word lists for procedural content generation.
-- **route_server.py:** Calculates optimal travel paths between locations.
+- **route_server.py:** Public façade for route planning (RouteService).
+  - Implementation lives in `services/route/` (plan/controllers/durations/missions/formatting) to avoid a single large blob.
 - **script_server.py:** Converts navigation events into dialogue scripts.
 - **cargo_server.py:** Determines and assigns cargo to ships.
 - **traffic_control.py:** Oversees simulation agents and real-time ship movement.
@@ -177,13 +183,20 @@ solar/
 
 ### Views & User Interface
 
-- **views/events.py:** Django views for web interface
-  - **universe_view:** Hierarchical universe browser with expandable tree
-  - **object_details:** API endpoint for celestial object details (baseball card data)
-  - **event_feed:** JSON API for polling dialogue events
-  - **event_scroller:** Scrolling terminal display of dialogue events (iframe)
-  - **event_scroller_wrapper:** Main page with control panel and event scroller
-  - **run_demo:** API endpoint to start dialogue demo in background
+The views are split into multiple modules under `mysite/universe/views/` for clarity and future growth:
+
+- **views/universe.py:** universe browsing + object details
+  - **universe_view:** hierarchical universe browser
+  - **object_details:** API endpoint for baseball-card JSON (delegates to `views/serializers.py`)
+- **views/events.py:** event scroller + event feed
+  - **event_feed:** JSON API for polling dialogue events (time-gated by SimulationState)
+  - **event_scroller / event_scroller_wrapper:** terminal-style UI
+  - **clear_events:** deletes DialogueEventLog rows
+- **views/simulation.py:** simulation time control/status APIs
+  - **set_time_scale, skip_to_next_event, get_simulation_status**
+- **views/missions.py:** mission spawning
+  - **spawn_mission:** spawns a mission and schedules dialogue into DialogueEventLog
+  - **run_demo:** deprecated demo endpoint
 - **templates/universe/:** HTML templates
   - **base.html:** Base template with baseball card JavaScript
   - **index.html:** Universe browser with hierarchical tree view

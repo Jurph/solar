@@ -15,16 +15,16 @@ Models use plain descriptive names, and capture essential things about how the w
 ### Services
 Services compose model features together. By pulling in parts of  `ship.py` and `celestial.py` and `navigation.py`, the `route_server.py` can generate routes without risking circular imports. The simulation should be built on services! 
 
-All service-layer components use the suffix `_server` but offer up a class `Service`::
-- `route_server.py` exposes `routeService` - Not `route_service.py` or `routeServer`
-- `script_server.py` exposes `scriptService` - Not `script_service.py` or `scriptServer`
-- `cargo_server.py` exposes `cargoService` - Not `cargo_service.py` or `cargoServer`
+All service-layer components use the suffix `_server` and expose a single public façade class:
+- `route_server.py` exposes `RouteService`
+- `script_server.py` exposes `ScriptService`
+- `cargo_server.py` exposes `CargoService`
 - ...and so on! 
 
 Classes within these files follow the same convention:
 ```python
-class RouteServer:  # Not RouteService
-class ScriptServer:  # Not ScriptService
+class RouteService:
+class ScriptService:
 ```
 
 ### Commands
@@ -36,7 +36,7 @@ Management commands use descriptive action names:
 Use relative imports within the app:
 ```python
 from ...models import Ship
-from ...services.route_server import RouteServer
+from ...services.route_server import RouteService
 ```
 
 ## Code Style
