@@ -1,5 +1,6 @@
 from mysite.universe.services.dictionary import DictionaryService
 from typing import List, Dict, Any, Tuple
+import threading
 
 # Import our navigation models
 from mysite.universe.models.navigation import NavigationEvent
@@ -26,6 +27,7 @@ class ScriptService:
     """
 
     _instance = None
+    _instance_lock = threading.RLock()
     
     @classmethod
     def get_instance(cls, llm=None):
@@ -36,21 +38,25 @@ class ScriptService:
         to use the new LLM configuration (e.g., different temperature).
         """
         if cls._instance is None:
-            if llm is None:
-                # Use unified LLMService for structured JSON dialogue generation
-                from mysite.universe.services.llm_service import LLMService
-                llm = LLMService(quiet_mode=True)
-            cls._instance = cls(llm)
+            with cls._instance_lock:
+                if cls._instance is None:
+                    if llm is None:
+                        # Use unified LLMService for structured JSON dialogue generation
+                        from mysite.universe.services.llm_service import LLMService
+                        llm = LLMService(quiet_mode=True)
+                    cls._instance = cls(llm)
         elif llm is not None:
-            # Update the LLM if a new one is provided (e.g., different temperature)
-            cls._instance.llm = llm
-            cls._instance.dialogue_service = DialogueService(llm)
+            with cls._instance_lock:
+                # Update the LLM if a new one is provided (e.g., different temperature)
+                cls._instance.llm = llm
+                cls._instance.dialogue_service = DialogueService(llm)
         return cls._instance
     
     @classmethod
     def reset_instance(cls):
         """Reset the singleton instance (useful for testing)."""
-        cls._instance = None
+        with cls._instance_lock:
+            cls._instance = None
 
     def __init__(self, llm):
         self.llm = llm
