@@ -13,6 +13,7 @@ and could also feed future renderers (e.g., procedural planet visualization).
 from typing import Any, Dict, Optional
 
 from mysite.universe.models import display
+from mysite.universe.models.constants import TYPE_DISPLAY_NAMES
 from mysite.universe.models import (
     Galaxy, StarSystem, Star, Planet, Moon, Station
 )
@@ -20,16 +21,6 @@ from mysite.universe.models import (
 
 class BaseSerializer:
     """Base serializer with common functionality."""
-    
-    # Map type names to display-friendly names
-    TYPE_DISPLAY_MAP = {
-        'Planet': 'Planet',
-        'Moon': 'Moon',
-        'Star': 'Star',
-        'Station': 'Space Station',
-        'StarSystem': 'Star System',
-        'Galaxy': 'Galaxy',
-    }
     
     def __init__(self, instance):
         self.instance = instance
@@ -48,7 +39,7 @@ class BaseSerializer:
         )
         return {
             'name': self.instance.name,
-            'type': self.TYPE_DISPLAY_MAP.get(type_name, type_name),
+            'type': TYPE_DISPLAY_NAMES.get(type_name, type_name),
             'type_code': type_name,
             'scale': getattr(self.instance, 'scale', None),
         }

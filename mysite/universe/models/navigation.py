@@ -5,6 +5,7 @@ from typing import Optional, List, Any
 import networkx as nx
 from .base import Location
 from .station import Station
+from .constants import TypeName, CONTROL_STATION_KEYWORDS
 from collections import deque
 from .scale import OrderedScale
 from ..models.scale import Scale
@@ -96,7 +97,7 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
     # Determine the departure type of the first node.
     departure = path[0]
     depart_type = type_of(departure)
-    if depart_type == "Station":
+    if depart_type == TypeName.STATION:
         events.append(NavigationEvent(
             origin=None,
             current=departure,
@@ -123,7 +124,7 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
         next_type = type_of(nxt)
         
         # Rule: If traveling between two Planets, perform a PLANE_CHANGE and then a TRANSFER.
-        if current_type == "Planet" and next_type == "Planet":
+        if current_type == TypeName.PLANET and next_type == TypeName.PLANET:
             events.append(NavigationEvent(
                 origin=current,
                 current=current,
@@ -153,7 +154,7 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
         
         # If the upcoming node is a Planet or Moon (i.e. a major body), perform circularization
         # to enter its sphere of influence.
-        if next_type in ("Planet", "Moon"):
+        if next_type in TypeName.PLANETARY_BODIES:
             events.append(NavigationEvent(
                 origin=current,
                 current=current,
@@ -165,7 +166,7 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
         
         # For the final leg, do a landing or docking maneuver.
         if i == len(path) - 2:
-            if next_type == "Station":
+            if next_type == TypeName.STATION:
                 events.append(NavigationEvent(
                     origin=current,
                     current=current,
@@ -174,7 +175,7 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
                     maneuver=ManeuverType.DOCK,
                     description=f"Dock at station {nxt.name}."
                 ))
-            elif next_type in ("Planet", "Moon"):
+            elif next_type in TypeName.PLANETARY_BODIES:
                 events.append(NavigationEvent(
                     origin=current,
                     current=current,
@@ -429,9 +430,6 @@ def _normalize(item: Any) -> Any:
 
 # Keywords that identify a station as a "control" facility.
 # Extensible list - add new approved keywords here as needed.
-CONTROL_STATION_KEYWORDS = ["Control", "Dispatch"]
-
-
 def _is_control_station(station_name: str) -> bool:
     """Check if a station name contains any control station keyword."""
     return any(keyword in station_name for keyword in CONTROL_STATION_KEYWORDS)
@@ -479,20 +477,20 @@ def find_controlling_station(location: Location) -> Optional[Station]:
     # 1. Find nearest Station with a control keyword in name
     control_stations = [
         node for node in local_nodes
-        if get_type_name(node) == "Station" and _is_control_station(node.name)
+        if get_type_name(node) == TypeName.STATION and _is_control_station(node.name)
     ]
     if control_stations:
         return min(control_stations, key=distance)
         
     # 2. Find nearest any-Station
-    stations = [node for node in local_nodes if get_type_name(node) == "Station"]
+    stations = [node for node in local_nodes if get_type_name(node) == TypeName.STATION]
     if stations:
         return min(stations, key=distance)
         
     # 3. Find nearest Planet or Moon
     celestials = [
         node for node in local_nodes
-        if get_type_name(node) in ["Planet", "Moon"]
+        if get_type_name(node) in TypeName.PLANETARY_BODIES
     ]
     if celestials:
         return min(celestials, key=distance)

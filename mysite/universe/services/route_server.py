@@ -10,6 +10,7 @@ The approach is:
 from typing import List, Union, Optional, TYPE_CHECKING
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
+from ..models.constants import TypeName
 from ..models.navigation import (
     ManeuverType, UniverseGraph, NavigationEvent, is_planetary,
     find_controlling_station,
@@ -74,7 +75,7 @@ class RouteService:
             events = []
 
             # Departure phase
-            if origin_type == "Station":
+            if origin_type == TypeName.STATION:
                 events.append(NavigationEvent(
                     maneuver=ManeuverType.UNDOCK,
                     origin=origin,
@@ -84,7 +85,7 @@ class RouteService:
                     description=f"UNDOCK from {origin.name} to {destination.name}",
                     controller=None
                 ))
-            elif origin_type == "Moon":
+            elif origin_type == TypeName.MOON:
                 events.append(NavigationEvent(
                     maneuver=ManeuverType.LAUNCH,
                     origin=origin,
@@ -107,7 +108,7 @@ class RouteService:
             ))
 
             # Arrival phase
-            if dest_type == "Moon" and origin_type != "Moon":
+            if dest_type == TypeName.MOON and origin_type != TypeName.MOON:
                 events.append(NavigationEvent(
                     maneuver=ManeuverType.CIRCULARIZE,
                     origin=origin,
@@ -254,14 +255,14 @@ class RouteService:
             # Clear the existing events list for direct ascent
             events.clear()
             
-            if origin_type == "Station":
+            if origin_type == TypeName.STATION:
                 events.append(make_direct_event(ManeuverType.UNDOCK))
-            elif origin_type == "Moon":
+            elif origin_type == TypeName.MOON:
                 events.append(make_direct_event(ManeuverType.LAUNCH))
             events.append(make_direct_event(ManeuverType.DIRECT_ASCENT))
-            if dest_type == "Station":
+            if dest_type == TypeName.STATION:
                 events.append(make_direct_event(ManeuverType.DOCK))
-            elif dest_type == "Moon":
+            elif dest_type == TypeName.MOON:
                 events.extend([
                     make_direct_event(ManeuverType.CIRCULARIZE),
                     make_direct_event(ManeuverType.DEORBIT),
@@ -314,11 +315,11 @@ class RouteService:
             )
 
         # 1. DEPARTURE PHASE - Generate departure events based on origin type
-        if origin_type == "Station":
+        if origin_type == TypeName.STATION:
             events.append(make_departure_event(ManeuverType.UNDOCK))
             events.append(make_departure_event(ManeuverType.INSERTION))
             events.append(make_departure_event(ManeuverType.CIRCULARIZE))
-        elif origin_type in ("Planet", "Moon") or is_planetary(origin):
+        elif origin_type in TypeName.PLANETARY_BODIES or is_planetary(origin):
             events.append(make_departure_event(ManeuverType.LAUNCH))
             events.append(make_departure_event(ManeuverType.INSERTION))
             events.append(make_departure_event(ManeuverType.CIRCULARIZE))
@@ -326,16 +327,16 @@ class RouteService:
         # 2. TRANSFER PHASE - Handle the transfer logic based on the transfer plan
         if len(transfer_plan) == 3:
             # Simple direct transfer: for a direct hop, add one event.
-            if dest_type == "Station":
+            if dest_type == TypeName.STATION:
                 events.append(make_transfer_event(ManeuverType.PLANE_CHANGE))
             else:
                 events.append(make_transfer_event(ManeuverType.SUBLIGHT))
         else:
-            is_origin_planetary = origin_type in ("Planet", "Moon") or is_planetary(origin)
+            is_origin_planetary = origin_type in TypeName.PLANETARY_BODIES or is_planetary(origin)
             if is_origin_planetary:
                 if not any(isinstance(x, ManeuverType) and x == ManeuverType.HYPERSPACE for x in transfer_plan):
                     # Non-hyperspace transfer
-                    if dest_type == "Station":
+                    if dest_type == TypeName.STATION:
                         if len(transfer_plan) == 5:
                             # Single-leg transfer: produce 4 events
                             events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
@@ -364,7 +365,7 @@ class RouteService:
                         # Arrival sub-phase: set current to destination
                         events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
                         events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
-                    if dest_type == "Station":
+                    if dest_type == TypeName.STATION:
                         events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
             else:
                 # Fallback: simple transfer if origin is not planetary
@@ -372,9 +373,9 @@ class RouteService:
                 events.append(make_transfer_event(ManeuverType.CIRCULARIZE))
 
         # 3. ARRIVAL PHASE - Add arrival maneuvers based on destination type
-        if dest_type == "Station":
+        if dest_type == TypeName.STATION:
             events.append(make_transfer_arrival_event(ManeuverType.DOCK))
-        elif dest_type in ("Planet", "Moon") or is_planetary(destination):
+        elif dest_type in TypeName.PLANETARY_BODIES or is_planetary(destination):
             events.append(make_transfer_arrival_event(ManeuverType.DEORBIT))
             events.append(make_transfer_arrival_event(ManeuverType.LANDING))
         
@@ -628,7 +629,7 @@ class RouteService:
         compressed = [location_path[0]]
         for node in location_path[1:-1]:
             node_type = node.get_concrete_instance().get_type_name()
-            if node_type in ("Planet", "Moon", "Station"):
+            if node_type in TypeName.SURFACE_LOCATIONS:
                 compressed.append(node)
         compressed.append(location_path[-1])
         return compressed
