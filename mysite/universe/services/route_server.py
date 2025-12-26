@@ -10,7 +10,10 @@ The approach is:
 from typing import List, Union, Optional, TYPE_CHECKING
 from ..models.base import Location
 from ..models.scale import Scale, OrderedScale
-from ..models.navigation import ManeuverType, UniverseGraph, NavigationEvent, is_planetary
+from ..models.navigation import (
+    ManeuverType, UniverseGraph, NavigationEvent, is_planetary,
+    find_controlling_station,
+)
 from dataclasses import dataclass
 import random
 from mysite.universe.models.actor import Controller
@@ -270,7 +273,7 @@ class RouteService:
                     make_direct_event(ManeuverType.LANDING)
                 ])
             # Direct ascent events are complete, skip to the controller enhancement
-                return self._enhance_with_controllers(events)
+            return self._enhance_with_controllers(events)
                 
         # Multi-leg journey branch
 
@@ -419,76 +422,39 @@ class RouteService:
 
     def effective_controller(self, location: Location) -> Union[Controller, Location]:
         """
-        Determines the controlling entity for a given Location.
+        Get the controlling entity (Controller actor or Location) for a given Location.
         
-        Rules:
-        1. Select the nearest local Location of type Station whose name contains 'Control' or 'Dispatch'.
-        2. If none, select the nearest local Location of type Station.
-        3. If still none, select the nearest local Location of type Planet or Moon.
-        4. Otherwise, return the location itself.
+        This is a service-layer adapter that:
+        1. Delegates to find_controlling_station() for the world-model logic
+        2. Looks up the Controller actor for that station
+        3. Returns either the Controller actor or the Location as fallback
         
-        For any control station found, return its associated Controller actor.
-        If no Controller actor exists for a control station, create one.
+        Args:
+            location: The Location to find a controller for.
+            
+        Returns:
+            Controller actor if one exists for the controlling station,
+            otherwise the controlling Location itself.
         """
-        universe = UniverseGraph.get_instance()
-        concrete_location = location.get_concrete_instance()
-        local_nodes = universe.get_local_graph(concrete_location, OrderedScale(Scale.PLANET))
+        # Get the controlling station/location from the world model
+        controlling_location = find_controlling_station(location)
         
-        # Helper function to compute path distance
-        def distance(node: Location) -> int:
-            path = universe.get_path(concrete_location, node)
-            return len(path) if path else float('inf')
-            
-        # Helper to get actual type name (Station, Planet, etc.)
-        def get_type_name(node: Location) -> str:
-            try:
-                return node.get_concrete_instance().__class__.__name__
-            except Exception:
-                return ""
+        if controlling_location is None:
+            # Remote/uncontrolled space - return the location itself
+            return location.get_concrete_instance()
         
-        # 1. Find nearest Station with "Control" or "Dispatch" in name
-        control_stations = []
-        for node in local_nodes:
-            node_type = get_type_name(node)
-            if node_type == "Station" and ("Control" in node.name or "Dispatch" in node.name):
-                control_stations.append(node)
-                
-        if control_stations:
-            station = min(control_stations, key=distance)
-            # Look up the Controller actor for this station
-            # Controllers should be created at universe initialization time via ActorService.deploy_controllers()
-            controller = Controller.objects.filter(location=station).first()
-            if not controller:
-                controller = Controller.objects.filter(name=station.name).first()
-            if controller:
-                return controller
-            # If no controller exists, return the station itself (Location)
-            # The calling code will handle looking up the controller
-            return station
-            
-        # 2. Find nearest Station
-        stations = []
-        for node in local_nodes:
-            if get_type_name(node) == "Station":
-                stations.append(node)
-                
-        if stations:
-            station = min(stations, key=distance)
-            # For non-control stations, return the station itself
-            return station
-            
-        # 3. Find nearest Planet or Moon
-        celestials = []
-        for node in local_nodes:
-            node_type = get_type_name(node)
-            if node_type in ["Planet", "Moon"]:
-                celestials.append(node)
-                
-        if celestials:
-            return min(celestials, key=distance)
-            
-        # 4. Return the location itself
-        return concrete_location
+        # Try to find the Controller actor for this location
+        # Controllers should be created at universe initialization via ActorService.deploy_controllers()
+        controller = Controller.objects.filter(location=controlling_location).first()
+        if not controller:
+            controller = Controller.objects.filter(name=controlling_location.name).first()
+        
+        if controller:
+            return controller
+        
+        # No Controller actor exists - return the Location itself
+        # The calling code (e.g., script_server) will handle this case
+        return controlling_location
 
     def pick_random_destination(
         self, 
@@ -549,7 +515,7 @@ class RouteService:
             origin = ship.current_location
 
         destination = self.pick_random_destination(excluding=origin, cargo_mission=cargo_mission)
-        print(f"Random journey: {origin.name} -> {destination.name}")
+        # Journey: origin.name -> destination.name
         universe = UniverseGraph.get_instance()
         path = universe.get_path(origin, destination)
 

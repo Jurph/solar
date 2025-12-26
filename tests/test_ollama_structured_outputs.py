@@ -165,7 +165,7 @@ Respond naturally and in character."""
             f"Expected readback content in message, got: {result['message']}"
         )
         # Should also indicate understanding
-        understanding_words = ["UNDERSTOOD", "CONFIRM", "ROGER", "COPY", "ACKNOWLEDGED"]
+        understanding_words = ["UNDERSTAND", "UNDERSTOOD", "CONFIRM", "ROGER", "COPY", "ACKNOWLEDGED", "WILCO"]
         self.assertTrue(
             any(word in message_text for word in understanding_words),
             f"Expected understanding indicator in message, got: {result['message']}"

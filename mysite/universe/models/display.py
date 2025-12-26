@@ -74,6 +74,19 @@ def format_rotation_period_hours(period_hours: Optional[float]) -> str:
     return f"{period_hours:.2f} hours ({days:.2f} days)"
 
 
+def calculate_surface_gravity_ms2(mass_kg: Optional[float], radius_km: Optional[float]) -> Optional[float]:
+    """
+    Calculate surface gravity in m/s².
+    Formula: g = GM/r²
+    where G = 6.67430e-11 m³/(kg·s²), M = mass_kg, r = radius_m
+    """
+    if mass_kg is None or radius_km is None:
+        return None
+    G = 6.67430e-11  # Gravitational constant
+    radius_m = radius_km * 1000
+    return (G * mass_kg) / (radius_m ** 2)
+
+
 def format_surface_gravity(gravity_ms2: Optional[float]) -> str:
     """Format surface gravity in m/s² with Earth g conversion."""
     if gravity_ms2 is None:
@@ -132,6 +145,45 @@ def format_orbital_velocity(velocity_ms: Optional[float]) -> str:
         return 'N/A'
     velocity_kms = velocity_ms / 1000
     return f"{velocity_kms:.2f} km/s"
+
+
+def get_atmosphere_data(body_instance, body_model_class) -> Dict[str, Any]:
+    """
+    Look up atmosphere data for a celestial body using ContentType.
+    
+    Args:
+        body_instance: The concrete Planet or Moon instance
+        body_model_class: The model class (Planet or Moon)
+        
+    Returns:
+        Dict with keys: has_atmosphere, atmosphere_type, atmosphere_height_km,
+                       surface_pressure_bar, scale_height_km
+    """
+    result = {
+        'has_atmosphere': False,
+        'atmosphere_type': None,
+        'atmosphere_height_km': None,
+        'surface_pressure_bar': None,
+        'scale_height_km': None,
+    }
+    
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from mysite.universe.models import Atmosphere
+        
+        content_type = ContentType.objects.get_for_model(body_model_class)
+        atmosphere = Atmosphere.objects.get(content_type=content_type, object_id=body_instance.id)
+        
+        result['has_atmosphere'] = True
+        result['atmosphere_type'] = atmosphere.atmosphere_type
+        result['atmosphere_height_km'] = atmosphere.atmosphere_height_km
+        result['surface_pressure_bar'] = atmosphere.surface_pressure_bar
+        result['scale_height_km'] = atmosphere.scale_height_km
+    except Exception:
+        # Atmosphere doesn't exist or model not available
+        pass
+    
+    return result
 
 
 def get_surface_composition_hint(planet_type: Optional[str] = None, moon_type: Optional[str] = None, 

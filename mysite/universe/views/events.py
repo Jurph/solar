@@ -1,3 +1,4 @@
+import logging
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.clickjacking import xframe_options_sameorigin
@@ -11,15 +12,11 @@ from mysite.universe.models import (
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models import display
 
+logger = logging.getLogger(__name__)
+
 
 def universe_view(request):
     galaxies = Galaxy.objects.all()
-    
-    # Debug output
-    print(f"Found {galaxies.count()} galaxies")
-    for galaxy in galaxies:
-        print(f"Galaxy: {galaxy.name}")
-    
     return render(request, 'universe/index.html', {'galaxies': galaxies})
 
 
@@ -70,7 +67,7 @@ def event_feed(request):
         count_with_id_filter = count_before_limit
     
     if count_with_id_filter > 0:
-        print(f"[EVENT_FEED] sim_time={sim_time:.1f}, after_id={after_id}, due_events={count_before_limit}, filtered={count_with_id_filter}")
+        logger.debug(f"event_feed: sim_time={sim_time:.1f}, after_id={after_id}, due_events={count_before_limit}, filtered={count_with_id_filter}")
     
     # Convert to list of dicts with only essential fields
     events = [
@@ -163,7 +160,7 @@ def run_demo(request):
             # Run the management command with low temperature for consistent dialogue
             call_command('character_dialogue_demo', temperature=0.25, use_json=True)
         except Exception as e:
-            print(f"Error running demo: {e}")
+            logger.error(f"Error running demo: {e}")
     
     # Start the demo in a background thread
     thread = threading.Thread(target=run_demo_command, daemon=True)
@@ -195,17 +192,15 @@ def spawn_mission(request):
     
     def process_mission_in_background():
         """Process the mission in a background thread to avoid blocking the request."""
-        import sys
-        
         try:
-            print(f"[SPAWN] Starting mission generation...", flush=True)
+            logger.info("spawn_mission: Starting mission generation...")
             
             # Create ship and pilot (controllers should already exist from XML import)
             ship = Ship.create()
-            print(f"[SPAWN] Created ship: {ship.name} at {ship.current_location.name}", flush=True)
+            logger.info(f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}")
             
             pilot = Pilot.create(ship=ship)
-            print(f"[SPAWN] Created pilot: {pilot.name}", flush=True)
+            logger.debug(f"spawn_mission: Created pilot {pilot.name}")
             
             # Pick a random destination (different from origin)
             # For cargo missions, only valid endpoints (planets, moons, stations with berths)
@@ -214,7 +209,7 @@ def spawn_mission(request):
                 excluding=ship.current_location,
                 cargo_mission=True
             )
-            print(f"[SPAWN] Destination: {destination.name}", flush=True)
+            logger.info(f"spawn_mission: Destination {destination.name}")
             
             # Plan the route
             route_events = route_service.plan_route(
@@ -223,31 +218,30 @@ def spawn_mission(request):
             )
             
             if not route_events:
-                print(f"[SPAWN] ERROR: Failed to generate route for {ship.name}", flush=True)
+                logger.error(f"spawn_mission: Failed to generate route for {ship.name}")
                 return
             
-            print(f"[SPAWN] Planned route with {len(route_events)} navigation events", flush=True)
+            logger.debug(f"spawn_mission: Planned route with {len(route_events)} navigation events")
             
             # Initialize LLM with low temperature for consistent dialogue
             llm = LLMService(quiet_mode=True)
             llm.temperature = 0.25
-            print(f"[SPAWN] LLM initialized with temperature {llm.temperature}", flush=True)
             
             # Create a fresh ScriptService instance for this mission
             script_service = ScriptService(llm=llm)
             
             # Generate dialogue events from navigation events
             # Use physics_delays=True for realistic timing between maneuvers
-            print(f"[SPAWN] Generating dialogue events with physics delays...", flush=True)
+            logger.debug("spawn_mission: Generating dialogue events with physics delays...")
             dialogue_events = script_service.parse_navigation_events(
                 route_events, ship, use_physics_delays=True
             )
             
             if not dialogue_events:
-                print(f"[SPAWN] ERROR: No dialogue events generated for {ship.name}", flush=True)
+                logger.error(f"spawn_mission: No dialogue events generated for {ship.name}")
                 return
             
-            print(f"[SPAWN] Generated {len(dialogue_events)} dialogue events", flush=True)
+            logger.debug(f"spawn_mission: Generated {len(dialogue_events)} dialogue events")
             
             # Get current simulation time as the base for this mission's events
             # Events are scheduled relative to simulation time, not wall-clock
@@ -276,14 +270,10 @@ def spawn_mission(request):
             else:
                 duration_str = "0s"
             
-            print(f"[SPAWN] Mission scheduled: {ship.name} from {ship.current_location.name} to {destination.name}", flush=True)
-            print(f"[SPAWN] Saved {events_saved} events spanning {duration_str}", flush=True)
+            logger.info(f"spawn_mission: {ship.name} from {ship.current_location.name} to {destination.name}, {events_saved} events spanning {duration_str}")
                 
         except Exception as e:
-            print(f"[SPAWN] ERROR: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
-            sys.stdout.flush()
+            logger.exception(f"spawn_mission: Error - {e}")
     
     try:
         # Start mission processing in background thread
@@ -392,8 +382,8 @@ def skip_to_next_event(request):
     # Verify the update took effect
     actual_sim_time = get_simulation_time()
     
-    print(f"[SKIP] Skipped from {current_sim_time:.1f} to {new_sim_time:.1f} (actual: {actual_sim_time:.1f})")
-    print(f"[SKIP] Next event: {next_event.actor_name} at {next_event.timestamp:.1f}")
+    logger.debug(f"skip_to_next: Skipped from {current_sim_time:.1f} to {new_sim_time:.1f} (actual: {actual_sim_time:.1f})")
+    logger.debug(f"skip_to_next: Next event {next_event.actor_name} at {next_event.timestamp:.1f}")
     
     return JsonResponse({
         'status': 'success',
@@ -449,9 +439,7 @@ def object_details(request, object_type, object_id):
     
     Returns a JSON object with relevant properties for display in the baseball card.
     """
-    print(f"[object_details] Called with type={object_type}, id={object_id}")
-    import sys
-    sys.stdout.flush()
+    logger.debug(f"object_details: type={object_type}, id={object_id}")
     
     try:
         # Map object types to models
@@ -523,43 +511,21 @@ def object_details(request, object_type, object_id):
                     parent_body_name = parent_star.name
                     if hasattr(parent_star, 'star_type'):
                         parent_body_type = parent_star.get_star_type_display() if hasattr(parent_star, 'get_star_type_display') else parent_star.star_type
-            except Exception as e:
-                print(f"[object_details] Error getting parent body for planet: {e}")
+            except Exception:
+                pass  # Parent body lookup failed silently
             
-            # Check for atmosphere relationship using ContentType
-            has_atmosphere = False
-            atmosphere_type = None
-            atmosphere_height_km = None
-            surface_pressure_bar = None
-            scale_height_km = None
-            try:
-                from django.contrib.contenttypes.models import ContentType
-                from mysite.universe.models import Atmosphere
-                content_type = ContentType.objects.get_for_model(Planet)
-                try:
-                    atmosphere = Atmosphere.objects.get(content_type=content_type, object_id=concrete.id)
-                    has_atmosphere = True
-                    atmosphere_type = atmosphere.atmosphere_type
-                    atmosphere_height_km = atmosphere.atmosphere_height_km
-                    surface_pressure_bar = atmosphere.surface_pressure_bar
-                    scale_height_km = atmosphere.scale_height_km
-                except Atmosphere.DoesNotExist:
-                    pass
-            except Exception as e:
-                # Atmosphere model might not exist yet or other error
-                print(f"[object_details] Error checking atmosphere for planet: {e}")
-                pass
+            # Get atmosphere data using utility function
+            atmo_data = display.get_atmosphere_data(concrete, Planet)
+            has_atmosphere = atmo_data['has_atmosphere']
+            atmosphere_type = atmo_data['atmosphere_type']
+            atmosphere_height_km = atmo_data['atmosphere_height_km']
+            surface_pressure_bar = atmo_data['surface_pressure_bar']
+            scale_height_km = atmo_data['scale_height_km']
             
-            # Calculate surface gravity if we have mass and radius
-            surface_gravity_ms2 = None
-            if hasattr(concrete, 'mass_kg') and hasattr(concrete, 'radius_km'):
-                mass_kg = getattr(concrete, 'mass_kg', None)
-                radius_km = getattr(concrete, 'radius_km', None)
-                if mass_kg and radius_km:
-                    # g = GM/r², where G = 6.67430e-11 m³/(kg·s²)
-                    G = 6.67430e-11
-                    radius_m = radius_km * 1000
-                    surface_gravity_ms2 = (G * mass_kg) / (radius_m ** 2)
+            # Calculate surface gravity using utility function
+            mass_kg = getattr(concrete, 'mass_kg', None)
+            radius_km = getattr(concrete, 'radius_km', None)
+            surface_gravity_ms2 = display.calculate_surface_gravity_ms2(mass_kg, radius_km)
             
             # Get raw values
             mass_kg = getattr(concrete, 'mass_kg', None)
@@ -655,43 +621,21 @@ def object_details(request, object_type, object_id):
                                 parent_body_type = parent_location.get_star_type_display() if hasattr(parent_location, 'get_star_type_display') else parent_location.star_type
                     else:
                         parent_body_type = parent_location.get_type_name() if hasattr(parent_location, 'get_type_name') else 'Unknown'
-            except Exception as e:
-                print(f"[object_details] Error getting parent body for moon: {e}")
+            except Exception:
+                pass  # Parent body lookup failed silently
             
-            # Check for atmosphere relationship using ContentType
-            has_atmosphere = False
-            atmosphere_type = None
-            atmosphere_height_km = None
-            surface_pressure_bar = None
-            scale_height_km = None
-            try:
-                from django.contrib.contenttypes.models import ContentType
-                from mysite.universe.models import Atmosphere
-                content_type = ContentType.objects.get_for_model(Moon)
-                try:
-                    atmosphere = Atmosphere.objects.get(content_type=content_type, object_id=concrete.id)
-                    has_atmosphere = True
-                    atmosphere_type = atmosphere.atmosphere_type
-                    atmosphere_height_km = atmosphere.atmosphere_height_km
-                    surface_pressure_bar = atmosphere.surface_pressure_bar
-                    scale_height_km = atmosphere.scale_height_km
-                except Atmosphere.DoesNotExist:
-                    pass
-            except Exception as e:
-                # Atmosphere model might not exist yet or other error
-                print(f"[object_details] Error checking atmosphere for moon: {e}")
-                pass
+            # Get atmosphere data using utility function
+            atmo_data = display.get_atmosphere_data(concrete, Moon)
+            has_atmosphere = atmo_data['has_atmosphere']
+            atmosphere_type = atmo_data['atmosphere_type']
+            atmosphere_height_km = atmo_data['atmosphere_height_km']
+            surface_pressure_bar = atmo_data['surface_pressure_bar']
+            scale_height_km = atmo_data['scale_height_km']
             
-            # Calculate surface gravity if we have mass and radius
-            surface_gravity_ms2 = None
-            if hasattr(concrete, 'mass_kg') and hasattr(concrete, 'radius_km'):
-                mass_kg = getattr(concrete, 'mass_kg', None)
-                radius_km = getattr(concrete, 'radius_km', None)
-                if mass_kg and radius_km:
-                    # g = GM/r²
-                    G = 6.67430e-11
-                    radius_m = radius_km * 1000
-                    surface_gravity_ms2 = (G * mass_kg) / (radius_m ** 2)
+            # Calculate surface gravity using utility function
+            mass_kg = getattr(concrete, 'mass_kg', None)
+            radius_km = getattr(concrete, 'radius_km', None)
+            surface_gravity_ms2 = display.calculate_surface_gravity_ms2(mass_kg, radius_km)
             
             # Get raw values
             mass_kg = getattr(concrete, 'mass_kg', None)
@@ -794,20 +738,7 @@ def object_details(request, object_type, object_id):
                 'system_age_years': concrete.system_age_years if hasattr(concrete, 'system_age_years') else None,
             })
         
-        print(f"[object_details] Successfully returning details for {object_type} {object_id}")
-        print(f"[object_details] Details keys: {list(details.keys())}")
-        import sys
-        sys.stdout.flush()
         return JsonResponse(details)
     except Exception as e:
-        import traceback
-        error_traceback = traceback.format_exc()
-        print(f"[object_details] ERROR: {str(e)}")
-        print(f"[object_details] Traceback:\n{error_traceback}")
-        import sys
-        sys.stdout.flush()
-        error_details = {
-            'error': str(e),
-            'traceback': error_traceback
-        }
-        return JsonResponse(error_details, status=500) 
+        logger.exception(f"object_details: Error for {object_type}/{object_id}")
+        return JsonResponse({'error': str(e)}, status=500) 
