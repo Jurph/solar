@@ -223,14 +223,14 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
      - `stop_simulation`: Stop the simulation loop
    - **Journey Storage:** Option A (store temporarily with journey_id) vs Option B (regenerate on schedule - stateless)
 
-4. **LLM Service Consolidation:**
-   - **Current State:** Both `LLMService` and `LLMJSONService` exist with overlapping functionality
-   - **Proposed:** Make `LLMJSONService` the default, remove `LLMService` or make it a thin wrapper
-   - **Migration Path:**
-     - Update all call sites to use `LLMJSONService`
-     - Remove acknowledgment logic duplication between services
-     - Consolidate prompt building and response parsing
-     - Keep backward compatibility during transition if needed
+4. **LLM Service Consolidation:** ✓ **COMPLETE**
+   - **Status:** Consolidation already complete. `LLMJSONService` was merged into `LLMService`.
+   - **Current Architecture:**
+     - `LLMService`: Unified service for LLM communication (structured outputs, JSON parsing, validation)
+     - `DialogueService`: Dialogue-specific layer using `LLMService` internally (particle-based prompts)
+     - `ScriptService`: High-level orchestration using `DialogueService` for chain generation
+   - **All call sites:** Use `LLMService` directly or via `DialogueService` wrapper
+   - **No duplication:** Single source of truth for LLM communication
 
 **Path Forward:**
 
@@ -266,12 +266,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - Add simulation status display (running/stopped, queue size, current time)
    - Ensure scroller reflects real simulation events (already working via DialogueEventLog)
 
-6. **LLM Service Consolidation:**
-   - Audit all `LLMService` usages
-   - Migrate to `LLMJSONService` with proper error handling
-   - Remove duplicate acknowledgment logic
-   - Update tests to use consolidated service
-   - Consider renaming `LLMJSONService` to just `LLMService` after migration
+6. **LLM Service Consolidation:** ✓ **COMPLETE** (see #4)
 
 7. **Testing Strategy:**
    - Test global queue thread safety

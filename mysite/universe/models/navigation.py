@@ -1,4 +1,5 @@
 import logging
+import threading
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, List, Any
@@ -205,16 +206,25 @@ These functions will be used by the RouteServer for advanced route planning and 
 
 class UniverseGraph:
     _instance = None
+    _instance_lock = threading.RLock()
 
     def __init__(self):
         self._graph = None
 
     @staticmethod
     def get_instance():
+        # Double-checked locking to keep singleton init thread-safe.
         if UniverseGraph._instance is None:
-            UniverseGraph._instance = UniverseGraph()
+            with UniverseGraph._instance_lock:
+                if UniverseGraph._instance is None:
+                    UniverseGraph._instance = UniverseGraph()
+
+        # Ensure the graph is built exactly once (thread-safe).
         if UniverseGraph._instance._graph is None:
-            UniverseGraph._instance.rebuild_graph()
+            with UniverseGraph._instance_lock:
+                if UniverseGraph._instance._graph is None:
+                    UniverseGraph._instance.rebuild_graph()
+
         return UniverseGraph._instance
 
     def rebuild_graph(self):
@@ -227,15 +237,17 @@ class UniverseGraph:
         
         The graph is undirected so that an edge from A to B is traversable both ways.
         """
-        self._graph = nx.Graph()
-        for loc in Location.objects.all():
-            concrete = loc.get_concrete_instance()
-            self._graph.add_node(concrete.id, location=concrete)
+        # Rebuilds must be atomic w.r.t. readers (thread-safe).
+        with UniverseGraph._instance_lock:
+            self._graph = nx.Graph()
+            for loc in Location.objects.all():
+                concrete = loc.get_concrete_instance()
+                self._graph.add_node(concrete.id, location=concrete)
 
-            if hasattr(concrete, "orbits") and concrete.orbits is not None:
-                # Ensure the parent is also concrete.
-                parent = concrete.orbits.get_concrete_instance()
-                self._graph.add_edge(concrete.id, parent.id)
+                if hasattr(concrete, "orbits") and concrete.orbits is not None:
+                    # Ensure the parent is also concrete.
+                    parent = concrete.orbits.get_concrete_instance()
+                    self._graph.add_edge(concrete.id, parent.id)
 
     def get_neighbors(self, location: Location) -> List[Location]:
         """
