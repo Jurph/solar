@@ -253,9 +253,15 @@ class UniverseGraph:
         """
         Returns the neighboring Location objects connected to the given Location in the graph.
         """
+        if self._graph is None:
+            self.rebuild_graph()
         try:
+            if location.id not in self._graph:
+                # The DB may have changed since the graph was built (common in tests).
+                # Rebuild once to synchronize with the current DB state.
+                self.rebuild_graph()
             neighbors_ids = list(self._graph.neighbors(location.id))
-            return [self._graph.nodes[nid]['location'] for nid in neighbors_ids]
+            return [self._graph.nodes[nid]["location"] for nid in neighbors_ids]
         except nx.NetworkXError:
             return []
 
@@ -281,6 +287,10 @@ class UniverseGraph:
         try:
             origin_id = origin.get_concrete_instance().id
             dest_id = destination.get_concrete_instance().id
+            if origin_id not in self._graph or dest_id not in self._graph:
+                # The DB may have changed since the graph was built (common in tests).
+                # Rebuild once to synchronize with the current DB state.
+                self.rebuild_graph()
             path_ids = nx.shortest_path(self._graph, origin_id, dest_id)
             return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
         except nx.NetworkXNoPath:
