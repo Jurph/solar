@@ -14,16 +14,16 @@ We need a comprehensive system that handles:
 
 ### What Exists:
 - ✅ Basic XML import/export (`import_xml.py`, `export_xml.py`)
-- ✅ Hand-built XML files (minimal schema: name, type, scale)
+- ✅ Hand-built XML files (schema has grown beyond name/type/scale; e.g. system coordinates/age and orbital fields are supported)
 - ✅ Django admin interface (basic, not specialized)
 - ✅ Command-line import tool (`import_universe` management command)
+- ✅ Procedural generation utilities exist (`procedural_generation.py`) including seeded RNG helpers
 
 ### What's Missing:
-- ❌ Procedural generation rules
-- ❌ Expanded XML schema (only has name/type/scale currently)
-- ❌ Seed-based generation
+- ❌ A single, authoritative “full schema v2” doc (this plan references `universe_schema_v2.md`, but the repo currently has `universe_schema.md`)
+- ❌ Seed-based generation integrated end-to-end (XML seed → importer → deterministic generation on missing fields)
 - ❌ Web-based universe editor
-- ❌ Field validation (mandatory vs optional)
+- ❌ Strong field validation (mandatory vs optional) at import time (beyond basic parsing)
 - ❌ Round-trip safety guarantees
 
 ---
@@ -418,7 +418,7 @@ def export_universe(
 
 ### Phase 2: Expanded XML Schema
 **Files**: 
-- `docs/universe_schema_v2.md` (schema documentation)
+- `docs/universe_schema.md` (schema documentation)
 - Update `import_xml.py`
 - Update `export_xml.py`
 
@@ -493,7 +493,7 @@ mysite/universe/
 └── ...
 
 docs/
-├── universe_schema_v2.md          # NEW: Full schema docs
+├── universe_schema.md             # Schema docs
 ├── UNIVERSE_GENERATION_PLAN.md    # This file
 └── ...
 ```

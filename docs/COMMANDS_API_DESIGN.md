@@ -3,6 +3,15 @@
 ## Overview
 A REST API for controlling the simulation from the web interface. Allows generating journeys, scheduling them, and managing the simulation queue.
 
+## Status (as of late Dec 2025)
+This document describes a *future* “command bus” endpoint (`/api/commands/`). The current codebase primarily uses direct endpoints (not a unified command bus), for example:
+- `/api/events/` (event feed)
+- `/api/clear-events/` (clear event log)
+- `/api/simulation/status/` (simulation status)
+- `/api/spawn-mission/` (mission spawning; supports `mission_type`, e.g. `cargo`, `nav_broadcast`)
+
+If we later want a unified `/api/commands/` interface, this file is the design starting point; it should be updated to reflect the existing endpoints and data model rather than assuming greenfield.
+
 ## Architecture Requirements
 
 ### Global Simulation Queue
