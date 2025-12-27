@@ -90,25 +90,21 @@ def spawn_mission(request):
             # Generate dialogue events from navigation events
             # Use physics_delays=True for realistic timing between maneuvers
             logger.debug("spawn_mission: Generating dialogue events with physics delays...")
-            dialogue_events = script_service.parse_navigation_events(
+
+            # Anchor mission scheduling at the start of dialogue generation so events can be
+            # persisted as soon as they're produced.
+            base_sim_time = get_simulation_time()
+
+            dialogue_events_iter = script_service.iter_navigation_events(
                 route_events, ship, use_physics_delays=True
             )
-            
-            if not dialogue_events:
-                logger.error(f"spawn_mission: No dialogue events generated for {ship.name}")
-                return
-            
-            logger.debug(f"spawn_mission: Generated {len(dialogue_events)} dialogue events")
-            
-            # Get current simulation time as the base for this mission's events
-            # Events are scheduled relative to simulation time, not wall-clock
-            base_sim_time = get_simulation_time()
-            
-            # Save events directly to DialogueEventLog
-            # Each event.timestamp is journey-relative (0.0, 45.0, 2700.0, etc.)
-            # We add the base simulation time to schedule them correctly
+
+            # Save events directly to DialogueEventLog as they are generated.
+            # Each yielded event.timestamp is mission-relative (0.0, 45.0, 2700.0, etc.)
+            # We add base_sim_time to schedule them in absolute simulation time.
             events_saved = 0
-            for event in dialogue_events:
+            last_relative_timestamp = 0.0
+            for event in dialogue_events_iter:
                 scheduled_time = base_sim_time + event.timestamp
                 DialogueEventLog.objects.create(
                     timestamp=scheduled_time,
@@ -116,16 +112,20 @@ def spawn_mission(request):
                     text=event.text
                 )
                 events_saved += 1
-            
-            # Calculate mission duration for logging
-            if dialogue_events:
-                mission_duration = dialogue_events[-1].timestamp
-                hours = int(mission_duration // 3600)
-                minutes = int((mission_duration % 3600) // 60)
-                seconds = int(mission_duration % 60)
-                duration_str = f"{hours}h {minutes}m {seconds}s"
-            else:
-                duration_str = "0s"
+                last_relative_timestamp = event.timestamp
+
+            if events_saved == 0:
+                logger.error(f"spawn_mission: No dialogue events generated for {ship.name}")
+                return
+
+            logger.debug(f"spawn_mission: Generated {events_saved} dialogue events")
+
+            # Calculate mission duration for logging (in mission-relative seconds)
+            mission_duration = last_relative_timestamp
+            hours = int(mission_duration // 3600)
+            minutes = int((mission_duration % 3600) // 60)
+            seconds = int(mission_duration % 60)
+            duration_str = f"{hours}h {minutes}m {seconds}s"
             
             logger.info(
                 f"spawn_mission: {ship.name} from {ship.current_location.name} "

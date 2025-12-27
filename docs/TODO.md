@@ -148,42 +148,24 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 #### Problem 1: Update and Verify Test Suite for Dialogue System
 
-**Big Picture:** The test suite needs to be updated to work with the structured dialogue system (`LLMService`, `DialogueMessage` objects, etc.) and verified to catch regressions. Some tests may be using outdated patterns or may not adequately test the JSON-based flow.
+**Status:** ✓ **COMPLETE (Dec 2025)**
+
+**Big Picture:** Ensure the dialogue system has reliable guardrails: schema validation, structured outputs, and tests that fail loudly when dialogue generation regresses.
 
 **Overall Intent:** Ensure all tests pass reliably, properly test the structured dialogue system, and provide good coverage for dialogue generation, parsing, and validation.
 
-**Path Forward:**
-1. Review and update `test_json_dialogue_generation()` in `tests/test_LLM.py`
-   - Verify it uses `DialogueMessage` objects correctly in context
-   - Ensure it tests both pilot-to-controller and controller-to-pilot flows
-   - Add assertions for all required `DialogueMessage` fields
-2. Update `test_dialogue_schema.py` for Pydantic v2 compatibility
-   - Fix any tests using v1 validation patterns
-   - Update schema access patterns (`model_json_schema()` instead of `Config.schema_extra`)
-   - Verify validation context handling works correctly
-3. Add integration tests for ScriptService with `LLMService`
-   - Test `parse_navigation_event()` generates valid dialogue events
-   - Test `parse_dialogue_event()` generates proper responses
-   - Test multi-turn dialogue exchanges (request → response → readback)
-4. Add tests for edge cases in context parsing
-   - Test with empty context
-   - Test with mixed string and `DialogueMessage` context
-   - Test with malformed context messages
-5. Verify all existing dialogue-related tests still pass
-   - Run full test suite and identify any failures
-   - Fix broken tests without changing their intent
-   - Document any tests that need to be removed or significantly changed
-6. Add performance tests if needed
-   - Ensure JSON parsing doesn't add significant overhead
-   - Verify LLM response times are acceptable
-7. Update test documentation
-   - Document how to run dialogue system tests
-   - Explain test fixtures and setup requirements
-   - Note any tests that require LLM API access (mark as slow tests)
+**Notes:**
+- Dialogue schema tests are Pydantic v2 compatible (`model_json_schema()` usage).
+- `spawn_mission` and controller fallback have deterministic tests that avoid background-thread races.
+- LLM-related tests that require an external endpoint are explicitly marked `slow`.
 
 #### Problem 2: Unified Simulation Time System and Commands API ✓ (Mostly Complete)
 
-**Status:** Core functionality implemented Dec 2025. SimulationState model provides time scaling (1x-3600x). spawn-mission API generates physics-based journeys. Events scheduled at simulation time, appear when time arrives. Remaining: LLM service consolidation (see LLM_SERVICE_DEDUPLICATION_TODO.md).
+**Status:** Core time-scaling and event scroller functionality implemented Dec 2025.
+SimulationState provides time scaling (1x–3600x). `spawn_mission` generates physics-based journeys.
+Events are scheduled at simulation time and appear when time arrives.
+
+**Still Pending:** The global in-memory simulation queue and `/api/commands/` router design below.
 
 **Big Picture:** The simulation currently has multiple time systems and queue implementations scattered across different commands. The web interface needs to be driven by a real, unified simulation loop rather than artificial backdrops. We need a global simulation queue, consistent timestamp management, and a Commands API to control journey generation and scheduling from the web interface.
 
@@ -224,7 +206,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
    - **Journey Storage:** Option A (store temporarily with journey_id) vs Option B (regenerate on schedule - stateless)
 
 4. **LLM Service Consolidation:** ✓ **COMPLETE**
-   - **Status:** Consolidation already complete. `LLMJSONService` was merged into `LLMService`.
+   - **Status:** Consolidation already complete. `LLMService` is the single implementation used across the codebase.
    - **Current Architecture:**
      - `LLMService`: Unified service for LLM communication (structured outputs, JSON parsing, validation)
      - `DialogueService`: Dialogue-specific layer using `LLMService` internally (particle-based prompts)
@@ -303,3 +285,48 @@ USER PROMPT:
 8. Prompt [static] - Given all of the above context, what will you say? Remember to generate a JSON object with a valid message field. 
 
 We might want to define these as dataclasses, with example strings inside the class for retrieval. Then a prompt-builder could take the Class and some context and work with it. 
+
+---
+
+#### Problem 5: Audio on the Events Page (Quindar tones first)
+
+**Big Picture:** The events page should support audio playback synchronized to the scrolling event stream, starting with simple Quindar tones (BEEP/BOOP) and static, and later expanding to per-ship room tone and TTS voices.
+
+**First Slice (safe/low scope):**
+- Add a minimal audio module in the web UI that can play a Quindar tone on demand
+- Provide an API or a client-side generator for a short beep clip (no TTS yet)
+- Add a toggle/volume control so audio can be disabled
+
+**Pitfalls / Notes:**
+- Audio must stay synchronized to simulation time (time_scale, skip-to-next, page reload)
+- Avoid blocking the event loop; keep audio generation/caching simple and deterministic
+
+---
+
+#### Problem 6: Baseball Card Visual Renderer (spinning VGA globe)
+
+**Big Picture:** The baseball card should include a stylized, VGA-era spinning globe per planet/moon to visually convey type/composition/atmosphere at a glance.
+
+**First Slice (safe/low scope):**
+- Add a canvas element to the baseball card UI
+- Render a simple shaded sphere that spins (procedural colors, no textures)
+- Drive visuals from existing serializer fields (type, atmosphere presence, composition hint)
+
+**Pitfalls / Notes:**
+- Performance: keep it lightweight and avoid jank during polling/DOM updates
+- Asset pipeline: prefer procedural rendering over storing lots of textures
+
+---
+
+#### Problem 7: Additional Mission Types (diversify simulation)
+
+**Big Picture:** Add a second and third mission type so the simulation feels less repetitive than cargo-only traffic.
+
+**First Slice (safe/low scope):**
+- Keep a single spawn endpoint but add a `type` parameter (or internal random selection)
+- Implement 2 new mission types with clear location constraints and ship-size weighting
+- Ensure controllers remain universe-staged only (no controller creation during missions)
+
+**Pitfalls / Notes:**
+- Location validity constraints must stay explicit (no “start at StarSystem” for cargo, etc.)
+- Ensure mission scheduling remains physics-based and respects LLM_SAFE_LATENCY_SECONDS
