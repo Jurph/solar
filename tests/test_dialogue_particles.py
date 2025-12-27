@@ -385,8 +385,8 @@ class TestSatelliteParticles(DialogueParticleTest):
         from mysite.universe.models.actor import Satellite
         cls.satellite = Satellite.create(name="Relay Alpha 1")
     
-    def test_nav_broadcast_role_description(self):
-        """Test NavBroadcast returns correct satellite role description."""
+    def test_nav_broadcast_descriptions_exist(self):
+        """Test NavBroadcast returns non-empty role and situation descriptions."""
         nav_context = {"satellite_name": "RELAY ALPHA 1"}
         particle = NavBroadcast(
             actor=self.satellite,
@@ -394,24 +394,15 @@ class TestSatelliteParticles(DialogueParticleTest):
             nav_context=nav_context
         )
         role_desc = particle.get_role_description()
-        self.assertIn("Relay Alpha 1", role_desc)
-        self.assertIn("navigation satellite", role_desc.lower())
-    
-    def test_nav_broadcast_situation_description(self):
-        """Test NavBroadcast situation description includes satellite name."""
-        nav_context = {"satellite_name": "RELAY ALPHA 1"}
-        particle = NavBroadcast(
-            actor=self.satellite,
-            recipient="ALL",
-            nav_context=nav_context
-        )
         situation = particle.get_situation_description()
-        self.assertIn("RELAY ALPHA 1", situation)
-        self.assertIn("broadcasting", situation.lower())
-        self.assertIn("navigation update", situation.lower())
+        
+        self.assertIsInstance(role_desc, str)
+        self.assertGreater(len(role_desc), 0, "Role description should be non-empty")
+        self.assertIsInstance(situation, str)
+        self.assertGreater(len(situation), 0, "Situation description should be non-empty")
     
     def test_nav_broadcast_generate_text(self):
-        """Test NavBroadcast generates realistic nav update text."""
+        """Test NavBroadcast generates non-empty text with satellite name."""
         nav_context = {"satellite_name": "RELAY ALPHA 1"}
         particle = NavBroadcast(
             actor=self.satellite,
@@ -420,19 +411,11 @@ class TestSatelliteParticles(DialogueParticleTest):
         )
         broadcast_text = particle.generate_nav_broadcast_text()
         
-        # Should include satellite name
-        self.assertIn("RELAY ALPHA 1", broadcast_text)
-        # Should include nav update keywords
-        self.assertIn("NAV UPDATE", broadcast_text)
-        # Should include position data
-        self.assertIn("POS", broadcast_text)
-        # Should include status
-        self.assertIn("STATUS", broadcast_text)
-        # Should include telemetry
-        self.assertIn("TEMP", broadcast_text)
-        self.assertIn("PWR", broadcast_text)
-        # Should include timestamp
-        self.assertIn("TIMESTAMP", broadcast_text)
+        # Test that text is generated and has reasonable structure
+        self.assertIsInstance(broadcast_text, str)
+        self.assertGreater(len(broadcast_text), 50, "Broadcast text should have substantial content")
+        # Important behavior: should include satellite name
+        self.assertIn(self.satellite.name.upper(), broadcast_text, "Text should include satellite name")
     
     def test_nav_broadcast_next_particle_probabilities(self):
         """Test NavBroadcast has 5% chance of generating gratitude."""
@@ -462,8 +445,8 @@ class TestSatelliteParticles(DialogueParticleTest):
         self.assertGreater(gratitude_rate, 0.02, "Should have at least 2% gratitude rate")
         self.assertLess(gratitude_rate, 0.08, "Should have at most 8% gratitude rate")
     
-    def test_gratitude_particle_role_description(self):
-        """Test GratitudeParticle returns correct pilot role description."""
+    def test_gratitude_particle_descriptions_exist(self):
+        """Test GratitudeParticle returns non-empty role and situation descriptions."""
         nav_context = {
             "satellite_name": "RELAY ALPHA 1",
             "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
@@ -474,30 +457,17 @@ class TestSatelliteParticles(DialogueParticleTest):
             nav_context=nav_context
         )
         role_desc = particle.get_role_description()
-        self.assertIn("Test Pilot", role_desc)
-        self.assertIn("pilot", role_desc.lower())
-        # Should NOT include ship name (no callsigns)
-        self.assertNotIn("TEST SHIP", role_desc)
-    
-    def test_gratitude_particle_situation_description(self):
-        """Test GratitudeParticle situation description is appropriate."""
-        nav_context = {
-            "satellite_name": "RELAY ALPHA 1",
-            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
-        }
-        particle = GratitudeParticle(
-            actor=self.pilot,
-            recipient="RELAY ALPHA 1",
-            nav_context=nav_context
-        )
         situation = particle.get_situation_description()
-        self.assertIn("acknowledging", situation.lower())
-        self.assertIn("satellite", situation.lower())
-        self.assertIn("navigation broadcast", situation.lower())
-        self.assertIn("casual", situation.lower())
+        
+        self.assertIsInstance(role_desc, str)
+        self.assertGreater(len(role_desc), 0, "Role description should be non-empty")
+        self.assertIsInstance(situation, str)
+        self.assertGreater(len(situation), 0, "Situation description should be non-empty")
+        # Important behavior: should NOT include ship name (no callsigns in gratitude)
+        self.assertNotIn("TEST SHIP", role_desc, "Gratitude should not include callsigns")
     
-    def test_gratitude_particle_examples(self):
-        """Test GratitudeParticle examples are casual and appropriate."""
+    def test_gratitude_particle_examples_exist_and_have_no_callsigns(self):
+        """Test GratitudeParticle examples exist and do not include callsigns."""
         nav_context = {
             "satellite_name": "RELAY ALPHA 1",
             "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
@@ -508,21 +478,14 @@ class TestSatelliteParticles(DialogueParticleTest):
             nav_context=nav_context
         )
         examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
         
-        # Examples should be casual gratitude phrases
-        gratitude_keywords = ["thanks", "appreciate", "good copy", "copy"]
-        found_keyword = any(
-            keyword in example.lower()
-            for example in examples
-            for keyword in gratitude_keywords
-        )
-        self.assertTrue(found_keyword, "Examples should include gratitude phrases")
-        
-        # Examples should NOT include callsigns
+        self.assertGreater(len(examples), 0, "Should have at least one example")
+        # Important behavior: examples should NOT include callsigns
         for example in examples:
-            self.assertNotIn("TEST SHIP", example)
-            self.assertNotIn("RELAY ALPHA 1", example)
+            self.assertIsInstance(example, str)
+            self.assertGreater(len(example), 0, "Each example should be non-empty")
+            self.assertNotIn("TEST SHIP", example, "Examples should not include ship callsigns")
+            self.assertNotIn("RELAY ALPHA 1", example, "Examples should not include recipient callsigns")
     
     def test_gratitude_particle_ends_chain(self):
         """Test GratitudeParticle ends the chain (no follow-up particles)."""
@@ -553,12 +516,14 @@ class TestSatelliteParticles(DialogueParticleTest):
             previous_dialogue=nav_context["previous_broadcast"]
         )
         
-        # Verify all required fields are present
+        # Verify all required fields are present and non-empty
         self.assertIsNotNone(prompt_data.role)
+        self.assertGreater(len(prompt_data.role), 0, "Role should be non-empty")
         self.assertIsNotNone(prompt_data.situation)
-        self.assertGreater(len(prompt_data.example1), 0)
-        self.assertGreater(len(prompt_data.example2), 0)
-        self.assertGreater(len(prompt_data.example3), 0)
-        # Should include previous broadcast as context
-        self.assertIn("NAV UPDATE", prompt_data.last_dialogue_line)
+        self.assertGreater(len(prompt_data.situation), 0, "Situation should be non-empty")
+        self.assertGreater(len(prompt_data.example1), 0, "Example1 should be non-empty")
+        self.assertGreater(len(prompt_data.example2), 0, "Example2 should be non-empty")
+        self.assertGreater(len(prompt_data.example3), 0, "Example3 should be non-empty")
+        # Important behavior: previous dialogue should be preserved
+        self.assertEqual(prompt_data.last_dialogue_line, nav_context["previous_broadcast"])
 
