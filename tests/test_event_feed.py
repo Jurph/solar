@@ -110,13 +110,15 @@ class EventPaginationTests(TestCase):
     
     def test_after_id_returns_only_newer_events(self):
         """
-        Requesting with after_id should skip events with id <= after_id.
+        Requesting with a (timestamp, id) cursor should skip events at/before the cursor.
         
         If this fails: clients will see duplicate events on each poll,
         causing the display to repeat messages.
         """
-        # Get events after first one
-        response = self.client.get(f'/api/events/?after_id={self.event1.id}')
+        # Get events after first one (cursor at event1)
+        response = self.client.get(
+            f'/api/events/?after_ts={self.event1.timestamp}&after_id={self.event1.id}'
+        )
         data = response.json()
         
         # Should get events 2 and 3 only
@@ -130,7 +132,9 @@ class EventPaginationTests(TestCase):
         
         This is the normal case when polling and no new events have arrived.
         """
-        response = self.client.get(f'/api/events/?after_id={self.event3.id}')
+        response = self.client.get(
+            f'/api/events/?after_ts={self.event3.timestamp}&after_id={self.event3.id}'
+        )
         data = response.json()
         
         self.assertEqual(len(data['events']), 0)
@@ -138,15 +142,12 @@ class EventPaginationTests(TestCase):
     
     def test_invalid_after_id_returns_all_events(self):
         """
-        Non-numeric after_id should be ignored, returning all events.
+        after_id requires after_ts; an invalid after_id should be rejected.
         
-        This ensures malformed requests don't crash the server.
+        This ensures malformed requests don't silently produce confusing pagination.
         """
-        response = self.client.get('/api/events/?after_id=invalid')
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data['events']), 3)
+        response = self.client.get('/api/events/?after_ts=0&after_id=invalid')
+        self.assertEqual(response.status_code, 400)
 
 
 class ClearEventsTests(TestCase):

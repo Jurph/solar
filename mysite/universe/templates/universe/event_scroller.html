@@ -19,7 +19,7 @@
         const API_ENDPOINT = '{% url "event_feed" %}';
         
         // State
-        let lastEventId = null;
+        let lastEventCursor = null; // { timestamp: number, id: number } | null
         let isPolling = true;
         
         // DOM elements
@@ -117,8 +117,8 @@
             if (!isPolling) return;
             
             try {
-                const url = lastEventId 
-                    ? `${API_ENDPOINT}?after_id=${lastEventId}&limit=100`
+                const url = lastEventCursor
+                    ? `${API_ENDPOINT}?after_ts=${encodeURIComponent(lastEventCursor.timestamp)}&after_id=${encodeURIComponent(lastEventCursor.id)}&limit=100`
                     : `${API_ENDPOINT}?limit=100`;
                 
                 const response = await fetch(url);
@@ -130,8 +130,13 @@
                 
                 if (data.events && data.events.length > 0) {
                     appendEvents(data.events);
-                    // Update to the latest ID from the response
-                    lastEventId = data.latest_id;
+                    if (data.latest_cursor) {
+                        lastEventCursor = data.latest_cursor;
+                    } else {
+                        // Server contract should always return latest_cursor
+                        const last = data.events[data.events.length - 1];
+                        lastEventCursor = { timestamp: last.timestamp, id: last.id };
+                    }
                 }
             } catch (error) {
                 console.error('Error fetching events:', error);
@@ -155,7 +160,7 @@
         window.addEventListener('message', (event) => {
             if (event.data && event.data.action === 'clear') {
                 // Clear all events from the display (like a terminal clear command)
-                // Keep lastEventId so we don't re-fetch old events
+                // Keep lastEventCursor so we don't re-fetch old events
                 eventLog.innerHTML = '';
                 // Reset scroll position
                 eventContainer.scrollTop = 0;

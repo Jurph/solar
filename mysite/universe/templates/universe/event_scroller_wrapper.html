@@ -62,7 +62,9 @@
         const SKIP_TO_NEXT_ENDPOINT = '{% url "skip_to_next_event" %}';
         
         // State
-        let lastEventId = null;
+        // Cursor for event pagination:
+        // We use (timestamp, id) so insertion order can't cause permanently skipped events.
+        let lastEventCursor = null; // { timestamp: number, id: number } | null
         let isPolling = true;
         let eventQueue = []; // Queue for events to type out sequentially
         let isTyping = false; // Track if we're currently typing an event
@@ -386,8 +388,8 @@
             
             isFetching = true;
             try {
-                const url = lastEventId 
-                    ? `${API_ENDPOINT}?after_id=${lastEventId}&limit=100`
+                const url = lastEventCursor
+                    ? `${API_ENDPOINT}?after_ts=${encodeURIComponent(lastEventCursor.timestamp)}&after_id=${encodeURIComponent(lastEventCursor.id)}&limit=100`
                     : `${API_ENDPOINT}?limit=100`;
                 
                 const response = await fetch(url);
@@ -414,13 +416,18 @@
                 }
                 
                 if (data.events && data.events.length > 0) {
-                    console.log(`[FETCH] Got ${data.events.length} events, lastEventId was ${lastEventId}, will be ${data.latest_id}`);
+                    console.log(`[FETCH] Got ${data.events.length} events, cursor was ${lastEventCursor ? `${lastEventCursor.timestamp}/${lastEventCursor.id}` : 'null'}, will be ${data.latest_cursor ? `${data.latest_cursor.timestamp}/${data.latest_cursor.id}` : 'null'}`);
                     appendEvents(data.events);
-                    // Update to the latest ID from the response
-                    lastEventId = data.latest_id;
+                    // Update cursor from the response (preferred)
+                    if (data.latest_cursor) {
+                        lastEventCursor = data.latest_cursor;
+                    } else if (data.latest_id && data.events[data.events.length - 1]?.timestamp !== undefined) {
+                        // Fallback for older servers
+                        lastEventCursor = { timestamp: data.events[data.events.length - 1].timestamp, id: data.latest_id };
+                    }
                 } else if (data.debug && data.debug.pending_events > 0) {
                     // Events are pending but not returned - might be an ID tracking issue
-                    console.log(`[FETCH] No events returned but ${data.debug.pending_events} pending. lastEventId=${lastEventId}, sim_time=${data.simulation_time?.toFixed(1)}, next_event=${data.debug.next_event_timestamp?.toFixed(1)}`);
+                    console.log(`[FETCH] No events returned but ${data.debug.pending_events} pending. cursor=${lastEventCursor ? `${lastEventCursor.timestamp}/${lastEventCursor.id}` : 'null'}, sim_time=${data.simulation_time?.toFixed(1)}, next_event=${data.debug.next_event_timestamp?.toFixed(1)}`);
                 }
                 // Note: If no events returned, we just wait for next poll.
                 // User can click "Clear Display" to reset if needed.
@@ -551,7 +558,7 @@
             eventLog.innerHTML = '';
             eventQueue = []; // Clear pending events too
             displayedEventIds.clear(); // Allow re-display if events are re-fetched
-            lastEventId = null; // Reset so we can re-fetch from start
+            lastEventCursor = null; // Reset so we can re-fetch from start
             // Reset catch-up state - old events will display rapidly again
             pageLoadSimTime = currentSimTime;
             catchUpComplete = false;
@@ -585,7 +592,7 @@
                     eventLog.innerHTML = '';
                     eventQueue = [];
                     displayedEventIds.clear();
-                    lastEventId = null; // Reset so we fetch from beginning
+                    lastEventCursor = null; // Reset so we fetch from beginning
                     // Reset catch-up state - new events will use normal speed
                     pageLoadSimTime = currentSimTime;
                     catchUpComplete = true; // Start fresh, no catch-up needed
