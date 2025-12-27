@@ -7,6 +7,15 @@ Refactor the celestial body models (Star, Planet, Moon) to:
 3. Store physics lookup tables for procedural generation
 4. Provide clean API for Controllers to access orbital parameters
 
+## Status Note (late Dec 2025)
+This plan was originally written to drive a refactor that split models across new modules (`physics.py`, `OrbitalBody`, etc.). The codebase has implemented many *outcomes* of the plan, but not always with the exact same class/file structure:
+
+- `Celestial` / `PhysicalBody` are implemented in `mysite/universe/models/celestial.py` (not a new `physics.py` module).
+- There is **no separate `OrbitalBody` abstract model**; orbital fields live on the concrete models where needed.
+- `Atmosphere` exists as a separate table in `mysite/universe/models/physics.py` and is linked via **ContentType** (Generic FK pattern), not OneToOne on Planet/Moon.
+
+This document is now the **authoritative** “why/what” plan. Where it differs from current implementation, treat those sections as aspirational refactors rather than describing the current structure.
+
 ---
 
 ## Phase 1: Identify Common Properties & Create Base Classes

@@ -6,10 +6,17 @@ Stations need an orbital distance (altitude) from their parent body (Planet or M
 
 ## Orbital Distance Property
 
-**Field**: `orbital_distance_km` - IntegerField
+**Field**: `orbital_distance_km` - FloatField
 - Distance from surface of parent body in kilometers
-- Required for all stations
-- Can be manually specified or auto-calculated using the decision tree below
+- In current code, this is stored on `Station` and imported from XML when present
+- The decision tree below is a *design* for auto-calculation; it is not fully implemented as a single authoritative placement routine yet
+
+## Current Implementation Status (late Dec 2025)
+
+- ✅ `Station.orbital_distance_km` exists (`mysite/universe/models/station.py`)
+- ✅ XML import reads `<station><orbital_distance_km>...</orbital_distance_km></station>` (`mysite/universe/import_xml.py`)
+- ❌ `orbit_type` is not implemented as a model field
+- ⚠️ Some code paths still contain estimation fallbacks when station orbital altitude is missing; the long-term intent is to have station orbital altitudes explicitly set (especially in test universes)
 
 ## Decision Tree for Auto-Calculating Station Orbits
 

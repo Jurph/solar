@@ -15,11 +15,13 @@ Models use plain descriptive names, and capture essential things about how the w
 ### Services
 Services compose model features together. By pulling in parts of  `ship.py` and `celestial.py` and `navigation.py`, the `route_server.py` can generate routes without risking circular imports. The simulation should be built on services! 
 
-All service-layer components use the suffix `_server` and expose a single public façade class:
+Primary “façade” services use the suffix `_server` and expose a single public façade class:
 - `route_server.py` exposes `RouteService`
 - `script_server.py` exposes `ScriptService`
 - `cargo_server.py` exposes `CargoService`
 - ...and so on! 
+
+Smaller helper modules may use `_service.py` naming (e.g. `location_service.py`) or live under a package (e.g. `services/route/`) when the implementation would otherwise become a single large file.
 
 Classes within these files follow the same convention:
 ```python
@@ -33,26 +35,31 @@ Management commands use descriptive action names:
 - `import_universe.py`
 
 ## Import Style
-Use relative imports within the app:
+Prefer absolute imports from `mysite.universe...` for clarity. Use local (inside-function) imports to break circular dependencies when needed:
 ```python
-from ...models import Ship
-from ...services.route_server import RouteService
+from mysite.universe.models.ship import Ship
+from mysite.universe.services.route_server import RouteService
 ```
 
 ## Code Style
 - Follow "ruff"s best practices 
 - Follow Black formatting
 - Follow PEP 8
-- Use type hints
-- Document with docstrings
+- Always use type hints
+- Always document with docstrings
 
 ## Testing
 - Test files mirror implementation files
 - Use pytest-style tests
+- Tests should always provide diagnostic value 
 - Include docstrings in test functions
 - Test tiny simple things first then build up 
+- No degenerate or trivial tests
+- No testing other people's code 
 
 ## Architecture 
+- Build from the bottom up, so that modular pieces with docstrings and strong type hints force your design to be correct 
+- Logic that is going to get reused should be in the data model or the service, not at the edge 
 - We prefer tiny modular pieces that are well isolated  
 - Don't repeat yourself! 
 - Helper functions, all day long 

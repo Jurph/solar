@@ -167,7 +167,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 **Big Picture:** Add a second and third mission type so the simulation feels less repetitive than cargo-only traffic.
 
 **First Slice (safe/low scope):**
-- Keep a single spawn endpoint but add a `type` parameter (or internal random selection)
+- Keep a single spawn endpoint but add a `type` parameter (or internal random selection) ✓
 - Implement 2 new mission types with clear location constraints and ship-size weighting
 - Ensure controllers remain universe-staged only (no controller creation during missions)
 
