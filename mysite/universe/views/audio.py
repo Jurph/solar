@@ -30,6 +30,43 @@ Planned endpoints:
 - get_voice_preview: Preview a pilot's voice model
 """
 
-# Placeholder for future implementation
-# See docs/TODO.md "Five - Vox Populi" for roadmap
+from __future__ import annotations
+
+import logging
+
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_GET
+
+from mysite.universe.services.audio_synth import SineBeep, render_wav_bytes
+
+logger = logging.getLogger(__name__)
+
+
+_PRESET_DEFINITIONS = {
+    # Quindar tones (NASA comm beeps)
+    # Intro: 2525 Hz ~250ms
+    "quindar_start": [SineBeep(frequency_hz=2525.0, duration_seconds=0.25, gain=0.9)],
+    # Outro: 2475 Hz ~250ms
+    "quindar_end": [SineBeep(frequency_hz=2475.0, duration_seconds=0.25, gain=0.9)],
+}
+
+
+@require_GET
+def audio_preset(request, preset: str):
+    """
+    Return a pre-rendered audio clip for a named preset as WAV.
+
+    This is deliberately Python-defined synthesis: the browser only plays.
+    """
+    components = _PRESET_DEFINITIONS.get(preset)
+    if components is None:
+        return JsonResponse(
+            {"status": "error", "message": f"Unknown audio preset: {preset!r}"},
+            status=404,
+        )
+
+    wav_bytes = render_wav_bytes(components)
+    resp = HttpResponse(wav_bytes, content_type="audio/wav")
+    resp["Cache-Control"] = "public, max-age=86400"
+    return resp
 

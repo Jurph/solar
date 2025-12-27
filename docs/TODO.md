@@ -294,7 +294,7 @@ We might want to define these as dataclasses, with example strings inside the cl
 
 **First Slice (safe/low scope):**
 - Add a minimal audio module in the web UI that can play a Quindar tone on demand
-- Provide an API or a client-side generator for a short beep clip (no TTS yet)
+- Provide an API or a client-side generator for a short beep clip (no TTS yet) - Quindar tones are simple sines of 2525Hz and 2475Hz 
 - Add a toggle/volume control so audio can be disabled
 
 **Pitfalls / Notes:**
@@ -313,6 +313,7 @@ We might want to define these as dataclasses, with example strings inside the cl
 - Drive visuals from existing serializer fields (type, atmosphere presence, composition hint)
 
 **Pitfalls / Notes:**
+- Code Reuse: consider a lightweight version or a port of PixelPlanet Generator (https://github.com/Deep-Fold/PixelPlanets)
 - Performance: keep it lightweight and avoid jank during polling/DOM updates
 - Asset pipeline: prefer procedural rendering over storing lots of textures
 

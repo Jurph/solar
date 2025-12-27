@@ -31,5 +31,7 @@ urlpatterns = [
     path("api/simulation/status/", views.get_simulation_status, name="simulation_status"),
     # API endpoint to skip to next event:
     path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
+    # API endpoint for audio clip presets (WAV):
+    path("api/audio/preset/<str:preset>/", views.audio_preset, name="audio_preset"),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

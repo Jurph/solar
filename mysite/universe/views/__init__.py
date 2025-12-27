@@ -37,6 +37,11 @@ from mysite.universe.views.missions import (
     run_demo,
 )
 
+# Audio
+from mysite.universe.views.audio import (
+    audio_preset,
+)
+
 # Backwards compatibility alias for consolidated clear function
 # (clear_all_events was identical to clear_events)
 clear_all_events = clear_events
@@ -58,4 +63,6 @@ __all__ = [
     # Missions
     'spawn_mission',
     'run_demo',
+    # Audio
+    'audio_preset',
 ]
