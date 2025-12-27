@@ -1,5 +1,5 @@
 from mysite.universe.services.dictionary import DictionaryService
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Iterator
 import threading
 
 # Import our navigation models
@@ -441,12 +441,12 @@ class ScriptService:
         
         return events
     
-    def parse_navigation_events(
+    def iter_navigation_events(
         self, 
         nav_events: List[NavigationEvent], 
         ship: Ship,
         use_physics_delays: bool = True,
-    ) -> List[DialogueEvent]:
+    ) -> Iterator[DialogueEvent]:
         """
         Convert a list of navigation events into dialogue events with sequential timestamps.
         
@@ -464,10 +464,12 @@ class ScriptService:
             use_physics_delays: If True, use physics-based maneuver durations between chains
             
         Returns:
-            List of DialogueEvent instances with sequential absolute timestamps
+            Iterator[DialogueEvent]: yields DialogueEvent instances with sequential absolute timestamps
+            
+        Notes:
+            This method streams events as they are generated (per navigation-event chain).
         """
         from dataclasses import replace
-        script_events: List[DialogueEvent] = []
         chain_start_timestamp = 0.0
         
         for nav_event in nav_events:
@@ -480,7 +482,7 @@ class ScriptService:
                 # event.timestamp is relative offset within chain, map to absolute
                 absolute_timestamp = chain_start_timestamp + event.timestamp
                 updated_event = replace(event, timestamp=absolute_timestamp)
-                script_events.append(updated_event)
+                yield updated_event
             
             # Advance chain start timestamp for next chain
             if dialogue_chain:
@@ -498,6 +500,19 @@ class ScriptService:
             else:
                 # If chain is empty, advance by a default duration to prevent overlap
                 chain_start_timestamp += 2.0
-        
-        return script_events
+
+    def parse_navigation_events(
+        self,
+        nav_events: List[NavigationEvent],
+        ship: Ship,
+        use_physics_delays: bool = True,
+    ) -> List[DialogueEvent]:
+        """
+        Backward-compatible batch API.
+
+        Historically this method returned a concrete list (callers use len(), indexing, etc.).
+        Internally we generate events via `iter_navigation_events()` and materialize the list.
+        """
+        return list(self.iter_navigation_events(nav_events, ship, use_physics_delays=use_physics_delays))
+
 

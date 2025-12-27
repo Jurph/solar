@@ -149,8 +149,10 @@ class Command(BaseCommand):
             # Process the navigation events to generate dialogue events
             # Demo mode: use_physics_delays=False for fast playback
             # Real simulation would use True for realistic timing
-            script_events = ScriptService.get_instance().parse_navigation_events(
-                route_events, ship, use_physics_delays=False
+            script_events = list(
+                ScriptService.get_instance().parse_navigation_events(
+                    route_events, ship, use_physics_delays=False
+                )
             )
             
             # Insert a comms check with the satellite after the first few events

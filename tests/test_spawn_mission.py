@@ -114,7 +114,7 @@ class SpawnMissionOrchestrationTests(TestCase):
             def __init__(self, llm):
                 self.llm = llm
 
-            def parse_navigation_events(self, nav_events, ship, use_physics_delays: bool = True):
+            def iter_navigation_events(self, nav_events, ship, use_physics_delays: bool = True):
                 return fake_events
 
         with (
@@ -158,7 +158,7 @@ class SpawnMissionOrchestrationTests(TestCase):
             def __init__(self, llm):
                 self.llm = llm
 
-            def parse_navigation_events(self, nav_events, ship, use_physics_delays: bool = True):
+            def iter_navigation_events(self, nav_events, ship, use_physics_delays: bool = True):
                 raise AssertionError("Should not be called when route is empty")
 
         with (
@@ -195,7 +195,7 @@ class SpawnMissionOrchestrationTests(TestCase):
             def __init__(self, llm):
                 self.llm = llm
 
-            def parse_navigation_events(self, nav_events, ship, use_physics_delays: bool = True):
+            def iter_navigation_events(self, nav_events, ship, use_physics_delays: bool = True):
                 raise AssertionError("Should not be called when destination selection fails")
 
         with (
