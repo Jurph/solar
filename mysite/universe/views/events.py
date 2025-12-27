@@ -19,6 +19,7 @@ from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.db.models import Q
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
@@ -48,34 +49,58 @@ def event_feed(request):
     
     # Get query parameters
     after_id = request.GET.get('after_id')
+    after_ts = request.GET.get('after_ts')
     limit = int(request.GET.get('limit', 100))
     
     # Build query - only events whose time has arrived
     queryset = DialogueEventLog.objects.filter(timestamp__lte=sim_time)
     
-    # Filter by ID if 'after_id' parameter provided
-    if after_id:
+    # Cursor filtering (single supported mode): (timestamp, id)
+    #
+    # Why timestamp cursor?
+    # Events can be inserted out of timestamp order (e.g., background mission generation),
+    # so relying on monotonic id can permanently skip events with lower ids but later timestamps.
+    after_ts_f: float | None
+    after_id_int = 0
+
+    if after_ts is None:
+        if after_id:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": "after_id requires after_ts (cursor is timestamp-based).",
+                },
+                status=400,
+            )
+        after_ts_f = None
+    else:
         try:
-            after_id_int = int(after_id)
-            queryset = queryset.filter(id__gt=after_id_int)
+            after_ts_f = float(after_ts)
         except ValueError:
-            # Invalid after_id parameter, ignore it
-            pass
-    
-    # Order by id (which also orders by insertion time) and limit results
-    queryset = queryset.order_by('id')[:limit]
+            return JsonResponse(
+                {"status": "error", "message": "Invalid after_ts; must be a float."},
+                status=400,
+            )
+
+        if after_id:
+            try:
+                after_id_int = int(after_id)
+            except ValueError:
+                return JsonResponse(
+                    {"status": "error", "message": "Invalid after_id; must be an int."},
+                    status=400,
+                )
+
+        queryset = queryset.filter(
+            Q(timestamp__gt=after_ts_f)
+            | (Q(timestamp=after_ts_f) & Q(id__gt=after_id_int))
+        )
+
+    queryset = queryset.order_by("timestamp", "id")[:limit]
     
     # Debug: Log what we're querying
     count_before_limit = DialogueEventLog.objects.filter(timestamp__lte=sim_time).count()
-    if after_id:
-        try:
-            count_with_id_filter = DialogueEventLog.objects.filter(
-                timestamp__lte=sim_time, id__gt=int(after_id)
-            ).count()
-        except ValueError:
-            count_with_id_filter = count_before_limit
-    else:
-        count_with_id_filter = count_before_limit
+    count_with_id_filter = count_before_limit
     
     if count_with_id_filter > 0:
         logger.debug(
@@ -98,6 +123,9 @@ def event_feed(request):
     
     # Get latest ID for client to track progress
     latest_id = events[-1]['id'] if events else None
+    latest_cursor = (
+        {"timestamp": events[-1]["timestamp"], "id": events[-1]["id"]} if events else None
+    )
     
     # Debug: count how many events are pending (future) vs available (past)
     total_events = DialogueEventLog.objects.count()
@@ -119,11 +147,14 @@ def event_feed(request):
             'available_events': available_events,
             'pending_events': pending_events,
             'after_id': after_id,
+            'after_ts': after_ts,
+            'cursor_mode': 'timestamp',
             'returned_count': len(events),
             'next_event_timestamp': next_event_timestamp,
             'time_until_next': time_until_next,
         },
         'latest_id': latest_id,
+        'latest_cursor': latest_cursor,
         'simulation_time': sim_time,
     })
 
