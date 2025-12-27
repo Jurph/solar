@@ -105,8 +105,20 @@
         };
         const AUDIO_PRESET_URL_TEMPLATE = '{% url "audio_preset" preset="__PRESET__" %}';
 
-        function audioPresetUrl(preset) {
-            return AUDIO_PRESET_URL_TEMPLATE.replace("__PRESET__", preset);
+        function audioPresetUrl(preset, params) {
+            let url = AUDIO_PRESET_URL_TEMPLATE.replace("__PRESET__", preset);
+            if (params && typeof params === 'object') {
+                const queryParams = new URLSearchParams();
+                for (const [key, value] of Object.entries(params)) {
+                    if (value !== null && value !== undefined) {
+                        queryParams.append(key, String(value));
+                    }
+                }
+                if (queryParams.toString()) {
+                    url += '?' + queryParams.toString();
+                }
+            }
+            return url;
         }
 
         // Restore volume preference (safe: doesn't start audio)
@@ -170,7 +182,9 @@
             for (const action of event.audio_plan) {
                 if (!action || action.trigger !== trigger) continue;
                 if (action.preset) {
-                    audioPlayer.enqueueWavUrl(audioPresetUrl(action.preset));
+                    // Pass params from the audio plan action (e.g., text for modem noise)
+                    const url = audioPresetUrl(action.preset, action.params);
+                    audioPlayer.enqueueWavUrl(url);
                 }
             }
         }

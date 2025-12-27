@@ -174,3 +174,20 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 **Pitfalls / Notes:**
 - Location validity constraints must stay explicit (no “start at StarSystem” for cargo, etc.)
 - Ensure mission scheduling remains physics-based and respects LLM_SAFE_LATENCY_SECONDS
+
+---
+
+#### Feature: NavSats 
+
+**Big Picture:** Every system with shipping traffic should have a NavSat broadcasting regular updates to all ships 
+
+**First Slice (safe/low scope):**
+- Randomly choose an existing navigation satellite and assign it a mission which consists of 14 navigation updates, spaced 12 hours apart 
+- The broadcast time should be exactly "on the hour" in a time-slot not already used by another satellite 
+- Most of the time the satellite will play a Routine Navigation Update ("All SOL traffic, this is SOL NAVSAT broadcasting your twice-daily navigation update. Stand by for data packets. Current navigation is ROUTINE with no noteworthy hazards.") This update demands no response 
+- Sometimes the satellite will play a Navigation Hazard Update ("All SOL traffic, this is SOL NAVSAT broadcasting your twice-daily navigation update. Stand by for data packets describing two asteroids that exceed safety thresholds in the vicinity of Jupiter.") If there are pilots in the same solar system, randomly pick one, and with 25% probability the pilot should thank the NavSat. 
+
+**Notes:**
+- Some systems may not have a NavSat; if you choose a random star and it has no NavSat, create the Actor 
+- Eventually I'd like the modem noise to encode the text of the broadcast but this is a stretch goal; for now we can just build a blob of text like "IF THIS WERE A REAL NAV UPDATE YOU'D BE ABLE TO READ IT BY NOW // 256 bytes of random hex" 
+- Broadcast should be very low data rate - maybe 1200 baud - to ensure that it sounds like tones and not just a millisecond-long burst of noise 
