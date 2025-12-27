@@ -86,16 +86,24 @@ def get_subordinate_bodies(location: Optional[Location] = None, location_name: O
             # Add stations orbiting planets in this system
             for planet in Planet.objects.filter(orbits=location):
                 subordinate_bodies.extend(Station.objects.filter(orbits=planet))
+        
+        # If location is a StarSystem
+        elif isinstance(concrete, StarSystem):
+            # Find the star(s) in this system
+            stars = Star.objects.filter(orbits=location)
+            # For each star, add all planets orbiting it
+            for star in stars:
+                planets = Planet.objects.filter(orbits=star)
+                subordinate_bodies.extend(planets)
+                # For each planet, add its moons
+                for planet in planets:
+                    subordinate_bodies.extend(Moon.objects.filter(orbits=planet))
+                # Add stations orbiting planets in this system
+                for planet in planets:
+                    subordinate_bodies.extend(Station.objects.filter(orbits=planet))
     
-    # Fallback: if no location found, get a random sample of bodies
-    if not subordinate_bodies:
-        # Get a few random planets and moons as fallback
-        planets = list(Planet.objects.all()[:5])
-        subordinate_bodies.extend(planets)
-        for planet in planets:
-            moons = list(Moon.objects.filter(orbits=planet)[:3])
-            subordinate_bodies.extend(moons)
-    
+    # No fallback - if no location found, return empty list
+    # This prevents satellites from reporting hazards in wrong systems
     return subordinate_bodies
 
 
