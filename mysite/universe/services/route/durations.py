@@ -133,37 +133,22 @@ def build_physics_nav_context(service, event: NavigationEvent, body) -> dict:
             context["distance_au"] = 0.5
 
     elif maneuver == "HYPERSPACE":
+        from mysite.universe.services.location_service import find_star_system_for_location
+        
         origin_system = None
         dest_system = None
 
         if event.origin:
-            origin_concrete = event.origin.get_concrete_instance()
-            current = origin_concrete
-            while current:
-                if isinstance(current, StarSystem):
-                    origin_system = current
-                    break
-                if hasattr(current, "orbits") and current.orbits:
-                    current = current.orbits.get_concrete_instance()
-                else:
-                    break
+            origin_system = find_star_system_for_location(event.origin)
 
         if event.destination:
-            dest_concrete = event.destination.get_concrete_instance()
-            current = dest_concrete
-            while current:
-                if isinstance(current, StarSystem):
-                    dest_system = current
-                    break
-                if hasattr(current, "orbits") and current.orbits:
-                    current = current.orbits.get_concrete_instance()
-                else:
-                    break
+            dest_system = find_star_system_for_location(event.destination)
 
         context["velocity_c"] = 1000.0
 
         if origin_system and dest_system:
-            distance_ly = origin_system.get_distance_to_ly(dest_system)
+            from mysite.universe.services.location_service import get_distance_between_star_systems
+            distance_ly = get_distance_between_star_systems(origin_system, dest_system)
             if distance_ly != float("inf"):
                 context["distance_ly"] = distance_ly
             else:

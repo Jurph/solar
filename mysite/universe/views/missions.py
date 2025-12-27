@@ -100,7 +100,8 @@ def spawn_mission(request):
                         DialogueEventLog.objects.create(
                             timestamp=event.timestamp,
                             actor_name=event.actor.name,
-                            text=event.text
+                            text=event.text,
+                            metadata=event.metadata if event.metadata else {}
                         )
                         events_saved += 1
                 

@@ -35,15 +35,22 @@ class UniverseImporter:
         """Import all station elements that are children of the given element."""
         for station_elem in element.findall("./station"):
             name = station_elem.findtext("name")
+            orbital_distance_km_text = station_elem.findtext("orbital_distance_km")
+            orbital_distance_km = float(orbital_distance_km_text) if orbital_distance_km_text else None
+            
+            defaults = {
+                "scale": "SS",
+                "large_berths": int(station_elem.findtext("large_berths") or 0),
+                "medium_berths": int(station_elem.findtext("medium_berths") or 0),
+                "small_berths": int(station_elem.findtext("small_berths") or 0),
+            }
+            if orbital_distance_km is not None:
+                defaults["orbital_distance_km"] = orbital_distance_km
+            
             station, created = Station.objects.get_or_create(
                 name=name,
                 orbits=parent,
-                defaults={
-                    "scale": "SS",
-                    "large_berths": int(station_elem.findtext("large_berths") or 0),
-                    "medium_berths": int(station_elem.findtext("medium_berths") or 0),
-                    "small_berths": int(station_elem.findtext("small_berths") or 0),
-                }
+                defaults=defaults
             )
             # Update fields if they exist in XML (in case station was already created)
             if not created:
@@ -53,6 +60,8 @@ class UniverseImporter:
                     station.medium_berths = int(station_elem.findtext("medium_berths") or 0)
                 if station_elem.findtext("small_berths"):
                     station.small_berths = int(station_elem.findtext("small_berths") or 0)
+                if orbital_distance_km is not None:
+                    station.orbital_distance_km = orbital_distance_km
                 station.save()
             
             self.object_cache[station.name] = station
@@ -116,6 +125,20 @@ class UniverseImporter:
                 "scale": "SY",
             }
         )
+        
+        # Import galactic coordinates if they exist
+        if element.findtext("galactic_x_ly"):
+            system.galactic_x_ly = float(element.findtext("galactic_x_ly"))
+        if element.findtext("galactic_y_ly"):
+            system.galactic_y_ly = float(element.findtext("galactic_y_ly"))
+        if element.findtext("galactic_z_ly"):
+            system.galactic_z_ly = float(element.findtext("galactic_z_ly"))
+        
+        # Import system age if it exists
+        if element.findtext("system_age_years"):
+            system.system_age_years = float(element.findtext("system_age_years"))
+        
+        system.save()
         self.object_cache[system.name] = system
         
         for star_elem in element.findall("./star"):

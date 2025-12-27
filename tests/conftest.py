@@ -7,7 +7,7 @@ machine-readable log of local inference speed (time-to-first-response, etc.).
 Design goals:
 - Never fail tests if logging can't be written (best-effort only)
 - Capture per-call timings for LLMService.chat() and generate_with_system_prompt()
-- Keep output append-only (JSONL) so multiple runs accumulate data
+- Overwrite the benchmark file at the start of each test session (fresh data per run)
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import time
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import pytest
 
@@ -63,10 +63,20 @@ def _install_llm_benchmark_hooks():
     Monkeypatch LLMService methods to record timings.
 
     This is session-scoped so it affects all tests consistently.
+    Overwrites the benchmark file at the start of each test session.
     """
     path = _get_benchmark_path()
     if path is None:
         return
+
+    # Overwrite the file at the start of each test session (remove any existing data)
+    try:
+        if path.exists():
+            path.unlink()
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # Best-effort only: never break tests due to logging issues.
+        pass
 
     try:
         from mysite.universe.services.llm_service import LLMService
