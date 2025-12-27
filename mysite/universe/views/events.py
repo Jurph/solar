@@ -21,6 +21,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from mysite.universe.models.event import DialogueEventLog
+from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,9 @@ def event_feed(request):
             'id': event.id,
             'timestamp': event.timestamp,
             'actor_name': event.actor_name,
-            'text': event.text
+            'text': event.text,
+            # Python-defined audio plan (client just queues & plays waveforms)
+            'audio_plan': build_audio_plan_for_dialogue_event(event),
         }
         for event in queryset
     ]

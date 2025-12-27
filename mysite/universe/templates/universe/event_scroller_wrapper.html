@@ -33,6 +33,14 @@
                 <button class="scale-btn" data-scale="600">600x</button>
                 <button class="scale-btn" data-scale="3600">3600x</button>
             </div>
+            <div class="audio-controls">
+                <span>Audio:</span>
+                <button id="audioEnableButton" class="control-button">Audio: Muted</button>
+                <label class="audio-volume">
+                    Vol
+                    <input id="audioVolume" type="range" min="0" max="1" step="0.01" value="0.2">
+                </label>
+            </div>
         </div>
     </div>
     
@@ -42,6 +50,7 @@
         </div>
     </div>
 
+    <script src="{% static 'universe/js/audio_player.js' %}"></script>
     <script>
         // Configuration
         const POLL_INTERVAL = 1000; // Poll for new events every 1 second
@@ -82,6 +91,87 @@
         const pendingEventsDisplay = document.getElementById('pendingEventsDisplay');
         const nextEventDisplay = document.getElementById('nextEventDisplay');
         const scaleBtns = document.querySelectorAll('.scale-btn');
+        const audioEnableButton = document.getElementById('audioEnableButton');
+        const audioVolumeInput = document.getElementById('audioVolume');
+
+        // Audio (playback only; synthesis is defined in Python and served as WAV)
+        const audioPlayer = new AudioPlayer();
+        const AUDIO_STORAGE_KEYS = {
+            volume: "events_audio_volume",
+            enabledHint: "events_audio_enabled_hint",
+            muted: "events_audio_muted",
+        };
+        const AUDIO_PRESET_URL_TEMPLATE = '{% url "audio_preset" preset="__PRESET__" %}';
+
+        function audioPresetUrl(preset) {
+            return AUDIO_PRESET_URL_TEMPLATE.replace("__PRESET__", preset);
+        }
+
+        // Restore volume preference (safe: doesn't start audio)
+        const storedVolume = window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume);
+        if (storedVolume !== null) {
+            audioVolumeInput.value = storedVolume;
+        }
+        audioPlayer.setVolume(parseFloat(audioVolumeInput.value));
+
+        // Start muted by default. If user previously enabled audio, show it as "muted (saved)".
+        const savedEnabled = window.localStorage.getItem(AUDIO_STORAGE_KEYS.enabledHint) === "1";
+        const savedMuted = window.localStorage.getItem(AUDIO_STORAGE_KEYS.muted) !== "0";
+        audioPlayer.setMuted(savedMuted);
+        audioEnableButton.textContent = savedEnabled
+            ? (savedMuted ? "Audio: Muted (saved)" : "Audio: Live")
+            : "Audio: Muted";
+
+        audioVolumeInput.addEventListener("input", () => {
+            const v = parseFloat(audioVolumeInput.value);
+            audioPlayer.setVolume(v);
+            window.localStorage.setItem(AUDIO_STORAGE_KEYS.volume, audioVolumeInput.value);
+        });
+
+        audioEnableButton.addEventListener("click", async () => {
+            audioEnableButton.disabled = true;
+            try {
+                // One-click "play/unmute" approach:
+                // - First click creates the audio element (enables playback path)
+                // - Then toggles muted/live
+                if (!audioPlayer.isEnabled()) {
+                    await audioPlayer.enable();
+                    window.localStorage.setItem(AUDIO_STORAGE_KEYS.enabledHint, "1");
+                }
+
+                const nowMuted = !audioPlayer.isMuted();
+                audioPlayer.setMuted(nowMuted);
+                window.localStorage.setItem(AUDIO_STORAGE_KEYS.muted, nowMuted ? "1" : "0");
+                audioEnableButton.textContent = nowMuted ? "Audio: Muted" : "Audio: Live";
+
+                // On unmute, play a short confirmation tone to satisfy autoplay policies.
+                if (!nowMuted) {
+                    audioPlayer.enqueueWavUrl(audioPresetUrl("quindar_start"));
+                }
+            } catch (error) {
+                console.error("Failed to enable audio:", error);
+                alert(`Failed to enable audio: ${error?.message || error}`);
+                audioEnableButton.textContent = "Audio: Muted";
+            } finally {
+                audioEnableButton.disabled = false;
+            }
+        });
+
+        /**
+         * Enqueue audio actions for a given trigger from an event's audio_plan.
+         */
+        function enqueueAudioForTrigger(event, trigger, useFastMode) {
+            if (useFastMode) return;
+            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return;
+            if (!event || !Array.isArray(event.audio_plan)) return;
+
+            for (const action of event.audio_plan) {
+                if (!action || action.trigger !== trigger) continue;
+                if (action.preset) {
+                    audioPlayer.enqueueWavUrl(audioPresetUrl(action.preset));
+                }
+            }
+        }
         
         /**
          * Format timestamp as HH:MM:SS (relative to an epoch)
@@ -242,8 +332,14 @@
             if (pageLoadSimTime !== null && event.timestamp >= pageLoadSimTime) {
                 catchUpComplete = true;
             }
+
+            // Quindar "start of transmission" tone
+            // Avoid beeping during catch-up (historical fast scroll) to prevent audio spam.
+            enqueueAudioForTrigger(event, "event_start", useFastMode);
             
             typeEventLine(event, () => {
+                // Quindar "end of transmission" tone (still a generic sine_beep)
+                enqueueAudioForTrigger(event, "event_end", useFastMode);
                 // This event is done, process the next one
                 isTyping = false;
                 // In fast mode, add a tiny delay between lines for visual effect
