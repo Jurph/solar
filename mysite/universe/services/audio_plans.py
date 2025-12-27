@@ -96,13 +96,16 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     static_params = profile.get_static_params()
     
     if is_satellite:
-        # Satellites: modem noise encoding the broadcast text
-        # The text from the event is encoded as 1200-baud Kermit modem noise
+        # Satellites: modem noise encoding the technical data
+        # The human-readable announcement is displayed, and read out loud by a robotic voice, and then the technical data is encoded as modem noise
+        # Check metadata for modem_data, fallback to event.text for backward compatibility
+        modem_data = event.metadata.get("modem_data") if event.metadata else event.text
+        
         plan.append({
             "trigger": "event_during",
             "preset": "modem_noise_example",  # Will be replaced with text-specific preset
             "params": {
-                "text": event.text,  # The actual broadcast text to encode
+                "text": modem_data,  # Technical data to encode as modem noise
                 "gain": 0.8,
                 "carrier_frequency_hz": 1800.0,
                 "carrier_gain": 0.15,

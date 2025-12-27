@@ -7,6 +7,11 @@ class Station(Location):
     large_berths = models.PositiveSmallIntegerField(default=1)
     medium_berths = models.PositiveSmallIntegerField(default=2)
     small_berths = models.PositiveSmallIntegerField(default=8)
+    orbital_distance_km = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Orbital distance from parent body surface in km"
+    )
     orbits = models.ForeignKey(
         Location,
         on_delete=models.CASCADE,

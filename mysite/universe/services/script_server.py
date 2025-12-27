@@ -229,19 +229,24 @@ class ScriptService:
             nav_context=nav_context,
         )
         
-        # Generate the broadcast message (procedural, not LLM)
+        # Generate the human-readable announcement (for display)
         broadcast_text = broadcast_particle.generate_nav_broadcast_text()
         
+        # Generate the technical data for modem encoding (for audio)
+        technical_data = broadcast_particle.get_modem_encoded_data()
+        
         # Create a single DialogueEvent for the broadcast
+        # Store technical data in metadata for audio plan to use
         broadcast_event = DialogueEvent(
             timestamp=base_timestamp,
             actor=satellite,
-            text=broadcast_text,
+            text=broadcast_text,  # Human-readable announcement for display
             duration=5.0,  # Broadcasts take a few seconds to transmit
             event_type="dialogue",
             metadata={
                 "type": "nav_broadcast",
                 "satellite_name": satellite.name,
+                "modem_data": technical_data,  # Technical data for modem encoding
             },
         )
         

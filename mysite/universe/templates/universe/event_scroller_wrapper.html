@@ -22,7 +22,8 @@
             <span id="nextEventDisplay" class="status-value next-event-time">--</span>
         </div>
         <div class="controls">
-            <button id="spawnMissionButton" class="control-button primary">Spawn Mission</button>
+            <button id="spawnCargoShipButton" class="control-button primary">Spawn Cargo Ship</button>
+            <button id="spawnNavsatButton" class="control-button primary">Spawn Navsat</button>
             <button id="skipToNextButton" class="control-button">⏭ Skip to Next</button>
             <button id="clearEventsButton" class="control-button danger">Clear All Events</button>
             <button id="clearDisplayButton" class="control-button">Clear Display</button>
@@ -86,7 +87,8 @@
         const eventContainer = document.getElementById('eventContainer');
         const clearEventsButton = document.getElementById('clearEventsButton');
         const clearDisplayButton = document.getElementById('clearDisplayButton');
-        const spawnMissionButton = document.getElementById('spawnMissionButton');
+        const spawnCargoShipButton = document.getElementById('spawnCargoShipButton');
+        const spawnNavsatButton = document.getElementById('spawnNavsatButton');
         const skipToNextButton = document.getElementById('skipToNextButton');
         const simTimeDisplay = document.getElementById('simTimeDisplay');
         const timeScaleDisplay = document.getElementById('timeScaleDisplay');
@@ -624,14 +626,14 @@
         });
         
         /**
-         * Spawn a complete mission (ship + cargo + journey)
+         * Spawn a cargo mission (ship + cargo + journey)
          */
-        spawnMissionButton.addEventListener('click', async () => {
-            spawnMissionButton.disabled = true;
-            spawnMissionButton.textContent = 'Generating route & dialogue...';
+        spawnCargoShipButton.addEventListener('click', async () => {
+            spawnCargoShipButton.disabled = true;
+            spawnCargoShipButton.textContent = 'Generating route & dialogue...';
             
             try {
-                const response = await fetch('{% url "spawn_mission" %}', {
+                const response = await fetch('{% url "spawn_mission" %}?mission_type=cargo', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -640,20 +642,54 @@
                 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Mission spawned:', data.message);
+                    console.log('Cargo mission spawned:', data.message);
                     // Note: Mission generates in background, events will appear in ~3-10 seconds
                     // The polling interval will pick them up automatically
-                    spawnMissionButton.textContent = 'Spawn Mission';
+                    spawnCargoShipButton.textContent = 'Spawn Cargo Ship';
                 } else {
                     const errorData = await response.json();
-                    throw new Error(errorData.message || 'Failed to spawn mission');
+                    throw new Error(errorData.message || 'Failed to spawn cargo mission');
                 }
             } catch (error) {
-                console.error('Error spawning mission:', error);
-                alert('Failed to spawn mission. Check console for details.');
+                console.error('Error spawning cargo mission:', error);
+                alert('Failed to spawn cargo mission. Check console for details.');
             } finally {
-                spawnMissionButton.disabled = false;
-                spawnMissionButton.textContent = 'Spawn Mission';
+                spawnCargoShipButton.disabled = false;
+                spawnCargoShipButton.textContent = 'Spawn Cargo Ship';
+            }
+        });
+        
+        /**
+         * Spawn a nav broadcast mission (satellite navigation update)
+         */
+        spawnNavsatButton.addEventListener('click', async () => {
+            spawnNavsatButton.disabled = true;
+            spawnNavsatButton.textContent = 'Generating nav broadcast...';
+            
+            try {
+                const response = await fetch('{% url "spawn_mission" %}?mission_type=nav_broadcast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Nav broadcast spawned:', data.message);
+                    // Note: Broadcast generates in background, events will appear shortly
+                    // The polling interval will pick them up automatically
+                    spawnNavsatButton.textContent = 'Spawn Navsat';
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to spawn nav broadcast');
+                }
+            } catch (error) {
+                console.error('Error spawning nav broadcast:', error);
+                alert('Failed to spawn nav broadcast. Check console for details.');
+            } finally {
+                spawnNavsatButton.disabled = false;
+                spawnNavsatButton.textContent = 'Spawn Navsat';
             }
         });
         

@@ -1213,9 +1213,14 @@ class NavBroadcast(DialogueParticle):
     Satellite navigation broadcast particle.
     
     Generates automated navigation update messages from satellites.
-    These broadcasts contain position, status, and telemetry data encoded
-    as modem noise in the audio plan.
+    The display text is a plaintext human-readable announcement.
+    The audio plan encodes the technical data as modem noise.
     """
+    
+    def __init__(self, *args, **kwargs):
+        """Initialize NavBroadcast particle and cache generated data."""
+        super().__init__(*args, **kwargs)
+        self._cached_broadcast_data = None  # Cache for consistent data between announcement and modem encoding
     
     def get_role_description(self) -> str:
         """
@@ -1239,36 +1244,73 @@ class NavBroadcast(DialogueParticle):
         satellite_name = self.actor.name.upper()
         return f"{satellite_name} is broadcasting a periodic navigation update with position, status, and telemetry data."
     
-    
-    # TODO: the procedural greeting should be "All stations, this is {satellite_name} with a Navigation Update."
     def generate_procedural_greeting(self) -> str:
         """
         Generate procedural greeting for nav broadcasts.
         
-        Satellites broadcast to all listeners, so no specific recipient.
-        
         Returns:
-            Empty string (broadcasts don't have greetings).
+            Human-readable announcement text.
         """
-        return ""
+        satellite_name = self.actor.name.upper()
+        return f"All stations, this is {satellite_name} with a Navigation Update."
     
-    # TODO: update these with examples more suited to the feature design in /docs/TODO.md 
-    # Satellites will use a robotic text-to-speech voice to read the text of the broadcast in a legible-to-human-listeners way 
-    # Then they will follow the audio speech with an encoded update using modem noise 
     
     def get_examples(self) -> List[str]:
         """
-        Return examples of nav broadcast messages.
+        Return examples of human-readable nav broadcast announcements.
+        
+        Includes examples with navigation hazards referencing subordinate bodies.
         
         Returns:
-            List of example broadcast messages.
+            List of example broadcast announcements.
         """
         satellite_name = self.actor.name.upper()
-        return [
-            f"{satellite_name} NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP {int(random.uniform(100000, 999999))}",
-            f"{satellite_name} NAV UPDATE // POS -30.1 75.8 ALT 1200KM // STATUS CAUT // TEMP -15C PWR 88% // TIMESTAMP {int(random.uniform(100000, 999999))}",
-            f"{satellite_name} NAV UPDATE // POS 0.0 180.0 ALT 1500KM // STATUS NOM // TEMP +10C PWR 92% // TIMESTAMP {int(random.uniform(100000, 999999))}",
-        ]
+        
+        # Get subordinate bodies for hazard examples
+        from mysite.universe.services.location_service import get_subordinate_bodies
+        
+        # Try to get location from nav_context if available
+        nav_context = getattr(self, 'nav_context', None) or {}
+        location_name = nav_context.get('satellite_location') or nav_context.get('location')
+        
+        subordinate_bodies = get_subordinate_bodies(location_name=location_name)
+        
+        examples = []
+        
+        # Generate a hazard example if we have subordinate bodies
+        if subordinate_bodies:
+            roman_numerals = ["I", "II", "III", "IV", "V", "VI"]
+            hazards = ["asteroid", "comet", "debris field"]
+            hazard = random.choice(hazards)
+            
+            # Select a random subordinate body
+            impacted_body = random.choice(subordinate_bodies)
+            body_name = impacted_body.name
+            
+            # Generate hazard count
+            hazard_count = random.randint(1, 3)
+            hazard_classes = random.sample(roman_numerals, min(hazard_count, len(roman_numerals)))
+            hazard_classes_str = ", ".join([f"Class {c}" for c in hazard_classes])
+            
+            if hazard_count == 1:
+                hazard_text = f"one {hazard_classes_str} {hazard}"
+            else:
+                hazard_text = f"{hazard_count} {hazard_classes_str} {hazards[0]}s"
+            
+            examples.append(
+                f"All stations, this is {satellite_name} with a Navigation Update. "
+                f"We are tracking {hazard_text} near {body_name}. "
+                f"Stand by for hazard closure areas."
+            )
+        
+        # Add standard position/status examples
+        examples.extend([
+            f"All stations, this is {satellite_name} with a Navigation Update. Position: 45.2 degrees latitude, -120.3 degrees longitude, altitude 850 kilometers. Status: Nominal. Temperature: plus 25 degrees Celsius. Power: 95 percent.",
+            f"All stations, this is {satellite_name} with a Navigation Update. Position: -30.1 degrees latitude, 75.8 degrees longitude, altitude 1200 kilometers. Status: Caution. Temperature: minus 15 degrees Celsius. Power: 88 percent.",
+            f"All stations, this is {satellite_name} with a Navigation Update. Position: 0.0 degrees latitude, 180.0 degrees longitude, altitude 1500 kilometers. Status: Nominal. Temperature: plus 10 degrees Celsius. Power: 92 percent.",
+        ])
+        
+        return examples
     
     def get_counterexample(self) -> str:
         """
@@ -1279,43 +1321,103 @@ class NavBroadcast(DialogueParticle):
         """
         return ""
     
-    def generate_nav_broadcast_text(self) -> str:
+    def _get_broadcast_data(self) -> dict:
         """
-        Generate a navigation broadcast message with realistic data.
-        
-        Creates nav update with coordinates, status, and telemetry.
+        Get nav broadcast data (cached for consistency between announcement and technical format).
         
         Returns:
-            Broadcast message text to be encoded as modem noise.
+            Dict with lat, lon, alt, status_code, status_readable, temp, power, timestamp
         """
-        satellite_name = self.actor.name.upper()
+        if self._cached_broadcast_data is None:
+            satellite_name = self.actor.name.upper()
+            
+            # Generate realistic nav broadcast content
+            lat = random.uniform(-90, 90)
+            lon = random.uniform(-180, 180)
+            alt = random.uniform(400, 2000)  # km altitude
+            
+            # Status codes with human-readable names
+            status_map = {
+                "NOM": "Nominal",
+                "CAUT": "Caution",
+                "WARN": "Warning",
+                "STBY": "Standby"
+            }
+            status_codes = list(status_map.keys())
+            status_code = random.choice(status_codes)
+            status_readable = status_map[status_code]
+            
+            # Telemetry values
+            temp = random.randint(-50, 50)
+            power = random.randint(80, 100)
+            
+            # Timestamp
+            from mysite.universe.models.simulation import get_simulation_time
+            timestamp = int(get_simulation_time())
+            
+            self._cached_broadcast_data = {
+                "satellite_name": satellite_name,
+                "lat": lat,
+                "lon": lon,
+                "alt": alt,
+                "status_code": status_code,
+                "status_readable": status_readable,
+                "temp": temp,
+                "power": power,
+                "timestamp": timestamp,
+            }
         
-        # Generate realistic nav broadcast content
-        lat = random.uniform(-90, 90)
-        lon = random.uniform(-180, 180)
-        alt = random.uniform(400, 2000)  # km altitude
+        return self._cached_broadcast_data
+    
+    def generate_nav_broadcast_text(self) -> str:
+        """
+        Generate a human-readable navigation broadcast announcement.
         
-        # Status codes
-        status_codes = ["NOM", "CAUT", "WARN", "STBY"]
-        status = random.choice(status_codes)
+        Creates a plaintext announcement suitable for TTS voice reading.
+        The technical data will be encoded as modem noise in the audio plan.
         
-        # Telemetry values
-        temp = random.randint(-50, 50)
-        power = random.randint(80, 100)
+        Returns:
+            Human-readable broadcast announcement text.
+        """
+        data = self._get_broadcast_data()
         
-        # Build broadcast message
-        from mysite.universe.models.simulation import get_simulation_time
-        timestamp = int(get_simulation_time())
+        # Build human-readable announcement
+        temp_sign = "plus" if data["temp"] >= 0 else "minus"
+        temp_abs = abs(data["temp"])
         
-        message = (
-            f"{satellite_name} NAV UPDATE // "
-            f"POS {lat:.2f} {lon:.2f} ALT {alt:.0f}KM // "
-            f"STATUS {status} // "
-            f"TEMP {temp:+d}C PWR {power}% // "
-            f"TIMESTAMP {timestamp}"
+        announcement = (
+            f"All stations, this is {data['satellite_name']} with a Navigation Update. "
+            f"Position: {data['lat']:.2f} degrees latitude, {data['lon']:.2f} degrees longitude, "
+            f"altitude {data['alt']:.0f} kilometers. "
+            f"Status: {data['status_readable']}. "
+            f"Temperature: {temp_sign} {temp_abs} degrees Celsius. "
+            f"Power: {data['power']} percent."
         )
         
-        return message
+        return announcement
+    
+    def get_modem_encoded_data(self) -> str:
+        """
+        Get the technical data format for modem encoding.
+        
+        This is the raw data that will be encoded as modem noise in the audio plan.
+        Uses the same cached data as generate_nav_broadcast_text() for consistency.
+        
+        Returns:
+            Technical data string in format suitable for modem encoding.
+        """
+        data = self._get_broadcast_data()
+        
+        # Technical format for modem encoding
+        technical_data = (
+            f"{data['satellite_name']} NAV UPDATE // "
+            f"POS {data['lat']:.2f} {data['lon']:.2f} ALT {data['alt']:.0f}KM // "
+            f"STATUS {data['status_code']} // "
+            f"TEMP {data['temp']:+d}C PWR {data['power']}% // "
+            f"TIMESTAMP {data['timestamp']}"
+        )
+        
+        return technical_data
     
     def build_user_prompt_data(self, previous_dialogue: Optional[str] = None):
         """

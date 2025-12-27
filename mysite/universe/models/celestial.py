@@ -414,33 +414,6 @@ class StarSystem(Location):
         if not self.scale:
             self.scale = Scale.STARSYSTEM
         super().save(*args, **kwargs)
-    
-    def get_distance_to_ly(self, other: 'StarSystem') -> float:
-        """
-        Calculate distance to another StarSystem in light-years.
-        
-        Uses Euclidean distance: sqrt((x2-x1)² + (y2-y1)² + (z2-z1)²)
-        
-        Args:
-            other: Another StarSystem instance
-            
-        Returns:
-            Distance in light-years, or float('inf') if coordinates are missing
-        """
-        import math
-        
-        if not all([self.galactic_x_ly is not None, self.galactic_y_ly is not None, 
-                   self.galactic_z_ly is not None]):
-            return float('inf')
-        if not all([other.galactic_x_ly is not None, other.galactic_y_ly is not None,
-                   other.galactic_z_ly is not None]):
-            return float('inf')
-        
-        dx = other.galactic_x_ly - self.galactic_x_ly
-        dy = other.galactic_y_ly - self.galactic_y_ly
-        dz = other.galactic_z_ly - self.galactic_z_ly
-        
-        return math.sqrt(dx*dx + dy*dy + dz*dz)
 
 class Star(PhysicalBody):
     """

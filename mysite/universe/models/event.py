@@ -102,6 +102,7 @@ class DialogueEventLog(models.Model):
     timestamp = models.FloatField(help_text="Simulation time when event occurred")
     actor_name = models.CharField(max_length=200, help_text="Name of the speaking actor")
     text = models.TextField(help_text="The dialogue message")
+    metadata = models.JSONField(default=dict, blank=True, help_text="Additional event metadata (e.g., modem_data for nav broadcasts)")
     created_at = models.DateTimeField(auto_now_add=True, help_text="Database insertion time")
     
     class Meta:
