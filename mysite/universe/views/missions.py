@@ -79,12 +79,35 @@ def spawn_mission(request):
                         logger.error(f"spawn_mission: Satellite '{satellite_name}' not found")
                         return
                 else:
-                    # Broadcast from all satellites
-                    satellites = list(Satellite.objects.all())
+                    # Per design doc: "Randomly choose an existing navigation satellite"
+                    # Filter for navigation satellites (name contains "nav" or ends with "Navsat")
+                    all_satellites = Satellite.objects.all()
+                    nav_satellites = [
+                        sat for sat in all_satellites 
+                        if "nav" in sat.name.lower() or sat.name.endswith("Navsat")
+                    ]
+                    satellites = nav_satellites if nav_satellites else []
                 
+                # Per design doc: "Some systems may not have a NavSat; if you choose a random star 
+                # and it has no NavSat, create the Actor"
                 if not satellites:
-                    logger.warning("spawn_mission: No satellites found for nav broadcast")
-                    return
+                    logger.info("spawn_mission: No navigation satellites found, creating one")
+                    from mysite.universe.models.celestial import StarSystem
+                    star_systems = list(StarSystem.objects.all())
+                    if star_systems:
+                        import random
+                        random_system = random.choice(star_systems)
+                        satellite = Satellite.create_navigation_satellite(location=random_system)
+                        satellites = [satellite]
+                        logger.info(f"spawn_mission: Created navigation satellite '{satellite.name}' for {random_system.name}")
+                    else:
+                        logger.warning("spawn_mission: No star systems found, cannot create navigation satellite")
+                        return
+                else:
+                    # Randomly choose from existing navigation satellites
+                    import random
+                    if len(satellites) > 1:
+                        satellites = [random.choice(satellites)]
                 
                 # Generate broadcast events from each satellite
                 events_saved = 0

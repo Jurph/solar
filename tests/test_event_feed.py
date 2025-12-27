@@ -192,6 +192,92 @@ class ClearEventsTests(TestCase):
         self.assertEqual(response.status_code, 405)
 
 
+class EventMetadataTests(TestCase):
+    """
+    Tests for metadata field handling in events.
+    
+    The metadata field stores additional structured data (e.g., modem_data for nav broadcasts).
+    These tests verify that metadata is correctly stored and returned in the API.
+    """
+    
+    def setUp(self):
+        """Set up test client and simulation state."""
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+        
+        self.base_sim_time = 10000.0
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=self.base_sim_time,
+            anchor_wall_clock=time.time(),
+            time_scale=1.0
+        )
+    
+    def test_event_with_metadata_is_stored_and_returned(self):
+        """
+        Events with metadata should be stored and returned correctly.
+        
+        This test would fail if the metadata field migration hasn't been applied,
+        as it would raise OperationalError when trying to create an event with metadata.
+        """
+        # Create an event with metadata (e.g., nav broadcast with modem_data)
+        event = DialogueEventLog.objects.create(
+            timestamp=self.base_sim_time - 100,
+            actor_name="Test Satellite",
+            text="All stations, this is TEST with a Navigation Update.",
+            metadata={
+                "type": "nav_broadcast",
+                "satellite_name": "TEST",
+                "modem_data": "TEST NAV UPDATE // POS 45.0 90.0 ALT 500KM // STATUS NOM"
+            }
+        )
+        
+        # Verify the event was created with metadata
+        self.assertIsNotNone(event.metadata)
+        self.assertEqual(event.metadata["type"], "nav_broadcast")
+        self.assertIn("modem_data", event.metadata)
+        
+        # Request the event via API
+        response = self.client.get('/api/events/')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify metadata is returned in the API response
+        self.assertEqual(len(data['events']), 1)
+        returned_event = data['events'][0]
+        self.assertIn('metadata', returned_event)
+        self.assertEqual(returned_event['metadata']['type'], "nav_broadcast")
+        self.assertIn('modem_data', returned_event['metadata'])
+    
+    def test_event_without_metadata_has_empty_dict(self):
+        """
+        Events without metadata should have an empty dict, not None.
+        
+        This ensures backward compatibility and consistent API responses.
+        """
+        # Create an event without metadata
+        event = DialogueEventLog.objects.create(
+            timestamp=self.base_sim_time - 100,
+            actor_name="Test Pilot",
+            text="Regular dialogue message"
+        )
+        
+        # Verify metadata defaults to empty dict
+        self.assertEqual(event.metadata, {})
+        
+        # Request the event via API
+        response = self.client.get('/api/events/')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify metadata is returned as empty dict in API response
+        self.assertEqual(len(data['events']), 1)
+        returned_event = data['events'][0]
+        self.assertIn('metadata', returned_event)
+        self.assertEqual(returned_event['metadata'], {})
+
+
 if __name__ == '__main__':
     import unittest
     unittest.main()

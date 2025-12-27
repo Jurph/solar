@@ -219,6 +219,15 @@ CRITICAL SAFETY RULES:
 class Satellite(Actor):
     """An automated satellite that can relay messages."""
     
+    location = models.ForeignKey(
+        'Location',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='satellites',
+        help_text="The Location (Planet, Moon, Star, StarSystem) this satellite orbits"
+    )
+    
     def get_response_message(self) -> str:
         """
         Get the pre-programmed response message for this satellite.
@@ -263,3 +272,48 @@ class Satellite(Actor):
     def generate_name(cls) -> str:
         """Generate a random satellite name."""
         return f"Relay {dictionary.get_random('GREEK_LETTER')} {dictionary.get_random('NUMBER')}"
+    
+    @classmethod
+    def create_navigation_satellite(cls, location: 'Location' = None) -> 'Satellite':
+        """
+        Create a navigation satellite with proper naming.
+        
+        Navigation satellites are named after their star system (e.g., "Sol Navsat").
+        Per design doc: "Some systems may not have a NavSat; if you choose a random star 
+        and it has no NavSat, create the Actor"
+        
+        Args:
+            location: Optional Location (StarSystem, Planet, etc.) to derive name from.
+                     If None, picks a random StarSystem.
+                     
+        Returns:
+            A new Satellite instance with navigation satellite naming
+        """
+        from mysite.universe.models.celestial import StarSystem
+        from mysite.universe.services.location_service import find_star_system_for_location
+        
+        # Determine which star system to use
+        star_system = None
+        if location:
+            star_system = find_star_system_for_location(location)
+        
+        # If no location provided or couldn't find system, pick a random one
+        if not star_system:
+            star_systems = list(StarSystem.objects.all())
+            if star_systems:
+                import random
+                star_system = random.choice(star_systems)
+            else:
+                # Fallback if no star systems exist
+                name = "Navigation Satellite"
+                satellite = cls(name=name)
+                satellite.save()
+                return satellite
+        
+        # Generate name: "[STARSYSTEM] NAVSAT" (e.g., "Sol Navsat")
+        name = f"{star_system.name} Navsat"
+        
+        # Create satellite with location set to the star system
+        satellite = cls(name=name, location=star_system)
+        satellite.save()
+        return satellite

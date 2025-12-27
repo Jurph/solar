@@ -1242,7 +1242,7 @@ class NavBroadcast(DialogueParticle):
             Situation description string.
         """
         satellite_name = self.actor.name.upper()
-        return f"{satellite_name} is broadcasting a periodic navigation update with position, status, and telemetry data."
+        return f"{satellite_name} is broadcasting a periodic navigation update with navigation conditions and hazard information."
     
     def generate_procedural_greeting(self) -> str:
         """
@@ -1267,49 +1267,46 @@ class NavBroadcast(DialogueParticle):
         satellite_name = self.actor.name.upper()
         
         # Get subordinate bodies for hazard examples
-        from mysite.universe.services.location_service import get_subordinate_bodies
+        from mysite.universe.services.location_service import get_subordinate_bodies, find_star_system_for_location
         
-        # Try to get location from nav_context if available
-        nav_context = getattr(self, 'nav_context', None) or {}
-        location_name = nav_context.get('satellite_location') or nav_context.get('location')
+        # Get satellite's location - satellites always orbit a body
+        location = self.actor.location
+        if location:
+            # Find the star system containing this location
+            star_system = find_star_system_for_location(location)
+            # Use the star system to get subordinate bodies
+            location = star_system if star_system else location
         
-        subordinate_bodies = get_subordinate_bodies(location_name=location_name)
+        # Get subordinate bodies using the location (only bodies in this system)
+        subordinate_bodies = get_subordinate_bodies(location=location) if location else []
         
         examples = []
         
-        # Generate a hazard example if we have subordinate bodies
+        # Generate a hazard example if we have subordinate bodies  
+        # TODO: Hazard class and persistent tracking of hazards in the simulation at large. 
         if subordinate_bodies:
             roman_numerals = ["I", "II", "III", "IV", "V", "VI"]
-            hazards = ["asteroid", "comet", "debris field"]
+            hazards = ["asteroid", "comet", "debris field", "derelict ship", "unregistered satellite", "spent booster stage"]
+            # TODO: make these draw from a better distribution than uniform - probably promote to a Hazard class later. 
             hazard = random.choice(hazards)
+            hazard_class = random.choice(roman_numerals)
             
             # Select a random subordinate body
             impacted_body = random.choice(subordinate_bodies)
             body_name = impacted_body.name
             
-            # Generate hazard count
-            hazard_count = random.randint(1, 3)
-            hazard_classes = random.sample(roman_numerals, min(hazard_count, len(roman_numerals)))
-            hazard_classes_str = ", ".join([f"Class {c}" for c in hazard_classes])
+            hazard_text = f"one Class {hazard_class} {hazard}"
             
-            if hazard_count == 1:
-                hazard_text = f"one {hazard_classes_str} {hazard}"
-            else:
-                hazard_text = f"{hazard_count} {hazard_classes_str} {hazards[0]}s"
-            
-            examples.append(
-                f"All stations, this is {satellite_name} with a Navigation Update. "
-                f"We are tracking {hazard_text} near {body_name}. "
-                f"Stand by for hazard closure areas."
-            )
+            examples.extend([
+                f"All stations, this is {satellite_name} with a Navigation Update. Conditions are nominal.",
+                f"All stations, this is {satellite_name} with a Navigation Update. Standby for today's hazard data and closures.",
+                f"All stations, this is {satellite_name} with a Navigation Update. Standby for today's updates.",
+                f"All stations, this is {satellite_name} with a Navigation Update. We are tracking {hazard_text} near {body_name}. Otherwise conditions are nominal. Standby for hazard data and closures.",
+                f"All stations, this is {satellite_name} with a Navigation Update. We are tracking {hazard_text} near {body_name}. Otherwise conditions are nominal. Standby for hazard data and closures.",
+                f"All stations, this is {satellite_name} with a Navigation Update. No new navigation hazards to declare at this time. Standby for a refreshed data table.",
+            ])
         
-        # Add standard position/status examples
-        examples.extend([
-            f"All stations, this is {satellite_name} with a Navigation Update. Position: 45.2 degrees latitude, -120.3 degrees longitude, altitude 850 kilometers. Status: Nominal. Temperature: plus 25 degrees Celsius. Power: 95 percent.",
-            f"All stations, this is {satellite_name} with a Navigation Update. Position: -30.1 degrees latitude, 75.8 degrees longitude, altitude 1200 kilometers. Status: Caution. Temperature: minus 15 degrees Celsius. Power: 88 percent.",
-            f"All stations, this is {satellite_name} with a Navigation Update. Position: 0.0 degrees latitude, 180.0 degrees longitude, altitude 1500 kilometers. Status: Nominal. Temperature: plus 10 degrees Celsius. Power: 92 percent.",
-        ])
-        
+        # Add standard position/status examples     
         return examples
     
     def get_counterexample(self) -> str:
@@ -1323,48 +1320,51 @@ class NavBroadcast(DialogueParticle):
     
     def _get_broadcast_data(self) -> dict:
         """
-        Get nav broadcast data (cached for consistency between announcement and technical format).
+        Get nav broadcast data (cached for consistency between announcement and modem encoding).
         
         Returns:
-            Dict with lat, lon, alt, status_code, status_readable, temp, power, timestamp
+            Dict with satellite_name, timestamp, and optional hazard information.
         """
         if self._cached_broadcast_data is None:
             satellite_name = self.actor.name.upper()
-            
-            # Generate realistic nav broadcast content
-            lat = random.uniform(-90, 90)
-            lon = random.uniform(-180, 180)
-            alt = random.uniform(400, 2000)  # km altitude
-            
-            # Status codes with human-readable names
-            status_map = {
-                "NOM": "Nominal",
-                "CAUT": "Caution",
-                "WARN": "Warning",
-                "STBY": "Standby"
-            }
-            status_codes = list(status_map.keys())
-            status_code = random.choice(status_codes)
-            status_readable = status_map[status_code]
-            
-            # Telemetry values
-            temp = random.randint(-50, 50)
-            power = random.randint(80, 100)
             
             # Timestamp
             from mysite.universe.models.simulation import get_simulation_time
             timestamp = int(get_simulation_time())
             
+            # Get subordinate bodies for potential hazard references
+            from mysite.universe.services.location_service import get_subordinate_bodies, find_star_system_for_location
+            
+            # Get satellite's location - satellites always orbit a body
+            location = self.actor.location
+            if location:
+                # Find the star system containing this location
+                star_system = find_star_system_for_location(location)
+                # Use the star system to get subordinate bodies
+                location = star_system if star_system else location
+            
+            # Get subordinate bodies using the location (only bodies in this system)
+            subordinate_bodies = get_subordinate_bodies(location=location) if location else []
+            
+            # Determine if we should include a hazard (30% chance if we have subordinate bodies)
+            hazard_info = None
+            if subordinate_bodies and random.random() < 0.3:
+                roman_numerals = ["I", "II", "III", "IV", "V", "VI"]
+                hazards = ["asteroid", "comet", "debris field", "derelict ship", "unregistered satellite", "spent booster stage"]
+                hazard = random.choice(hazards)
+                hazard_class = random.choice(roman_numerals)
+                impacted_body = random.choice(subordinate_bodies)
+                
+                hazard_info = {
+                    "hazard": hazard,
+                    "hazard_class": hazard_class,
+                    "body_name": impacted_body.name,
+                }
+            
             self._cached_broadcast_data = {
                 "satellite_name": satellite_name,
-                "lat": lat,
-                "lon": lon,
-                "alt": alt,
-                "status_code": status_code,
-                "status_readable": status_readable,
-                "temp": temp,
-                "power": power,
                 "timestamp": timestamp,
+                "hazard_info": hazard_info,
             }
         
         return self._cached_broadcast_data
@@ -1380,21 +1380,27 @@ class NavBroadcast(DialogueParticle):
             Human-readable broadcast announcement text.
         """
         data = self._get_broadcast_data()
+        satellite_name = data['satellite_name']
+        hazard_info = data.get('hazard_info')
         
-        # Build human-readable announcement
-        temp_sign = "plus" if data["temp"] >= 0 else "minus"
-        temp_abs = abs(data["temp"])
+        # Base opening
+        opening = f"All stations, this is {satellite_name} with a Navigation Update."
         
-        announcement = (
-            f"All stations, this is {data['satellite_name']} with a Navigation Update. "
-            f"Position: {data['lat']:.2f} degrees latitude, {data['lon']:.2f} degrees longitude, "
-            f"altitude {data['alt']:.0f} kilometers. "
-            f"Status: {data['status_readable']}. "
-            f"Temperature: {temp_sign} {temp_abs} degrees Celsius. "
-            f"Power: {data['power']} percent."
-        )
-        
-        return announcement
+        # Select announcement pattern based on whether we have a hazard
+        if hazard_info:
+            # Hazard announcement pattern
+            hazard_text = f"one Class {hazard_info['hazard_class']} {hazard_info['hazard']}"
+            body_name = hazard_info['body_name']
+            return f"{opening} We are tracking {hazard_text} near {body_name}. Otherwise conditions are nominal. Standby for hazard data and closures."
+        else:
+            # Routine announcement patterns (no hazards)
+            patterns = [
+                "Conditions are nominal.",
+                "Standby for today's hazard data and closures.",
+                "Standby for today's updates.",
+                "No new navigation hazards to declare at this time. Standby for a refreshed data table.",
+            ]
+            return f"{opening} {random.choice(patterns)}"
     
     def get_modem_encoded_data(self) -> str:
         """
@@ -1408,13 +1414,13 @@ class NavBroadcast(DialogueParticle):
         """
         data = self._get_broadcast_data()
         
-        # Technical format for modem encoding
+        # Placeholder format for modem encoding (per design doc)
+        # Eventually this should encode the actual broadcast text, but for now
+        # it's a placeholder that indicates this is technical data
         technical_data = (
             f"{data['satellite_name']} NAV UPDATE // "
-            f"POS {data['lat']:.2f} {data['lon']:.2f} ALT {data['alt']:.0f}KM // "
-            f"STATUS {data['status_code']} // "
-            f"TEMP {data['temp']:+d}C PWR {data['power']}% // "
-            f"TIMESTAMP {data['timestamp']}"
+            f"TIMESTAMP {data['timestamp']} // "
+            f"IF THIS WERE A REAL NAV UPDATE YOU'D BE ABLE TO READ IT BY NOW"
         )
         
         return technical_data
