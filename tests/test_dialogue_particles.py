@@ -11,6 +11,8 @@ from mysite.universe.services.dialogue.particles import (
     RadioReadback,
     HoldResponse,
     Holding,
+    NavBroadcast,
+    GratitudeParticle,
 )
 
 
@@ -371,4 +373,192 @@ class TestParticlePromptBuilding(DialogueParticleTest):
         self.assertGreater(len(prompt_data.example1), 0)
         self.assertGreater(len(prompt_data.example2), 0)
         self.assertGreater(len(prompt_data.example3), 0)
+
+
+class TestSatelliteParticles(DialogueParticleTest):
+    """Test satellite-related dialogue particles (NavBroadcast, GratitudeParticle)."""
+    
+    @classmethod
+    def setUpTestData(cls):
+        """Set up test data for satellite particles."""
+        super().setUpTestData()
+        from mysite.universe.models.actor import Satellite
+        cls.satellite = Satellite.create(name="Relay Alpha 1")
+    
+    def test_nav_broadcast_role_description(self):
+        """Test NavBroadcast returns correct satellite role description."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        particle = NavBroadcast(
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        role_desc = particle.get_role_description()
+        self.assertIn("Relay Alpha 1", role_desc)
+        self.assertIn("navigation satellite", role_desc.lower())
+    
+    def test_nav_broadcast_situation_description(self):
+        """Test NavBroadcast situation description includes satellite name."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        particle = NavBroadcast(
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        situation = particle.get_situation_description()
+        self.assertIn("RELAY ALPHA 1", situation)
+        self.assertIn("broadcasting", situation.lower())
+        self.assertIn("navigation update", situation.lower())
+    
+    def test_nav_broadcast_generate_text(self):
+        """Test NavBroadcast generates realistic nav update text."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        particle = NavBroadcast(
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        broadcast_text = particle.generate_nav_broadcast_text()
+        
+        # Should include satellite name
+        self.assertIn("RELAY ALPHA 1", broadcast_text)
+        # Should include nav update keywords
+        self.assertIn("NAV UPDATE", broadcast_text)
+        # Should include position data
+        self.assertIn("POS", broadcast_text)
+        # Should include status
+        self.assertIn("STATUS", broadcast_text)
+        # Should include telemetry
+        self.assertIn("TEMP", broadcast_text)
+        self.assertIn("PWR", broadcast_text)
+        # Should include timestamp
+        self.assertIn("TIMESTAMP", broadcast_text)
+    
+    def test_nav_broadcast_next_particle_probabilities(self):
+        """Test NavBroadcast has 5% chance of generating gratitude."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        particle = NavBroadcast(
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        
+        # Test multiple times to verify probability distribution
+        gratitude_count = 0
+        standalone_count = 0
+        iterations = 1000
+        
+        for _ in range(iterations):
+            probs = particle.get_next_particle_probabilities()
+            if "gratitude" in probs:
+                gratitude_count += 1
+                self.assertEqual(probs["gratitude"], 1.0)
+            else:
+                standalone_count += 1
+                self.assertEqual(probs, {})
+        
+        # Should be approximately 5% (allow 2-8% range for randomness)
+        gratitude_rate = gratitude_count / iterations
+        self.assertGreater(gratitude_rate, 0.02, "Should have at least 2% gratitude rate")
+        self.assertLess(gratitude_rate, 0.08, "Should have at most 8% gratitude rate")
+    
+    def test_gratitude_particle_role_description(self):
+        """Test GratitudeParticle returns correct pilot role description."""
+        nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+        }
+        particle = GratitudeParticle(
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=nav_context
+        )
+        role_desc = particle.get_role_description()
+        self.assertIn("Test Pilot", role_desc)
+        self.assertIn("pilot", role_desc.lower())
+        # Should NOT include ship name (no callsigns)
+        self.assertNotIn("TEST SHIP", role_desc)
+    
+    def test_gratitude_particle_situation_description(self):
+        """Test GratitudeParticle situation description is appropriate."""
+        nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+        }
+        particle = GratitudeParticle(
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=nav_context
+        )
+        situation = particle.get_situation_description()
+        self.assertIn("acknowledging", situation.lower())
+        self.assertIn("satellite", situation.lower())
+        self.assertIn("navigation broadcast", situation.lower())
+        self.assertIn("casual", situation.lower())
+    
+    def test_gratitude_particle_examples(self):
+        """Test GratitudeParticle examples are casual and appropriate."""
+        nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+        }
+        particle = GratitudeParticle(
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=nav_context
+        )
+        examples = particle.get_examples()
+        self.assertGreater(len(examples), 0)
+        
+        # Examples should be casual gratitude phrases
+        gratitude_keywords = ["thanks", "appreciate", "good copy", "copy"]
+        found_keyword = any(
+            keyword in example.lower()
+            for example in examples
+            for keyword in gratitude_keywords
+        )
+        self.assertTrue(found_keyword, "Examples should include gratitude phrases")
+        
+        # Examples should NOT include callsigns
+        for example in examples:
+            self.assertNotIn("TEST SHIP", example)
+            self.assertNotIn("RELAY ALPHA 1", example)
+    
+    def test_gratitude_particle_ends_chain(self):
+        """Test GratitudeParticle ends the chain (no follow-up particles)."""
+        nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+        }
+        particle = GratitudeParticle(
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=nav_context
+        )
+        probs = particle.get_next_particle_probabilities()
+        self.assertEqual(probs, {}, "Gratitude should end the chain")
+    
+    def test_gratitude_particle_builds_prompt_data(self):
+        """Test GratitudeParticle can build UserPromptData."""
+        nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
+        }
+        particle = GratitudeParticle(
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=nav_context
+        )
+        prompt_data = particle.build_user_prompt_data(
+            previous_dialogue=nav_context["previous_broadcast"]
+        )
+        
+        # Verify all required fields are present
+        self.assertIsNotNone(prompt_data.role)
+        self.assertIsNotNone(prompt_data.situation)
+        self.assertGreater(len(prompt_data.example1), 0)
+        self.assertGreater(len(prompt_data.example2), 0)
+        self.assertGreater(len(prompt_data.example3), 0)
+        # Should include previous broadcast as context
+        self.assertIn("NAV UPDATE", prompt_data.last_dialogue_line)
 

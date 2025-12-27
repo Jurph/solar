@@ -23,6 +23,8 @@ from mysite.universe.services.dialogue.particles import (
     RadioReadback,
     HoldResponse,
     Holding,
+    NavBroadcast,
+    GratitudeParticle,
 )
 
 
@@ -52,6 +54,10 @@ class DialogueChainTest(TestCase):
             "altitude_km": "150",
             "azimuth": "55",
         }
+        
+        # Create satellite for nav broadcast tests
+        from mysite.universe.models.actor import Satellite
+        cls.satellite = Satellite.create(name="Relay Alpha 1")
 
 
 class TestParticleFactoryManeuverMapping(DialogueChainTest):
@@ -449,3 +455,86 @@ class TestAllManeuverTypesGenerateChains(DialogueChainTest):
                         sum(probs.values()), 1.0, places=2,
                         msg=f"Probabilities for {maneuver_type} should sum to 1.0"
                     )
+
+
+class TestNavBroadcastChains(DialogueChainTest):
+    """Test nav broadcast and gratitude particle chains."""
+    
+    def test_nav_broadcast_creates_correct_particle(self):
+        """Test that ParticleFactory creates NavBroadcast particle."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        particle = ParticleFactory.create_particle(
+            particle_type="nav_broadcast",
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, NavBroadcast)
+    
+    def test_nav_broadcast_probability_distribution(self):
+        """Test that NavBroadcast has correct 5% gratitude probability."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        particle = NavBroadcast(
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        
+        # Test multiple times to verify probability
+        gratitude_count = 0
+        iterations = 1000
+        
+        for _ in range(iterations):
+            probs = particle.get_next_particle_probabilities()
+            if "gratitude" in probs:
+                gratitude_count += 1
+        
+        # Should be approximately 5% (allow 2-8% range)
+        gratitude_rate = gratitude_count / iterations
+        self.assertGreater(gratitude_rate, 0.02)
+        self.assertLess(gratitude_rate, 0.08)
+    
+    def test_gratitude_creates_correct_particle(self):
+        """Test that ParticleFactory creates GratitudeParticle."""
+        nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+        }
+        particle = ParticleFactory.create_particle(
+            particle_type="gratitude",
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=nav_context
+        )
+        self.assertIsInstance(particle, GratitudeParticle)
+    
+    def test_nav_broadcast_to_gratitude_chain(self):
+        """Test nav broadcast → gratitude chain structure."""
+        nav_context = {"satellite_name": "RELAY ALPHA 1"}
+        broadcast = NavBroadcast(
+            actor=self.satellite,
+            recipient="ALL",
+            nav_context=nav_context
+        )
+        
+        # Force gratitude probability for deterministic test
+        original_get_probs = broadcast.get_next_particle_probabilities
+        broadcast.get_next_particle_probabilities = lambda: {"gratitude": 1.0}
+        
+        probs = broadcast.get_next_particle_probabilities()
+        self.assertIn("gratitude", probs)
+        
+        # Create gratitude particle
+        gratitude_nav_context = {
+            "satellite_name": "RELAY ALPHA 1",
+            "previous_broadcast": broadcast.generate_nav_broadcast_text()
+        }
+        gratitude = GratitudeParticle(
+            actor=self.pilot,
+            recipient="RELAY ALPHA 1",
+            nav_context=gratitude_nav_context
+        )
+        
+        # Gratitude should end chain
+        gratitude_probs = gratitude.get_next_particle_probabilities()
+        self.assertEqual(gratitude_probs, {})

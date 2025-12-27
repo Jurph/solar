@@ -192,6 +192,120 @@ class ScriptService:
         
         return events
     
+    def generate_nav_broadcast_chain(
+        self,
+        satellite,
+        base_timestamp: float = 0.0,
+    ) -> List[DialogueEvent]:
+        """
+        Generate a dialogue chain for a satellite navigation broadcast.
+        
+        Uses the NavBroadcast particle to generate a single broadcast event
+        with nav update text that will be encoded as modem noise.
+        
+        Has a 5% chance of generating a gratitude response from a random ship
+        with a pilot in the system.
+        
+        Args:
+            satellite: Satellite actor broadcasting
+            base_timestamp: Base timestamp for the event (default: 0.0)
+            
+        Returns:
+            List containing DialogueEvent(s) for the nav broadcast and optional gratitude
+        """
+        from mysite.universe.models.ship import Ship
+        import random
+        
+        # Build nav context for broadcast
+        nav_context = {
+            "satellite_name": satellite.name.upper(),
+        }
+        
+        # Create nav broadcast particle
+        broadcast_particle = self.dialogue_service.particle_factory.create_particle(
+            particle_type="nav_broadcast",
+            actor=satellite,
+            recipient="ALL",  # Broadcasts go to all listeners
+            nav_context=nav_context,
+        )
+        
+        # Generate the broadcast message (procedural, not LLM)
+        broadcast_text = broadcast_particle.generate_nav_broadcast_text()
+        
+        # Create a single DialogueEvent for the broadcast
+        broadcast_event = DialogueEvent(
+            timestamp=base_timestamp,
+            actor=satellite,
+            text=broadcast_text,
+            duration=5.0,  # Broadcasts take a few seconds to transmit
+            event_type="dialogue",
+            metadata={
+                "type": "nav_broadcast",
+                "satellite_name": satellite.name,
+            },
+        )
+        
+        events = [broadcast_event]
+        
+        # Check if broadcast should generate a gratitude response (5% chance)
+        next_particle_probs = broadcast_particle.get_next_particle_probabilities()
+        if "gratitude" in next_particle_probs:
+            # Try to find a random ship with a pilot
+            # Query for ships that have pilots assigned
+            ships_with_pilots = Ship.objects.filter(pilot__isnull=False).select_related('pilot')
+            
+            if ships_with_pilots.exists():
+                # Pick a random ship with a pilot
+                random_ship = random.choice(list(ships_with_pilots))
+                pilot = random_ship.pilot
+                
+                # Create gratitude particle
+                gratitude_particle = self.dialogue_service.particle_factory.create_particle(
+                    particle_type="gratitude",
+                    actor=pilot,
+                    recipient=satellite.name.upper(),
+                    nav_context={
+                        "satellite_name": satellite.name.upper(),
+                        "previous_broadcast": broadcast_text,
+                    },
+                )
+                
+                # Generate gratitude message using LLM
+                # Use the dialogue service to generate the message
+                gratitude_messages = self.dialogue_service.generate_chain_iteratively(
+                    initial_particle=gratitude_particle,
+                    pilot=pilot,
+                    controller=None,
+                    nav_context={
+                        "satellite_name": satellite.name.upper(),
+                        "previous_broadcast": broadcast_text,
+                    },
+                    temperature=getattr(self.llm, 'temperature', None),
+                    satellite=None,
+                )
+                
+                # Convert gratitude message to event
+                if gratitude_messages:
+                    msg, time_offset = gratitude_messages[0]
+                    gratitude_timestamp = base_timestamp + broadcast_event.duration + time_offset
+                    
+                    gratitude_event = DialogueEvent(
+                        timestamp=gratitude_timestamp,
+                        actor=pilot,
+                        text=msg.message,
+                        duration=2.0,
+                        event_type="dialogue",
+                        metadata={
+                            "type": "gratitude",
+                            "satellite_name": satellite.name,
+                            "pilot_name": pilot.name,
+                            "ship_name": random_ship.name,
+                        },
+                    )
+                    events.append(gratitude_event)
+        
+        return events
+    
     def _build_nav_context(self, nav_event: NavigationEvent, ship: Ship) -> Dict[str, Any]:
         """
         Build navigation context dictionary from NavigationEvent and Ship.

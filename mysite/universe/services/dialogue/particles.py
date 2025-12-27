@@ -1206,3 +1206,242 @@ class SatelliteResponse(DialogueParticle):
             Empty dict - chain typically ends after satellite response.
         """
         return {}  # Chain typically ends after satellite response
+
+
+class NavBroadcast(DialogueParticle):
+    """
+    Satellite navigation broadcast particle.
+    
+    Generates automated navigation update messages from satellites.
+    These broadcasts contain position, status, and telemetry data encoded
+    as modem noise in the audio plan.
+    """
+    
+    def get_role_description(self) -> str:
+        """
+        Return role description for satellite.
+        
+        Format: "An automated navigation satellite named {satellite_name}"
+        
+        Returns:
+            Role description string.
+        """
+        satellite_name = self.actor.name
+        return f"An automated navigation satellite named {satellite_name}"
+    
+    def get_situation_description(self) -> str:
+        """
+        Return situation description for nav broadcast.
+        
+        Returns:
+            Situation description string.
+        """
+        satellite_name = self.actor.name.upper()
+        return f"{satellite_name} is broadcasting a periodic navigation update with position, status, and telemetry data."
+    
+    
+    # TODO: the procedural greeting should be "All stations, this is {satellite_name} with a Navigation Update."
+    def generate_procedural_greeting(self) -> str:
+        """
+        Generate procedural greeting for nav broadcasts.
+        
+        Satellites broadcast to all listeners, so no specific recipient.
+        
+        Returns:
+            Empty string (broadcasts don't have greetings).
+        """
+        return ""
+    
+    # TODO: update these with examples more suited to the feature design in /docs/TODO.md 
+    # Satellites will use a robotic text-to-speech voice to read the text of the broadcast in a legible-to-human-listeners way 
+    # Then they will follow the audio speech with an encoded update using modem noise 
+    
+    def get_examples(self) -> List[str]:
+        """
+        Return examples of nav broadcast messages.
+        
+        Returns:
+            List of example broadcast messages.
+        """
+        satellite_name = self.actor.name.upper()
+        return [
+            f"{satellite_name} NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP {int(random.uniform(100000, 999999))}",
+            f"{satellite_name} NAV UPDATE // POS -30.1 75.8 ALT 1200KM // STATUS CAUT // TEMP -15C PWR 88% // TIMESTAMP {int(random.uniform(100000, 999999))}",
+            f"{satellite_name} NAV UPDATE // POS 0.0 180.0 ALT 1500KM // STATUS NOM // TEMP +10C PWR 92% // TIMESTAMP {int(random.uniform(100000, 999999))}",
+        ]
+    
+    def get_counterexample(self) -> str:
+        """
+        Return counterexample (not used for nav broadcasts).
+        
+        Returns:
+            Empty string.
+        """
+        return ""
+    
+    def generate_nav_broadcast_text(self) -> str:
+        """
+        Generate a navigation broadcast message with realistic data.
+        
+        Creates nav update with coordinates, status, and telemetry.
+        
+        Returns:
+            Broadcast message text to be encoded as modem noise.
+        """
+        satellite_name = self.actor.name.upper()
+        
+        # Generate realistic nav broadcast content
+        lat = random.uniform(-90, 90)
+        lon = random.uniform(-180, 180)
+        alt = random.uniform(400, 2000)  # km altitude
+        
+        # Status codes
+        status_codes = ["NOM", "CAUT", "WARN", "STBY"]
+        status = random.choice(status_codes)
+        
+        # Telemetry values
+        temp = random.randint(-50, 50)
+        power = random.randint(80, 100)
+        
+        # Build broadcast message
+        from mysite.universe.models.simulation import get_simulation_time
+        timestamp = int(get_simulation_time())
+        
+        message = (
+            f"{satellite_name} NAV UPDATE // "
+            f"POS {lat:.2f} {lon:.2f} ALT {alt:.0f}KM // "
+            f"STATUS {status} // "
+            f"TEMP {temp:+d}C PWR {power}% // "
+            f"TIMESTAMP {timestamp}"
+        )
+        
+        return message
+    
+    def build_user_prompt_data(self, previous_dialogue: Optional[str] = None):
+        """
+        Build prompt data for nav broadcast generation.
+        
+        Nav broadcasts use procedural generation (not LLM), but we still
+        need to implement this method for the interface.
+        
+        Args:
+            previous_dialogue: Optional previous dialogue (ignored for broadcasts)
+            
+        Returns:
+            UserPromptData with examples for consistency
+        """
+        from .base import UserPromptData
+        
+        return UserPromptData(
+            role_description=self.get_role_description(),
+            situation_description=self.get_situation_description(),
+            examples=self.get_examples(),
+            counterexample=self.get_counterexample(),
+            previous_dialogue=previous_dialogue or "",
+        )
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a nav broadcast.
+        
+        Nav broadcasts have a 5% chance of generating a gratitude response
+        from a random ship in the system.
+        
+        Returns:
+            Dict with "gratitude" probability (0.05) if chance succeeds, else empty.
+        """
+        # 5% chance of gratitude response
+        if random.random() < 0.05:
+            return {"gratitude": 1.0}
+        return {}  # Most broadcasts are standalone
+
+
+class GratitudeParticle(DialogueParticle):
+    """
+    Pilot gratitude particle for thanking satellites for nav broadcasts.
+    
+    Generated as a casual response to satellite navigation updates.
+    No callsigns needed - just a brief acknowledgment.
+    """
+    
+    def get_role_description(self) -> str:
+        """
+        Return role description for pilot.
+        
+        Format: "{pilot_name}, a pilot"
+        
+        Returns:
+            Role description string.
+        """
+        pilot_name = self.actor.name if self.actor else "pilot"
+        return f"{pilot_name}, a pilot"
+    
+    def get_situation_description(self) -> str:
+        """
+        Return situation description for gratitude response.
+        
+        Returns:
+            Situation description string.
+        """
+        return "A pilot is casually acknowledging a useful message from a satellite, controller, or other pilot. This is a brief, informal thank-you, not a formal radio exchange."
+    
+    def generate_procedural_greeting(self) -> str:
+        """
+        Generate procedural greeting for gratitude (none needed).
+        
+        Returns:
+            Empty string (gratitude doesn't need greetings).
+        """
+        return ""
+    
+    def get_examples(self) -> List[str]:
+        """
+        Return examples of gratitude responses.
+        
+        Returns:
+            List of example gratitude messages.
+        """
+        return [
+            "Thanks for the update.",
+            "Good copy, appreciate the detailed data.",
+            "Appreciate the update.",
+            "Thanks, that's helpful.",
+            "Good copy on the update.",
+            "Appreciate it.",
+            "Good data, thanks.",
+        ]
+    
+    def get_counterexample(self) -> str:
+        """
+        Return counterexample (not used for gratitude).
+        
+        Returns:
+            Empty string.
+        """
+        return ""
+    
+    def build_user_prompt_data(self, previous_dialogue: Optional[str] = None):
+        """
+        Build prompt data for gratitude generation.
+        
+        Uses the base class implementation which properly formats UserPromptData.
+        
+        Args:
+            previous_dialogue: The nav broadcast message that triggered this gratitude
+            
+        Returns:
+            UserPromptData with examples
+        """
+        # Use base class implementation which handles proper formatting
+        return super().build_user_prompt_data(previous_dialogue)
+    
+    def get_next_particle_probabilities(self) -> Dict[str, float]:
+        """
+        Return probabilities for what can follow a gratitude response.
+        
+        Gratitude responses end the chain.
+        
+        Returns:
+            Empty dict - gratitude ends the chain.
+        """
+        return {}  # Gratitude ends the chain
