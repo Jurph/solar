@@ -268,14 +268,19 @@ class SublightRequest(PilotRequest):
             List of example sublight request dialogue strings.
         """
         destination = self.nav_context.get("destination", "destination")
+        maneuver = (self.nav_context.get("maneuver_type") or "sublight").lower()
+        # Transfers in this universe are sublight burns; "burn" keeps it consistent with design docs.
+        action = "burn"
+        if maneuver == "transfer":
+            action = "transfer burn"
         
         return [
-            f"Orbit is stable. We're outbound for {destination}. Can you give us a heading for departure and clear us to depart?",
-            f"Requesting clearance for sublight burn. We're bound for {destination}. What departure parameters do you want us to use?",
-            f"Ready for sublight transit to {destination}. Requesting clearance and departure heading.",
-            f"We're planning sublight burn outbound for {destination}. Can you give us departure clearance and a heading?",
-            f"Orbit is circular. Requesting permission to begin sublight burn toward {destination}. What departure angle should we use?",
-            f"Requesting sublight clearance. We're outbound for {destination}. Can you specify our departure heading?",
+            f"Orbit is stable. We're outbound for {destination}. Requesting clearance for {action} and a departure azimuth.",
+            f"Requesting clearance for {action} to {destination}. Can you give us an azimuth for departure?",
+            f"Ready for {action} to {destination}. Requesting departure azimuth and clearance to proceed.",
+            f"We're ready to depart orbit and begin {action} outbound for {destination}. Requesting departure azimuth.",
+            f"Orbit is circular. Requesting permission to begin {action} toward {destination}. What azimuth do you want us to fly?",
+            f"Requesting {action} clearance to {destination}. Please specify our departure azimuth.",
         ]
     
     def get_counterexample(self) -> str:
@@ -286,6 +291,28 @@ class SublightRequest(PilotRequest):
             Counterexample string.
         """
         return "[DON'T DO THIS!] We're approved for sublight. Permission granted, over."
+
+
+class HyperspaceRequest(PilotRequest):
+    """
+    Pilot requesting hyperspace jump clearance.
+
+    Used when a pilot requests permission to initiate a hyperspace jump between star systems.
+    """
+
+    def get_examples(self) -> List[str]:
+        destination = self.nav_context.get("destination", "destination")
+
+        return [
+            f"Requesting clearance for hyperspace jump to {destination}. Please provide a jump azimuth.",
+            f"We're ready to initiate hyperspace jump to {destination}. Requesting authorization and jump azimuth.",
+            f"Requesting hyperspace clearance to {destination}. Can you give us an approved azimuth for the jump?",
+            f"Standing by for hyperspace jump. We're bound for {destination}. Requesting jump authorization and azimuth.",
+            f"Ready for hyperspace jump to {destination}. Requesting clearance and jump azimuth.",
+        ]
+
+    def get_counterexample(self) -> str:
+        return "[DON'T DO THIS!] Hyperspace jump is approved. Permission granted, over."
 
 
 class InsertionRequest(PilotRequest):
@@ -543,13 +570,13 @@ class RadioResponse(DialogueParticle):
                     f"Your launch is approved. Head up to {int(apogee_km)} kilometers apogee, launch azimuth {azimuth_str} degrees. Check in when you reach apogee.",
                     f"Launch clearance granted. Target apogee {int(apogee_km)} kilometers, {int(inclination_deg)} degrees inclination.",
                     f"Your launch burn is approved. You can head up to {int(apogee_km)} kilometers, try to keep it near {int(inclination_deg)} degrees, and check in when you get to orbit.",
-                    f"We have your flight plan and your launch window is open. You are go.",
+                    "We have your flight plan and your launch window is open. You are go.",
                 ])
             else:
                 examples.extend([
-                    f"Your launch burn is approved. Execute when ready.",
-                    f"You're cleared for launch, proceed.",
-                    f"Launch clearance granted. Proceed when ready.",
+                    "Your launch burn is approved. Execute when ready.",
+                    "You're cleared for launch, proceed.",
+                    "Launch clearance granted. Proceed when ready.",
                 ])
         
         # Orbital maneuvers (insertion, circularization)
@@ -572,32 +599,31 @@ class RadioResponse(DialogueParticle):
                     f"Authorization granted for {maneuver} maneuver.",
                 ])
         
-        # Departure maneuvers (sublight, transfer)
-        elif maneuver in ["sublight", "transfer"]:
-            action = "burn" if maneuver == "sublight" else "transfer"
-            departure_angle_deg = physics_params.get("departure_angle_deg")
+        # Departure maneuvers (sublight, transfer, hyperspace)
+        elif maneuver in ["sublight", "transfer", "hyperspace"]:
+            action = "jump" if maneuver == "hyperspace" else "burn"
+            azimuth_deg = (
+                physics_params.get("azimuth_deg")
+                or physics_params.get("departure_angle_deg")
+            )
+            if azimuth_deg is None:
+                azimuth_deg = random.uniform(0.0, 360.0)
             farewells = ["Safe travels.", "Good luck.", "See you again soon.", "Take care.", "Fly safe."]
             farewell = random.choice(farewells)
+            azimuth_str = f"{int(float(azimuth_deg)) % 360:03d}"
             
             if destination:
-                if departure_angle_deg:
-                    examples.extend([
-                        f"You are go for {maneuver} {action} to {destination}. Departure angle {int(departure_angle_deg)} degrees. {farewell}",
-                        f"{maneuver.capitalize()} {action} to {destination} is approved. Departure angle {int(departure_angle_deg)} degrees. {farewell}",
-                        f"Cleared for {maneuver} {action}.",
-                        f"{maneuver.capitalize()} clearance granted, you can start the {action} when you're ready.",
-                    ])
-                else:
-                    examples.extend([
-                        f"You are go for {maneuver} to {destination}. {farewell}",
-                        f"{maneuver.capitalize()} {action} to {destination} is approved. {farewell}",
-                        f"Cleared for {maneuver} {action}.",
-                    ])
+                examples.extend([
+                    f"You are go for {maneuver} {action} to {destination}. Depart on azimuth {azimuth_str} degrees. {farewell}",
+                    f"{maneuver.capitalize()} {action} to {destination} is approved. Azimuth {azimuth_str} degrees. {farewell}",
+                    f"Cleared for {maneuver} {action}. Azimuth {azimuth_str} degrees.",
+                    f"{maneuver.capitalize()} clearance granted. Depart on azimuth {azimuth_str} degrees.",
+                ])
             else:
                 examples.extend([
-                    f"Cleared for {maneuver} {action}.",
-                    f"{maneuver.capitalize()} clearance granted.",
-                    f"You are go for {maneuver} {action}.",
+                    f"Cleared for {maneuver} {action}. Depart on azimuth {azimuth_str} degrees.",
+                    f"{maneuver.capitalize()} clearance granted. Azimuth {azimuth_str} degrees.",
+                    f"You are go for {maneuver} {action}. Azimuth {azimuth_str} degrees.",
                 ])
         
         # Plane change
@@ -612,9 +638,9 @@ class RadioResponse(DialogueParticle):
                 ])
             else:
                 examples.extend([
-                    f"Cleared for plane change maneuver.",
-                    f"Plane change authorization granted.",
-                    f"Plane change clearance approved.",
+                    "Cleared for plane change maneuver.",
+                    "Plane change authorization granted.",
+                    "Plane change clearance approved.",
                 ])
         
         # Deorbit
@@ -640,9 +666,9 @@ class RadioResponse(DialogueParticle):
                 ])
             else:
                 examples.extend([
-                    f"Cleared for deorbit burn.",
-                    f"Deorbit authorization granted.",
-                    f"Deorbit clearance approved.",
+                    "Cleared for deorbit burn.",
+                    "Deorbit authorization granted.",
+                    "Deorbit clearance approved.",
                 ])
         
         # Landing/dock
@@ -659,22 +685,22 @@ class RadioResponse(DialogueParticle):
             elif approach_heading_deg:
                 examples.extend([
                     f"Cleared for landing approach. Heading {int(approach_heading_deg)} degrees.",
-                    f"Landing clearance granted.",
-                    f"Landing authorization approved.",
+                    "Landing clearance granted.",
+                    "Landing authorization approved.",
                 ])
             else:
                 examples.extend([
-                    f"Cleared for landing.",
-                    f"Landing clearance granted.",
-                    f"Landing authorization approved.",
+                    "Cleared for landing.",
+                    "Landing clearance granted.",
+                    "Landing authorization approved.",
                 ])
         
         # Generic fallback
         else:
             examples.extend([
                 f"Cleared for {maneuver} maneuver.",
-                f"Cleared, proceed as planned.",
-                f"Authorization granted, you're cleared.",
+                "Cleared, proceed as planned.",
+                "Authorization granted, you're cleared.",
                 f"Cleared for {maneuver}, proceed when ready.",
             ])
         
@@ -683,10 +709,10 @@ class RadioResponse(DialogueParticle):
         if self.nav_context.get("after_hold", False) or "adjusted" in str(self.nav_context.get("maneuver_type", "")).lower():
             examples.extend([
                 f"Okay, adjust to azimuth seven zero, and {maneuver}. Sorry for the delay.",
-                f"Cleared now, proceed with adjusted vector.",
-                f"Traffic cleared, you're good to go.",
+                "Cleared now, proceed with adjusted vector.",
+                "Traffic cleared, you're good to go.",
                 f"Cleared for {maneuver}, proceed with adjusted parameters.",
-                f"You're cleared now, proceed.",
+                "You're cleared now, proceed.",
             ])
         
         return examples
@@ -792,29 +818,42 @@ class RadioReadback(DialogueParticle):
             verb = "launch"
         elif maneuver in ["insertion", "circularization"]:
             verb = "burn"
-        elif maneuver in ["sublight", "hyperspace"]:
+        elif maneuver in ["sublight", "transfer"]:
+            verb = "burn"
+        elif maneuver in ["hyperspace"]:
             verb = "jump"
         else:
             verb = "maneuver"
         
-        # Build examples that demonstrate reading back the instructed values
+        # For transfers/jumps, read back the azimuth/instructional degrees only (do not invent kilometers).
+        if maneuver in ["sublight", "transfer", "hyperspace"]:
+            az = int(inclination_deg) % 360
+            az_str = f"{az:03d}"
+            return [
+                f"Copy, azimuth {az_str} degrees. {verb}ing now.",
+                f"Roger, azimuth {az_str} degrees. {verb}ing.",
+                f"Okay, azimuth {az_str} degrees. {verb}ing now.",
+                f"Copy your azimuth {az_str}. {verb}ing now.",
+            ]
+
+        # Otherwise, build examples that demonstrate reading back the instructed values
         # Some examples use just one value (for cases where only km or deg was given)
         examples = []
-        
+
         # Examples that use altitude only
         examples.append(f"Roger, {altitude_km} kilometers, we'll {verb} now.")
         examples.append(f"Copy, {verb}ing to {altitude_km} kilometers.")
-        
+
         # Examples that use degrees only
         examples.append(f"Roger, {verb}ing on {inclination_deg} degrees.")
         examples.append(f"Okay, {inclination_deg} degrees, {verb}ing now.")
-        
+
         # Examples that use both values (when both were instructed)
         examples.append(f"Copy, {altitude_km} kilometers, {inclination_deg} degrees.")
         examples.append(f"Locking in your instructions... {inclination_deg} degrees, {altitude_km} kilometers. Okay, {verb}ing now.")
         examples.append(f"We copy. {altitude_km} kilometers, {inclination_deg} degrees. Proceeding with {maneuver}.")
         examples.append(f"Roger, {maneuver} to {altitude_km} kilometers at {inclination_deg} degrees.")
-        
+
         return examples
     
     def get_counterexample(self) -> str:
@@ -863,14 +902,14 @@ class HoldResponse(RadioResponse):
         
         return [
             f"Negative, hold position. We've lost custody on a Class {roman_numeral} debris track. We'll clear you once we re-acquire and confirm your safety.",
-            f"Hold on please. We have a ship with a flight emergency that needs priority. Stand by.",
-            f"Negative, hold. Adjusting clearance parameters.",
-            f"Hold position, traffic conflict - we should clear you in a moment.",
-            f"Stand by, hold your position. We're clearing you in a moment.",
-            f"There's a flight emergency coming through. Stand by for your clearance and vector.",
-            f"There's a derelict probe drifting through your window, you'll be clear to proceed in a moment. Stand by please.",
+            "Hold on please. We have a ship with a flight emergency that needs priority. Stand by.",
+            "Negative, hold. Adjusting clearance parameters.",
+            "Hold position, traffic conflict - we should clear you in a moment.",
+            "Stand by, hold your position. We're clearing you in a moment.",
+            "There's a flight emergency coming through. Stand by for your clearance and vector.",
+            "There's a derelict probe drifting through your window, you'll be clear to proceed in a moment. Stand by please.",
             f"There's some Class {roman_numeral} debris near your window. Probably nothing but we're going to let it go by. Hold for your clearance.",
-            f"We have -- hang on -- okay, it's cleared up, let me get that approval for you. Apologies for the delay."
+            "We have -- hang on -- okay, it's cleared up, let me get that approval for you. Apologies for the delay."
         ]
     
     def get_counterexample(self) -> str:
@@ -966,9 +1005,9 @@ class Holding(DialogueParticle):
         
         return [
             f"Holding position and awaiting clearance for {maneuver}.",
-            f"Roger, holding.",
-            f"Glad we checked with you. Get that cleared up and let us know when it's safe, please.", 
-            f"Copy, we're standing by.",
+            "Roger, holding.",
+            "Glad we checked with you. Get that cleared up and let us know when it's safe, please.",
+            "Copy, we're standing by.",
             f"Acknowledge your hold. We'll wait here for our {maneuver} clearance.",
             f"We're holding position for our {maneuver} clearance.",
             f"Understood, our {maneuver} clearance is on hold. We'll stand by.",
@@ -1035,12 +1074,12 @@ class CommsCheckRequest(PilotRequest):
             List of example comms check dialogue strings.
         """
         return [
-            f"Comms check.",
-            f"Radio check, please?",
-            f"Can you give me a calibration tone?",
-            f"Signal check on this frequency.",
-            f"Testing relay link.",
-            f"Checking signal strength.",
+            "Comms check.",
+            "Radio check, please?",
+            "Can you give me a calibration tone?",
+            "Signal check on this frequency.",
+            "Testing relay link.",
+            "Checking signal strength.",
         ]
     
     def get_counterexample(self) -> str:
