@@ -1,0 +1,10 @@
+01 - deep rumble
+02 - medium rumble 
+03 - low roar
+04 - low warble 
+05 - high warble 
+06 - sonar pings 
+07 - high pings
+08 - modems and teletypes  
+09 - quindars and radios  
+10 - interference static 
