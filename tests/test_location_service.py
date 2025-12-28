@@ -16,6 +16,14 @@ from mysite.universe.services.location_service import (
     get_distance_between,
     get_distance_between_star_systems,
     find_star_system_for_location,
+    get_orbital_distance_au,
+    get_subordinate_bodies,
+)
+from mysite.universe.services.location_service import (
+    _calculate_same_parent_distance,
+    _calculate_planet_to_planet_distance,
+    _get_orbital_parent,
+    _get_orbital_distance_from_parent,
 )
 
 
@@ -654,3 +662,452 @@ class LocationDistanceTest(TestCase):
         self.assertAlmostEqual(distance, expected_distance, places=8,
             msg=f"Station-to-moon distance {distance} AU should match {expected_distance} AU")
 
+
+class LocationServiceHierarchyTest(TestCase):
+    """Tests for subordinate body selection and star-system traversal helpers."""
+
+    @classmethod
+    def setUpTestData(cls):
+        xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
+        importer = UniverseImporter(xml_file)
+        importer.import_universe()
+
+        cls.sol_system = Location.objects.get(name="Sol System")
+        cls.sol = Location.objects.get(name="Sol")
+        cls.earth = Location.objects.get(name="Earth")
+        cls.mars = Location.objects.get(name="Mars")
+        cls.moon = Location.objects.get(name="Moon")
+        cls.earth_control = Location.objects.get(name="Earth Orbital Control")
+
+    def test_get_subordinate_bodies_returns_empty_when_no_location(self):
+        """No location and no name should return empty list (no random fallback)."""
+        self.assertEqual(get_subordinate_bodies(), [])
+
+    def test_get_subordinate_bodies_location_name_not_found_returns_empty(self):
+        """Unknown location_name should return empty list (no random fallback)."""
+        self.assertEqual(get_subordinate_bodies(location_name="THIS DOES NOT EXIST"), [])
+
+    def test_get_subordinate_bodies_for_planet_includes_moons_and_stations(self):
+        bodies = get_subordinate_bodies(location=self.earth)
+        names = {b.name for b in bodies}
+        self.assertIn("Earth", names)
+        self.assertIn("Moon", names)
+        self.assertIn("Earth Orbital Control", names)
+
+    def test_get_subordinate_bodies_for_moon_includes_parent(self):
+        bodies = get_subordinate_bodies(location=self.moon)
+        names = {b.name for b in bodies}
+        self.assertIn("Moon", names)
+        self.assertIn("Earth", names)
+
+    def test_get_subordinate_bodies_for_star_includes_planets_moons_and_stations(self):
+        bodies = get_subordinate_bodies(location=self.sol)
+        names = {b.name for b in bodies}
+        self.assertIn("Earth", names)
+        self.assertIn("Mars", names)
+        self.assertIn("Moon", names)
+        self.assertIn("Earth Orbital Control", names)
+
+    def test_get_subordinate_bodies_for_starsystem_includes_down_graph_only(self):
+        bodies = get_subordinate_bodies(location=self.sol_system)
+        names = {b.name for b in bodies}
+        self.assertIn("Earth", names)
+        self.assertIn("Mars", names)
+        self.assertIn("Moon", names)
+        self.assertIn("Earth Orbital Control", names)
+        self.assertNotIn("Sol System", names)
+
+    def test_find_star_system_for_location_returns_system_for_station(self):
+        system = find_star_system_for_location(self.earth_control)
+        self.assertIsNotNone(system)
+        self.assertEqual(system.name, "Sol System")
+
+    def test_find_star_system_for_location_returns_none_for_disconnected_location(self):
+        from mysite.universe.models.scale import Scale
+
+        isolated = Location.objects.create(name="Isolated", scale=Scale.STATION)
+        self.assertIsNone(find_star_system_for_location(isolated))
+
+    def test_get_orbital_distance_au_returns_none_for_station(self):
+        self.assertIsNone(get_orbital_distance_au(self.earth_control))
+
+    def test_get_distance_between_returns_none_when_star_system_coords_missing(self):
+        """
+        If either StarSystem lacks galactic coordinates, we can't compute ly distance.
+        """
+        from mysite.universe.models.celestial import Galaxy, StarSystem
+
+        g = Galaxy.objects.create(name="Coords Galaxy", galaxy_type="SP", galaxy_size="L")
+        sys_with = StarSystem.objects.create(
+            name="WithCoords",
+            orbits=g,
+            galactic_x_ly=1.0,
+            galactic_y_ly=2.0,
+            galactic_z_ly=3.0,
+            system_age_years=1e9,
+        )
+        sys_without = StarSystem.objects.create(name="NoCoords", orbits=g)
+
+        d, unit = get_distance_between(sys_with, sys_without)
+        self.assertEqual(unit, "ly")
+        self.assertIsNone(d)
+
+    def test_same_parent_distance_returns_none_when_missing_orbital_distance(self):
+        """
+        If two siblings orbit the same parent but we lack orbital distances,
+        we should return (None, 'au') rather than invent a number.
+        """
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+        from mysite.universe.models.scale import Scale
+
+        g = Galaxy.objects.create(name="Sibling Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Sibling System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=1e9,
+        )
+        star = Star.objects.create(name="Sibling Star", orbits=system, star_type="G")
+        planet = Planet.objects.create(name="Sibling Planet", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+
+        s1 = Station.objects.create(name="S1", orbits=planet, scale=Scale.STATION, orbital_distance_km=None)
+        s2 = Station.objects.create(name="S2", orbits=planet, scale=Scale.STATION, orbital_distance_km=400.0)
+
+        d, unit = get_distance_between(s1, s2)
+        self.assertEqual(unit, "au")
+        self.assertIsNone(d)
+
+    def test_station_to_parent_uses_min_safe_orbit_fallback_when_station_missing_orbit(self):
+        """
+        When a Station has no orbital_distance_km, we fall back to the parent's
+        min-safe-orbit + 300 km.
+        """
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+        from mysite.universe.models.scale import Scale
+
+        g = Galaxy.objects.create(name="Orbit Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Orbit System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=1e9,
+        )
+        star = Star.objects.create(
+            name="Orbit Star",
+            orbits=system,
+            star_type="G",
+            radius_km=1000.0,
+        )
+        planet = Planet.objects.create(
+            name="Orbit Planet",
+            orbits=star,
+            planet_type="TE",
+            radius_km=1000.0,
+            orbital_distance_au=1.0,
+        )
+
+        station = Station.objects.create(
+            name="Orbit Station",
+            orbits=planet,
+            scale=Scale.STATION,
+            orbital_distance_km=None,
+        )
+
+        d, unit = get_distance_between(station, planet)
+        self.assertEqual(unit, "au")
+        self.assertIsNotNone(d)
+
+        min_orbit_km = planet.get_min_safe_orbit_km()
+        expected_au = (min_orbit_km + 300.0) / 1.496e8
+        self.assertAlmostEqual(d, expected_au, places=12)
+
+    def test_planet_to_planet_same_system_different_stars_falls_back_to_orbital_distance_difference(self):
+        """
+        In a multi-star system, planets may orbit different stars. We currently fall back
+        to the simple |a2-a1| approximation when we can't compute a meaningful inter-star distance.
+        """
+        alpha_prime = Location.objects.get(name="Alpha Prime").get_concrete_instance()
+        beta_major = Location.objects.get(name="Beta Major").get_concrete_instance()
+
+        if not (isinstance(alpha_prime, Planet) and isinstance(beta_major, Planet)):
+            self.skipTest("Binary system planets not available as Planet instances")
+
+        # Guard: different parent stars
+        if alpha_prime.orbits == beta_major.orbits:
+            self.skipTest("Planets unexpectedly orbit same star; cannot exercise different-parent fallback")
+
+        a1 = getattr(alpha_prime, "orbital_distance_au", None)
+        a2 = getattr(beta_major, "orbital_distance_au", None)
+        if a1 is None or a2 is None:
+            self.skipTest("Missing orbital_distance_au for binary system planets")
+
+        d, unit = get_distance_between(alpha_prime, beta_major)
+        self.assertEqual(unit, "au")
+        self.assertIsNotNone(d)
+        self.assertAlmostEqual(d, abs(a2 - a1), places=12)
+
+    def test_station_to_parent_uses_default_orbit_when_min_safe_orbit_raises(self):
+        """
+        Defensive fallback: if parent.get_min_safe_orbit_km() errors, we fall back to ~400 km.
+        """
+        from unittest.mock import patch
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+        from mysite.universe.models.scale import Scale
+
+        g = Galaxy.objects.create(name="Error Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Error System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=1e9,
+        )
+        star = Star.objects.create(name="Error Star", orbits=system, star_type="G")
+        planet = Planet.objects.create(
+            name="Error Planet",
+            orbits=star,
+            planet_type="TE",
+            radius_km=1000.0,
+            orbital_distance_au=1.0,
+        )
+        station = Station.objects.create(
+            name="Error Station",
+            orbits=planet,
+            scale=Scale.STATION,
+            orbital_distance_km=None,
+        )
+
+        with patch.object(planet, "get_min_safe_orbit_km", side_effect=RuntimeError("boom")):
+            d, unit = get_distance_between(station, planet)
+
+        self.assertEqual(unit, "au")
+        self.assertIsNotNone(d)
+        self.assertAlmostEqual(d, 400.0 / 1.496e8, places=12)
+
+
+class LocationServiceFallbacksTest(TestCase):
+    """Targeted tests for location_service fallback branches that can bite later."""
+
+    def test_get_distance_between_different_systems_returns_none_when_system_coords_missing(self):
+        """
+        If two locations are in different star systems and either system lacks coords,
+        we must return (None, 'ly') rather than a bogus distance.
+        """
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        g = Galaxy.objects.create(name="MissingCoords Galaxy", galaxy_type="SP", galaxy_size="L")
+        sys1 = StarSystem.objects.create(
+            name="Sys1",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=1e9,
+        )
+        sys2 = StarSystem.objects.create(name="Sys2", orbits=g)  # missing coords
+
+        s1 = Star.objects.create(name="S1", orbits=sys1, star_type="G")
+        s2 = Star.objects.create(name="S2", orbits=sys2, star_type="G")
+        p1 = Planet.objects.create(name="P1", orbits=s1, planet_type="TE", orbital_distance_au=1.0, orbital_period_days=365.25)
+        p2 = Planet.objects.create(name="P2", orbits=s2, planet_type="TE", orbital_distance_au=1.5, orbital_period_days=500.0)
+
+        d, unit = get_distance_between(p1, p2)
+        self.assertEqual(unit, "ly")
+        self.assertIsNone(d)
+
+    def test_get_distance_between_star_systems_returns_inf_when_first_missing_coords(self):
+        """Cover the 'system1 missing coords' branch in get_distance_between_star_systems()."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem
+
+        g = Galaxy.objects.create(name="Inf Galaxy", galaxy_type="SP", galaxy_size="L")
+        sys_missing = StarSystem.objects.create(name="Inf Missing", orbits=g)
+        sys_with = StarSystem.objects.create(
+            name="Inf With",
+            orbits=g,
+            galactic_x_ly=1.0,
+            galactic_y_ly=2.0,
+            galactic_z_ly=3.0,
+        )
+        self.assertEqual(get_distance_between_star_systems(sys_missing, sys_with), float("inf"))
+
+    def test_planet_to_planet_same_star_falls_back_when_system_age_missing(self):
+        """If system_age_years is missing, planet distance falls back to |a2-a1|."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        g = Galaxy.objects.create(name="Age Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Age System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=None,
+        )
+        star = Star.objects.create(name="Age Star", orbits=system, star_type="G")
+        p1 = Planet.objects.create(name="Age P1", orbits=star, planet_type="TE", orbital_distance_au=1.0, orbital_period_days=300.0)
+        p2 = Planet.objects.create(name="Age P2", orbits=star, planet_type="TE", orbital_distance_au=1.6, orbital_period_days=500.0)
+
+        d, unit = get_distance_between(p1, p2)
+        self.assertEqual(unit, "au")
+        self.assertAlmostEqual(d, abs(1.6 - 1.0), places=12)
+
+    def test_planet_to_planet_same_star_falls_back_when_orbital_period_missing(self):
+        """If orbital periods are missing, planet distance falls back to |a2-a1|."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        g = Galaxy.objects.create(name="Period Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Period System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=4.0e9,
+        )
+        star = Star.objects.create(name="Period Star", orbits=system, star_type="G")
+        p1 = Planet.objects.create(name="Period P1", orbits=star, planet_type="TE", orbital_distance_au=1.0, orbital_period_days=300.0)
+        p2 = Planet.objects.create(name="Period P2", orbits=star, planet_type="TE", orbital_distance_au=1.6, orbital_period_days=None)
+
+        d, unit = get_distance_between(p1, p2)
+        self.assertEqual(unit, "au")
+        self.assertAlmostEqual(d, abs(1.6 - 1.0), places=12)
+
+    def test_calculate_same_parent_distance_prefers_orbital_distance_au(self):
+        """Directly exercise the helper branch that reads orbital_distance_au."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        g = Galaxy.objects.create(name="Tri Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Tri System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        star = Star.objects.create(name="Tri Star", orbits=system, star_type="G")
+        p1 = Planet.objects.create(name="Tri P1", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        p2 = Planet.objects.create(name="Tri P2", orbits=star, planet_type="TE", orbital_distance_au=2.0)
+
+        d, unit = _calculate_same_parent_distance(p1, p2, star)
+        self.assertEqual(unit, "au")
+        # law of cosines with 60 degrees
+        expected = math.sqrt(1.0**2 + 2.0**2 - 2 * 1.0 * 2.0 * math.cos(math.radians(60.0)))
+        self.assertAlmostEqual(d, expected, places=12)
+
+    def test_get_orbital_distance_from_parent_converts_km_to_au_for_moon(self):
+        """Directly exercise km→AU conversion branch for Moon orbital_distance_km."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet, Moon
+
+        g = Galaxy.objects.create(name="Moon Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Moon System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        star = Star.objects.create(name="Moon Star", orbits=system, star_type="G")
+        planet = Planet.objects.create(name="Moon Parent", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        moon = Moon.objects.create(name="Moon Child", orbits=planet, moon_type="R", orbital_distance_km=384400.0)
+
+        d_au = _get_orbital_distance_from_parent(moon, planet)
+        self.assertAlmostEqual(d_au, 384400.0 / 1.496e8, places=12)
+
+    def test_get_orbital_parent_returns_orbits_for_orbiting_objects(self):
+        """Directly exercise _get_orbital_parent's happy path."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        g = Galaxy.objects.create(name="Parent Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="Parent System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        star = Star.objects.create(name="Parent Star", orbits=system, star_type="G")
+        planet = Planet.objects.create(name="Parent Planet", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+
+        self.assertEqual(_get_orbital_parent(planet), star)
+
+    def test_get_orbital_distance_from_parent_returns_au_for_planet(self):
+        """Planet orbital_distance_au should round-trip through _get_orbital_distance_from_parent()."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        g = Galaxy.objects.create(name="AU Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="AU System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+            system_age_years=1e9,
+        )
+        star = Star.objects.create(name="AU Star", orbits=system, star_type="G")
+        planet = Planet.objects.create(name="AU Planet", orbits=star, planet_type="TE", orbital_distance_au=1.234)
+
+        self.assertAlmostEqual(_get_orbital_distance_from_parent(planet, star), 1.234, places=12)
+
+        # Also cover the public path: planet to its parent should return orbital distance
+        d, unit = get_distance_between(planet, star)
+        self.assertEqual(unit, "au")
+        self.assertAlmostEqual(d, 1.234, places=12)
+
+    def test_get_distance_between_returns_unknown_when_no_orbital_context(self):
+        """Two disconnected galaxies have no distance model; should return (None, 'unknown')."""
+        from mysite.universe.models.celestial import Galaxy
+
+        g1 = Galaxy.objects.create(name="NoCtx G1", galaxy_type="SP", galaxy_size="L")
+        g2 = Galaxy.objects.create(name="NoCtx G2", galaxy_type="SP", galaxy_size="L")
+        d, unit = get_distance_between(g1, g2)
+        self.assertEqual(unit, "unknown")
+        self.assertIsNone(d)
+
+    def test_calculate_planet_to_planet_distance_returns_none_without_star(self):
+        """Defensive: if a planet has no star, helper returns None (no crash)."""
+
+        class _FakePlanet:
+            orbits = None
+
+        d = _calculate_planet_to_planet_distance(_FakePlanet(), _FakePlanet(), 1.0, 2.0)
+        self.assertIsNone(d)
+
+    def test_calculate_planet_to_planet_distance_returns_none_when_system_is_not_starsystem(self):
+        """Defensive: if star.orbits is not a StarSystem, helper returns None."""
+        from mysite.universe.models.base import Location
+        from mysite.universe.models.scale import Scale
+
+        class _FakeStar:
+            def __init__(self, orbits):
+                self.orbits = orbits
+
+        class _FakePlanet:
+            def __init__(self, orbits):
+                self.orbits = orbits
+
+        not_a_system = Location.objects.create(name="NotAStarSystem", scale=Scale.STATION)
+        star = _FakeStar(orbits=not_a_system)
+        planet = _FakePlanet(orbits=star)
+
+        d = _calculate_planet_to_planet_distance(planet, planet, 1.0, 2.0)
+        self.assertIsNone(d)
+
+    def test_get_orbital_distance_from_parent_returns_none_for_star(self):
+        """Stars do not have orbital distances from their parent StarSystem in this model."""
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star
+
+        g = Galaxy.objects.create(name="NoOrbit Galaxy", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(
+            name="NoOrbit System",
+            orbits=g,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        star = Star.objects.create(name="NoOrbit Star", orbits=system, star_type="G")
+        self.assertIsNone(_get_orbital_distance_from_parent(star, system))

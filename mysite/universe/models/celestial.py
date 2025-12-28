@@ -364,7 +364,9 @@ class Galaxy(Location):
     orbits = None
 
     def save(self, *args, **kwargs):
-        if not self.scale:  # If scale is not already set, then assign Galaxy scale.
+        # Location.scale defaults to Scale.STATION; for Celestial subclasses we must
+        # override that default if caller didn't explicitly supply a scale.
+        if not self.scale or self.scale == Scale.STATION:
             self.scale = Scale.GALAXY
         super().save(*args, **kwargs)
 
@@ -411,7 +413,9 @@ class StarSystem(Location):
     )
 
     def save(self, *args, **kwargs):
-        if not self.scale:
+        # Location.scale defaults to Scale.STATION; for Celestial subclasses we must
+        # override that default if caller didn't explicitly supply a scale.
+        if not self.scale or self.scale == Scale.STATION:
             self.scale = Scale.STARSYSTEM
         super().save(*args, **kwargs)
 
@@ -456,7 +460,9 @@ class Star(PhysicalBody):
     )
 
     def save(self, *args, **kwargs):
-        if not self.scale:
+        # Location.scale defaults to Scale.STATION; for Celestial subclasses we must
+        # override that default if caller didn't explicitly supply a scale.
+        if not self.scale or self.scale == Scale.STATION:
             self.scale = Scale.STAR
         super().save(*args, **kwargs)
 
@@ -488,7 +494,9 @@ class Planet(PhysicalBody):
     )
 
     def save(self, *args, **kwargs):
-        if not self.scale:
+        # Location.scale defaults to Scale.STATION; for Celestial subclasses we must
+        # override that default if caller didn't explicitly supply a scale.
+        if not self.scale or self.scale == Scale.STATION:
             self.scale = Scale.PLANET
         super().save(*args, **kwargs)
 
@@ -513,6 +521,8 @@ class Moon(PhysicalBody):
     )
 
     def save(self, *args, **kwargs):
-        if not self.scale:
+        # Location.scale defaults to Scale.STATION; for Celestial subclasses we must
+        # override that default if caller didn't explicitly supply a scale.
+        if not self.scale or self.scale == Scale.STATION:
             self.scale = Scale.MOON
         super().save(*args, **kwargs)

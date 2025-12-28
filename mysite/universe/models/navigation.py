@@ -304,7 +304,8 @@ class UniverseGraph:
         """
         concrete = relative_location.get_concrete_instance()
         if max_scale is None:
-            max_scale = concrete.scale
+            # Normalize to OrderedScale so comparisons are reliable.
+            max_scale = OrderedScale(concrete.scale)
         elif not isinstance(max_scale, OrderedScale):
             max_scale = OrderedScale(max_scale)
 
@@ -333,12 +334,18 @@ class UniverseGraph:
         Finds and returns the nearest Location from 'start' that satisfies the given condition.
         If 'max_scale' is provided, only nodes with scale <= max_scale are considered.
         """
+        if max_scale is not None and not isinstance(max_scale, OrderedScale):
+            max_scale = OrderedScale(max_scale)
         visited = set()
         queue = deque([start.get_concrete_instance()])
         while queue:
             current = queue.popleft()
-            if max_scale and current.scale > max_scale:
-                continue
+            if max_scale is not None:
+                current_scale = (
+                    current.scale if isinstance(current.scale, OrderedScale) else OrderedScale(current.scale)
+                )
+                if current_scale > max_scale:
+                    continue
             if condition(current):
                 return current
             visited.add(current.id)
@@ -370,16 +377,21 @@ def get_concrete_type(node):
     return node.__class__.__name__
 
 def is_planetary(location: Location) -> bool:
-    """Return True if the location has a Planet or Moon scale and its parent object is of Star scale."""
+    """
+    Return True if the location is a Planet or Moon and directly orbits a Star.
+
+    Note: our orbital hierarchy uses the `orbits` FK on concrete Location subclasses,
+    not a legacy `parent` attribute.
+    """
     concrete = location.get_concrete_instance()
     if concrete.scale not in (Scale.PLANET, Scale.MOON):
         return False
 
-    # Check for a parent attribute; if absent or None, not planetary
-    if not hasattr(concrete, 'parent') or concrete.parent is None:
+    # Require a valid orbital parent
+    if not hasattr(concrete, 'orbits') or concrete.orbits is None:
         return False
 
-    parent_concrete = concrete.parent.get_concrete_instance()
+    parent_concrete = concrete.orbits.get_concrete_instance()
     return parent_concrete.scale == Scale.STAR
 
 def requires_plane_change(event: 'NavigationEvent') -> bool:
@@ -396,13 +408,15 @@ def requires_plane_change(event: 'NavigationEvent') -> bool:
     next_concrete = event.next.get_concrete_instance()
     destination_concrete = event.destination.get_concrete_instance()
 
-    # Ensure all three locations have a parent attribute
-    if (hasattr(current_concrete, 'parent') and current_concrete.parent is not None and
-        hasattr(next_concrete, 'parent') and next_concrete.parent is not None and
-        hasattr(destination_concrete, 'parent') and destination_concrete.parent is not None):
-        current_parent = current_concrete.parent.get_concrete_instance()
-        next_parent = next_concrete.parent.get_concrete_instance()
-        destination_parent = destination_concrete.parent.get_concrete_instance()
+    # Ensure all three locations have an orbital parent (we use `orbits`, not `parent`)
+    if (
+        hasattr(current_concrete, 'orbits') and current_concrete.orbits is not None
+        and hasattr(next_concrete, 'orbits') and next_concrete.orbits is not None
+        and hasattr(destination_concrete, 'orbits') and destination_concrete.orbits is not None
+    ):
+        current_parent = current_concrete.orbits.get_concrete_instance()
+        next_parent = next_concrete.orbits.get_concrete_instance()
+        destination_parent = destination_concrete.orbits.get_concrete_instance()
 
         # If not all parents are the same, a plane change is needed
         if not (current_parent.id == next_parent.id == destination_parent.id):
