@@ -36,7 +36,6 @@ from mysite.universe.procedural_generation import (
     generate_moon_quantity,
     generate_moon_properties,
     generate_moon_size,
-    generate_moon_composition,
     generate_moon_variety_by_parent,
     should_generate_moons_for_parent,
     calculate_solar_angle_deg,
