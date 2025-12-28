@@ -8,7 +8,6 @@ from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
 from mysite.universe.models.physics import Atmosphere
 from mysite.universe.models.scale import Scale
 from mysite.universe.models.ship import Ship
-from mysite.universe.models.station import Station
 from mysite.universe.models.display import (
     format_number,
     format_distance_km,
