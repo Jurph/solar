@@ -161,60 +161,27 @@
     audioBuffersA = [];
     audioBuffersB = [];
 
-    // Component names matching the renamed audio files
-    const componentNames = [
-      "controls-and-quindars",
-      "modems-and-teletypes",
-      "burbly-sonar",
-      "slower-burbles",
-      "engine-hum",
-      "engine-thrum",
-      "engine-rumble",
-      "deep-engine-rumble",
-      "infra-engine-rumble",
-      "staticky-crickets",
-    ];
-
-    // Load both A and B variants for each component
+    // Load both A and B variants for each component (using numeric order)
     for (let i = 1; i <= 10; i++) {
       const num = String(i).padStart(2, "0");
-      const name = componentNames[i - 1];
       
-      // Load WAV variant files
-      const urls = [
-        `/static/universe/audio/audio-${num}-variant-a.wav`,
-        `/static/universe/audio/audio-${num}-${name}.wav`,
-        `/static/universe/audio/audio-${num}.wav`,
-      ];
+      // Load WAV variant files (numeric order only)
+      const urlA = `/static/universe/audio/audio-${num}-variant-a.wav`;
+      const urlB = `/static/universe/audio/audio-${num}-variant-b.wav`;
       
       let bufferA = null;
-      for (const url of urls) {
-        try {
-          bufferA = await loadAudioFile(url);
-          break;
-        } catch (err) {
-          // Try next URL
-        }
+      try {
+        bufferA = await loadAudioFile(urlA);
+      } catch (err) {
+        console.warn(`Failed to load variant A for component ${i}:`, err);
       }
       audioBuffersA[i - 1] = bufferA;
-      if (!bufferA) {
-        console.warn(`Failed to load variant A for component ${i}`);
-      }
 
-      const urlsB = [
-        `/static/universe/audio/audio-${num}-variant-b.wav`,
-        `/static/universe/audio/audio-${num}-${name}.wav`, // Fallback to same file if no B variant
-        `/static/universe/audio/audio-${num}.wav`,
-      ];
-      
       let bufferB = null;
-      for (const url of urlsB) {
-        try {
-          bufferB = await loadAudioFile(url);
-          break;
-        } catch (err) {
-          // Try next URL
-        }
+      try {
+        bufferB = await loadAudioFile(urlB);
+      } catch (err) {
+        console.warn(`Failed to load variant B for component ${i}:`, err);
       }
       audioBuffersB[i - 1] = bufferB;
       if (!bufferB) {
@@ -302,9 +269,13 @@
       // Get slider value
       const sliderId = `component${String(i + 1).padStart(2, "0")}Gain`;
       const slider = el(sliderId);
-      const gain = slider ? parseFloat(slider.value) : 0.0;
+      let gain = slider ? parseFloat(slider.value) : 0.0;
+      // Ensure exactly 0 when slider is at minimum
+      if (gain <= 0 || isNaN(gain)) {
+        gain = 0.0;
+      }
 
-      if (gain > 0 && (audioBuffersA[i] || audioBuffersB[i])) {
+      if (gain > 0.0001 && (audioBuffersA[i] || audioBuffersB[i])) {
         gainNode.gain.value = gain;
         
         if (loopEngineNoise) {
@@ -392,11 +363,14 @@
   function updateComponentGain(index, gain) {
     if (gainNodes[index]) {
       const now = audioContext.currentTime;
-      gainNodes[index].gain.setTargetAtTime(gain, now, 0.01); // Smooth fade
       
-      // If gain becomes 0, stop playback. If it becomes > 0, start playback.
-      if (gain <= 0) {
-        // Stop both variants
+      // If gain becomes 0 or very close to 0, immediately set to 0 and stop sources
+      if (gain <= 0.0001) {
+        gainNodes[index].gain.cancelScheduledValues(now);
+        gainNodes[index].gain.setValueAtTime(0, now); // Immediate, no fade
+        gain = 0; // Ensure it's exactly 0
+        
+        // Stop both variants immediately
         if (audioSourcesA[index]) {
           try {
             audioSourcesA[index].stop();
@@ -411,11 +385,16 @@
           } catch (e) {}
           audioSourcesB[index] = null;
         }
-      } else if (gain > 0 && !audioSourcesA[index] && !audioSourcesB[index] && isPlaying) {
+      } else {
+        // For non-zero gain, use smooth fade
+        gainNodes[index].gain.setTargetAtTime(gain, now, 0.01);
+        
         // Start playback if not already playing
-        const startTime = audioContext.currentTime;
-        nextPlayTimeA[index] = startTime;
-        playVariantAAt(index, startTime);
+        if (!audioSourcesA[index] && !audioSourcesB[index] && isPlaying) {
+          const startTime = audioContext.currentTime;
+          nextPlayTimeA[index] = startTime;
+          playVariantAAt(index, startTime);
+        }
       }
     }
   }
@@ -442,7 +421,11 @@
       const slider = el(sliderId);
       if (slider) {
         slider.addEventListener("input", () => {
-          const gain = parseFloat(slider.value);
+          let gain = parseFloat(slider.value);
+          // Ensure exactly 0 when slider is at minimum
+          if (gain <= 0 || isNaN(gain)) {
+            gain = 0;
+          }
           if (isPlaying && audioContext) {
             updateComponentGain(i - 1, gain);
           }
