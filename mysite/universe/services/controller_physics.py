@@ -7,12 +7,11 @@ the physical properties of the relevant planet or moon.
 
 import random
 import math
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from mysite.universe.models.actor import Controller
 from mysite.universe.models.base import Location
 from mysite.universe.models.celestial import Planet, Moon, PhysicalBody
 from mysite.universe.models.station import Station
-from mysite.universe.models.navigation import ManeuverType
 
 
 class ControllerPhysicsService:
@@ -67,8 +66,6 @@ class ControllerPhysicsService:
         
         # Find the planet/moon that the station orbits
         # Or find the target location directly
-        from mysite.universe.models.base import Location
-        
         # Try to find target location by name
         # Use filter().first() to handle duplicate names gracefully
         target_location = Location.objects.filter(name=target_location_name).first()
@@ -163,10 +160,10 @@ class ControllerPhysicsService:
         """
         Generate parameters for SUBLIGHT/TRANSFER maneuver.
         
-        Calculates departure angle using straight-line approximation.
+        Calculates a heading as an azimuth (0-360°) using a straight-line approximation.
         
         Returns:
-            Dict with: departure_angle_deg, transfer_time_days (optional)
+            Dict with: azimuth_deg (and legacy alias departure_angle_deg for backward compatibility)
         """
         # Get origin and destination locations
         origin_name = nav_context.get("origin") or nav_context.get("current_location")
@@ -174,16 +171,19 @@ class ControllerPhysicsService:
         
         if not origin_name or not destination_name:
             # Fallback: random angle
+            azimuth = round(random.uniform(0.0, 360.0), 1)
             return {
-                "departure_angle_deg": round(random.uniform(0.0, 360.0), 1),
+                "azimuth_deg": azimuth,
+                "departure_angle_deg": azimuth,
             }
         
         # Try to get origin and destination bodies
-        from mysite.universe.models.base import Location
-        
         try:
-            origin_loc = Location.objects.get(name=origin_name)
-            dest_loc = Location.objects.get(name=destination_name)
+            # Names are not guaranteed unique; use filter().first() for robustness.
+            origin_loc = Location.objects.filter(name=origin_name).first()
+            dest_loc = Location.objects.filter(name=destination_name).first()
+            if origin_loc is None or dest_loc is None:
+                raise ValueError("Origin or destination not found")
             
             origin_body = origin_loc.get_concrete_instance()
             dest_body = dest_loc.get_concrete_instance()
@@ -196,8 +196,6 @@ class ControllerPhysicsService:
                 # Calculate angle using polar coordinates
                 # Assume solar "north" is 0° azimuth
                 # Calculate positions based on system age and orbital periods
-                from mysite.universe.models.celestial import StarSystem
-                
                 # Get system age (simplified: use current time or default)
                 system_age_years = 4.5e9  # Default: 4.5 billion years
                 if hasattr(origin_body, 'orbits') and origin_body.orbits:
@@ -224,16 +222,30 @@ class ControllerPhysicsService:
                 if departure_angle_deg < 0:
                     departure_angle_deg += 360.0
                 
+                azimuth = round(departure_angle_deg, 1)
                 return {
-                    "departure_angle_deg": round(departure_angle_deg, 1),
+                    "azimuth_deg": azimuth,
+                    "departure_angle_deg": azimuth,
                 }
         except Exception:
             pass
         
         # Fallback: random angle
+        azimuth = round(random.uniform(0.0, 360.0), 1)
         return {
-            "departure_angle_deg": round(random.uniform(0.0, 360.0), 1),
+            "azimuth_deg": azimuth,
+            "departure_angle_deg": azimuth,
         }
+
+    @staticmethod
+    def generate_hyperspace_parameters(body: PhysicalBody, nav_context: Dict) -> Dict[str, float]:
+        """
+        Generate parameters for HYPERSPACE maneuver.
+
+        For now, we use the same azimuth generator as sublight/transfer; the difference
+        is in dialogue wording ("jump" vs "burn").
+        """
+        return ControllerPhysicsService.generate_sublight_parameters(body, nav_context)
     
     @staticmethod
     def generate_plane_change_parameters(body: PhysicalBody, nav_context: Dict) -> Dict[str, float]:
@@ -356,6 +368,8 @@ class ControllerPhysicsService:
             return cls.generate_insertion_parameters(body, nav_context)
         elif maneuver_type in ["SUBLIGHT", "TRANSFER"]:
             return cls.generate_sublight_parameters(body, nav_context)
+        elif maneuver_type == "HYPERSPACE":
+            return cls.generate_hyperspace_parameters(body, nav_context)
         elif maneuver_type == "PLANE_CHANGE":
             return cls.generate_plane_change_parameters(body, nav_context)
         elif maneuver_type == "DEORBIT":

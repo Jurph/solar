@@ -131,9 +131,9 @@ class TestParticleFactoryManeuverMapping(DialogueChainTest):
     
     def test_unknown_maneuver_creates_generic_request(self):
         """Unknown maneuver types fall back to GenericRequest."""
-        nav_context = {**self.base_nav_context, "maneuver_type": "hyperspace"}
+        nav_context = {**self.base_nav_context, "maneuver_type": "warp_drive"}
         particle = ParticleFactory.create_particle(
-            particle_type="hyperspace",  # Not in REQUEST_PARTICLE_MAP
+            particle_type="warp_drive",  # Not in REQUEST_PARTICLE_MAP
             actor=self.pilot,
             recipient="MARS CONTROL",
             nav_context=nav_context

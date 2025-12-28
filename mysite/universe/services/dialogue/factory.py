@@ -11,6 +11,7 @@ from .particles import (
     CircularizationRequest,
     InsertionRequest,
     SublightRequest,
+    HyperspaceRequest,
     DeorbitRequest,
     LandingRequest,
     GenericRequest,
@@ -50,6 +51,9 @@ class ParticleFactory:
         "circularize": CircularizationRequest,
         "insertion": InsertionRequest,
         "sublight": SublightRequest,
+        # Transfers within-system use sublight drives; keep the pilot wording consistent.
+        "transfer": SublightRequest,
+        "hyperspace": HyperspaceRequest,
         "deorbit": DeorbitRequest,
         "landing": LandingRequest,
         # Fallback for unspecified maneuvers

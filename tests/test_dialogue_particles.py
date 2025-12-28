@@ -6,6 +6,8 @@ from mysite.universe.services.dialogue.particles import (
     LaunchRequest,
     CircularizationRequest,
     InsertionRequest,
+    SublightRequest,
+    HyperspaceRequest,
     GenericRequest,
     RadioResponse,
     RadioReadback,
@@ -164,6 +166,30 @@ class TestPilotRequestParticles(DialogueParticleTest):
         for example in examples:
             self.assertIn("unknown_maneuver", example.lower())
 
+    def test_sublight_request_uses_azimuth_language(self):
+        self.nav_context["maneuver_type"] = "sublight"
+        self.nav_context["destination"] = "Neptune"
+        particle = SublightRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        self.assertTrue(any("azimuth" in ex.lower() for ex in examples))
+        self.assertTrue(any("burn" in ex.lower() for ex in examples))
+
+    def test_hyperspace_request_mentions_jump_and_azimuth(self):
+        self.nav_context["maneuver_type"] = "hyperspace"
+        self.nav_context["destination"] = "Alpha Centauri"
+        particle = HyperspaceRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        self.assertTrue(any("hyperspace" in ex.lower() for ex in examples))
+        self.assertTrue(any("azimuth" in ex.lower() for ex in examples))
+
 
 class TestControllerResponseParticles(DialogueParticleTest):
     """Test controller response particle classes."""
@@ -239,6 +265,18 @@ class TestControllerResponseParticles(DialogueParticleTest):
         # Examples should use the actual destination from nav_context
         destination_found = any("Neptune" in ex for ex in examples)
         self.assertTrue(destination_found, "Examples should use nav_context destination dynamically")
+
+        # Hyperspace responses should use "jump" language and include an azimuth.
+        self.nav_context["maneuver_type"] = "hyperspace"
+        self.nav_context["destination"] = "Alpha Centauri"
+        particle = RadioResponse(
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        self.assertTrue(any("jump" in ex.lower() for ex in examples))
+        self.assertTrue(any("azimuth" in ex.lower() for ex in examples))
     
     def test_hold_response_examples(self):
         """Test HoldResponse examples indicate holding."""
@@ -290,6 +328,28 @@ class TestControllerResponseParticles(DialogueParticleTest):
             for keyword in readback_keywords
         )
         self.assertTrue(found_keyword, "Examples should include readback phrases")
+
+    def test_radio_readback_uses_burn_for_sublight_and_jump_for_hyperspace(self):
+        # Sublight: burn
+        self.nav_context["maneuver_type"] = "sublight"
+        particle = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        self.assertTrue(any("burn" in ex.lower() for ex in examples))
+        self.assertFalse(any("jump" in ex.lower() for ex in examples))
+
+        # Hyperspace: jump
+        self.nav_context["maneuver_type"] = "hyperspace"
+        particle = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        self.assertTrue(any("jump" in ex.lower() for ex in examples))
     
     def test_holding_examples(self):
         """Test Holding examples indicate holding position."""
