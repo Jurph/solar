@@ -180,10 +180,9 @@
       const num = String(i).padStart(2, "0");
       const name = componentNames[i - 1];
       
-      // Try WAV variants first (best compatibility), fall back to OGG
+      // Load WAV variant files
       const urls = [
         `/static/universe/audio/audio-${num}-variant-a.wav`,
-        `/static/universe/audio/audio-${num}-variant-a.ogg`,
         `/static/universe/audio/audio-${num}-${name}.wav`,
         `/static/universe/audio/audio-${num}.wav`,
       ];
@@ -204,7 +203,6 @@
 
       const urlsB = [
         `/static/universe/audio/audio-${num}-variant-b.wav`,
-        `/static/universe/audio/audio-${num}-variant-b.ogg`,
         `/static/universe/audio/audio-${num}-${name}.wav`, // Fallback to same file if no B variant
         `/static/universe/audio/audio-${num}.wav`,
       ];
