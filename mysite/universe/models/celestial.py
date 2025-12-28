@@ -449,6 +449,11 @@ class Star(PhysicalBody):
         blank=True,
         help_text="Surface temperature in Kelvin"
     )
+    luminosity_solar = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Luminosity in solar units (L☉)"
+    )
 
     def save(self, *args, **kwargs):
         if not self.scale:

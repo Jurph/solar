@@ -18,13 +18,14 @@ We need a comprehensive system that handles:
 - ✅ Django admin interface (basic, not specialized)
 - ✅ Command-line import tool (`import_universe` management command)
 - ✅ Procedural generation utilities exist (`procedural_generation.py`) including seeded RNG helpers
+- ✅ Importer is idempotent (uses `get_or_create` + updates) and is tested (see `tests/test_import_export.py`)
 
 ### What's Missing:
-- ❌ A single, authoritative “full schema v2” doc (this plan references `universe_schema_v2.md`, but the repo currently has `universe_schema.md`)
-- ❌ Seed-based generation integrated end-to-end (XML seed → importer → deterministic generation on missing fields)
+- ⚠️ A single, authoritative “full schema v2” doc: the repo has `docs/universe_schema.md`, but it does not yet fully describe all fields currently supported by the importer/exporter
+- ❌ Seed-based generation integrated end-to-end (XML seed → importer → deterministic generation of *missing* fields during import)
 - ❌ Web-based universe editor
 - ❌ Strong field validation (mandatory vs optional) at import time (beyond basic parsing)
-- ❌ Round-trip safety guarantees
+- ❌ Round-trip safety guarantees (import → export → import should preserve state). There is a round-trip test (`tests/test_import_export.py::test_import_export_roundtrip`) but it currently fails because the exporter does not yet write all fields present in the richer XML (e.g., system coords/age and various physical/orbital fields).
 
 ---
 

@@ -115,6 +115,7 @@ def event_feed(request):
             'timestamp': event.timestamp,
             'actor_name': event.actor_name,
             'text': event.text,
+            'metadata': event.metadata if event.metadata is not None else {},
             # Python-defined audio plan (client just queues & plays waveforms)
             'audio_plan': build_audio_plan_for_dialogue_event(event),
         }
