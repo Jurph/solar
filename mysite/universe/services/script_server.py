@@ -258,9 +258,30 @@ class ScriptService:
         if gratitude_prob > 0.0 and random.random() < gratitude_prob:
             # Try to find a random ship with a pilot
             # Query for ships that have pilots assigned
-            ships_with_pilots = Ship.objects.filter(pilot__isnull=False).select_related('pilot')
+            ships_with_pilots = list(
+                Ship.objects.filter(pilot__isnull=False).select_related("pilot", "current_location")
+            )
+
+            # If the satellite has a known location (preferably a StarSystem), restrict gratitude
+            # to ships in the same star system.
+            try:
+                from mysite.universe.services.location_service import find_star_system_for_location
+
+                satellite_system = None
+                if getattr(satellite, "location", None) is not None:
+                    satellite_system = find_star_system_for_location(satellite.location)
+
+                if satellite_system is not None:
+                    ships_with_pilots = [
+                        s for s in ships_with_pilots
+                        if s.current_location is not None
+                        and find_star_system_for_location(s.current_location) == satellite_system
+                    ]
+            except Exception:
+                # If we can't determine star systems, fall back to global selection.
+                pass
             
-            if ships_with_pilots.exists():
+            if ships_with_pilots:
                 # Pick a random ship with a pilot
                 random_ship = random.choice(list(ships_with_pilots))
                 pilot = random_ship.pilot

@@ -87,6 +87,18 @@ _PRESET_DEFINITIONS = {
             highpass_hz=50.0,
         )
     ],
+    # Placeholder room tone so event_during plans don't 404.
+    # This is intentionally simple (filtered noise); later we can replace it with
+    # ship-size-dependent rumble + reverb.
+    "room_tone_placeholder": [
+        WhiteNoise(
+            duration_seconds=0.6,
+            gain=0.08,
+            intensity=0.5,
+            lowpass_hz=1200.0,
+            highpass_hz=40.0,
+        )
+    ],
     # Modem noise: 1200-baud Kermit encoding
     # Example: encode a short message
     "modem_noise_example": [
