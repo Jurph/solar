@@ -32,20 +32,25 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
         # Extract actor name from the event
         actor_name = event.actor.name if hasattr(event.actor, 'name') else str(event.actor)
         
-        # Log the event being saved for debugging
-        import logging
-        logger = logging.getLogger('dialogue_event_debug')
-        logger.setLevel(logging.DEBUG)
-        if not logger.handlers:
-            handler = logging.FileHandler('dialogue_event_debug.log', mode='a', encoding='utf-8')
-            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-            logger.addHandler(handler)
+        # Optional debug logging:
+        # Writing ad-hoc log files is hostile to deployment, so this is opt-in.
+        # Set DIALOGUE_EVENT_DEBUG_LOG_FILE to a filepath to enable.
+        import os
+        debug_log_path = os.getenv("DIALOGUE_EVENT_DEBUG_LOG_FILE")
+        debug_logger = logging.getLogger("dialogue_event_debug")
+        debug_logger.setLevel(logging.DEBUG)
+        if debug_log_path and not debug_logger.handlers:
+            handler = logging.FileHandler(debug_log_path, mode="a", encoding="utf-8")
+            handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+            debug_logger.addHandler(handler)
         
-        logger.debug(f"=== SAVING DIALOGUE EVENT ===")
-        logger.debug(f"Actor: {actor_name} (type: {type(event.actor)}, role: {getattr(event.actor, 'role', 'N/A')})")
-        logger.debug(f"Event text (raw): {event.text[:200]}")
-        logger.debug(f"Metadata: {event.metadata}")
-        logger.debug(f"=== END SAVING DIALOGUE EVENT ===\n")
+        debug_logger.debug("=== SAVING DIALOGUE EVENT ===")
+        debug_logger.debug(
+            f"Actor: {actor_name} (type: {type(event.actor)}, role: {getattr(event.actor, 'role', 'N/A')})"
+        )
+        debug_logger.debug(f"Event text (raw): {event.text[:200]}")
+        debug_logger.debug(f"Metadata: {event.metadata}")
+        debug_logger.debug("=== END SAVING DIALOGUE EVENT ===\n")
         
         # CRITICAL: Extract natural language text from event.text
         # event.text should NEVER be JSON - it should always be natural language
@@ -86,7 +91,7 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
                         display_text = match.group(1).replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\')
                     else:
                         # If all else fails, use a fallback
-                        logger.error(f"Could not extract message from JSON in event text: {display_text[:200]}")
+                        debug_logger.error(f"Could not extract message from JSON in event text: {display_text[:200]}")
                         display_text = "[Error: Could not extract dialogue message]"
             except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
                 # If JSON parsing fails, try regex extraction
@@ -95,7 +100,7 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
                 if match:
                     display_text = match.group(1).replace('\\"', '"').replace('\\n', '\n').replace('\\\\', '\\')
                 else:
-                    logger.error(f"Failed to parse JSON in event text: {e}. Text: {display_text[:200]}")
+                    debug_logger.error(f"Failed to parse JSON in event text: {e}. Text: {display_text[:200]}")
                     display_text = "[Error: Could not parse dialogue response]"
         
         # Create and save the log entry with natural language text only

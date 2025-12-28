@@ -9,6 +9,7 @@ These tests verify the core business logic:
 import time
 from django.test import TestCase, Client
 
+from mysite.universe.models.actor import Satellite
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.simulation import SimulationState
 
@@ -276,6 +277,44 @@ class EventMetadataTests(TestCase):
         returned_event = data['events'][0]
         self.assertIn('metadata', returned_event)
         self.assertEqual(returned_event['metadata'], {})
+
+
+class EventFeedAudioPlanRobustnessTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+
+        self.base_sim_time = 10000.0
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=self.base_sim_time,
+            anchor_wall_clock=time.time(),
+            time_scale=1.0
+        )
+
+    def test_event_feed_does_not_500_when_duplicate_satellite_names_exist(self):
+        """
+        Regression test: Actor names are not unique. Duplicate Satellite names previously
+        caused /api/events/ to 500 when audio plans were generated via .get(name=...).
+        """
+        Satellite.objects.create(name="DUP SAT")
+        Satellite.objects.create(name="DUP SAT")
+
+        DialogueEventLog.objects.create(
+            timestamp=self.base_sim_time - 10.0,
+            actor_name="DUP SAT",
+            text="NAV UPDATE",
+            metadata={"type": "nav_broadcast", "modem_data": "HELLO"},
+        )
+
+        response = self.client.get('/api/events/')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["events"]), 1)
+        self.assertIn("audio_plan", data["events"][0])
+        presets = [a.get("preset") for a in data["events"][0]["audio_plan"]]
+        self.assertIn("modem_noise_example", presets)
 
 
 if __name__ == '__main__':
