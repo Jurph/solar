@@ -47,32 +47,26 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     actor = None
     is_satellite = False
     
+    # Names are not unique; always use filter().first() to avoid MultipleObjectsReturned.
+    # Prefer concrete subclasses in a stable order so audio behavior is deterministic.
+
     # Try Satellite first (for nav broadcasts)
-    try:
-        actor = Satellite.objects.get(name=event.actor_name)
+    actor = Satellite.objects.filter(name=event.actor_name).order_by("-id").first()
+    if actor is not None:
         is_satellite = True
-    except Satellite.DoesNotExist:
-        pass
     
     # Try Pilot if not found
     if actor is None:
-        try:
-            actor = Pilot.objects.get(name=event.actor_name)
-        except Pilot.DoesNotExist:
-            pass
+        actor = Pilot.objects.filter(name=event.actor_name).order_by("-id").first()
     
     # Try Controller if not found
     if actor is None:
-        try:
-            actor = Controller.objects.get(name=event.actor_name)
-        except Controller.DoesNotExist:
-            pass
+        actor = Controller.objects.filter(name=event.actor_name).order_by("-id").first()
     
     # Fallback to base Actor model
     if actor is None:
-        try:
-            actor = Actor.objects.get(name=event.actor_name)
-        except Actor.DoesNotExist:
+        actor = Actor.objects.filter(name=event.actor_name).order_by("-id").first()
+        if actor is None:
             # Fallback: use default presets if actor not found
             return [
                 {"trigger": "event_start", "preset": "quindar_start"},

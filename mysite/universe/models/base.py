@@ -83,7 +83,7 @@ class Location(models.Model):
         Indicates whether leaving this location requires launch clearance.
         (This could be based on special scale values, for example.)
         """
-        return self.scale in {Scale.PLANET, Scale.MOON, Scale.Station} 
+        return self.scale in {Scale.PLANET, Scale.MOON, Scale.STATION}
 
     def requires_docking_clearance(self) -> bool:
         """

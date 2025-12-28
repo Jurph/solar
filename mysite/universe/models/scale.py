@@ -33,7 +33,6 @@ class OrderedScale(int):
         return str(int(self))
 
     def __hash__(self) -> int:
-        print(f"Hashing OrderedScale: {self}")
         return hash(str(self))
 
 class Scale(models.TextChoices):
