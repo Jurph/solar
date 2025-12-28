@@ -16,12 +16,11 @@
   }
 
   function buildPayload() {
-    return {
+    const payload = {
       mode: getMode(),
       text: el("labText").value,
       include_quindar: el("includeQuindar").checked,
       include_static: el("includeStatic").checked,
-      tts_gain: el("ttsGain") ? parseFloat(el("ttsGain").value) : 1.0,
       modem_gain: parseFloat(el("modemGain").value),
       mark_frequency_hz: parseFloat(el("markFreq").value),
       space_frequency_hz: parseFloat(el("spaceFreq").value),
@@ -44,6 +43,16 @@
       echo_decay: parseFloat(el("echoDecay").value),
       echo_wet: parseFloat(el("echoWet").value),
     };
+
+    // Add 10 component gains for TTS mode
+    if (getMode() === "tts") {
+      for (let i = 1; i <= 10; i++) {
+        const id = `component${String(i).padStart(2, "0")}Gain`;
+        payload[`component_${i}_gain`] = el(id) ? parseFloat(el(id).value) : 0.0;
+      }
+    }
+
+    return payload;
   }
 
   function getSettingsJson() {

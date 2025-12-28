@@ -46,6 +46,7 @@ from django.contrib.staticfiles import finders
 
 from mysite.universe.services.audio_synth import (
     Echo,
+    LoopedAudioFragment,
     ModemNoise,
     SineBeep,
     WavFileClip,
@@ -253,9 +254,8 @@ def audio_lab_render(request):
 
         components.append(WavFileClip(start_seconds=voice_start, path=sample_path, gain=tts_gain))
 
-        # Static/rumble need a duration_seconds. Compute it from the WAV header so we
-        # don't truncate longer clips.
-        end_time = voice_start + 0.5
+        # Compute voice clip duration for looping the 10 soundscape components.
+        voice_duration = 0.5  # fallback
         try:
             import wave
 
@@ -263,10 +263,46 @@ def audio_lab_render(request):
                 sr = wf.getframerate() or 0
                 frames = wf.getnframes() or 0
             if sr > 0 and frames > 0:
-                end_time = voice_start + (frames / float(sr))
+                voice_duration = frames / float(sr)
         except Exception:
             # If header read fails, keep a small non-zero bed duration.
             pass
+
+        end_time = voice_start + voice_duration
+
+        # Add 10 looped audio fragments (audio-01.oga through audio-10.oga)
+        # These loop for the duration of the voice clip.
+        from django.contrib.staticfiles import finders
+
+        for i in range(1, 11):
+            component_gain = float(payload.get(f"component_{i}_gain", 0.0))
+            if component_gain <= 0.0:
+                continue  # Skip components with zero gain
+
+            fragment_path = finders.find(f"universe/audio/audio-{i:02d}.wav")
+            if not fragment_path:
+                # Fallback to old staticfiles path
+                import os
+                fallback_path = os.path.join(
+                    settings.BASE_DIR,
+                    "staticfiles",
+                    "audio",
+                    f"audio-{i:02d}.wav",
+                )
+                if os.path.exists(fallback_path):
+                    fragment_path = fallback_path
+                else:
+                    logger.warning(f"Audio fragment audio-{i:02d}.wav not found, skipping")
+                    continue
+
+            components.append(
+                LoopedAudioFragment(
+                    start_seconds=0.0,
+                    path=fragment_path,
+                    gain=component_gain,
+                    loop_duration_seconds=0.0,  # 0 = loop for full mix duration
+                )
+            )
 
         if include_quindar:
             components.append(SineBeep(start_seconds=end_time + 0.05, duration_seconds=0.25, frequency_hz=2475.0, gain=0.9))
