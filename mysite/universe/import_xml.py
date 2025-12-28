@@ -164,7 +164,19 @@ class UniverseImporter:
                 star.star_type = element.findtext("type")
             if element.findtext("magnitude"):
                 star.star_magnitude = Decimal(element.findtext("magnitude") or "0")
-            star.save()
+        # Import physical properties if present
+        if hasattr(star, "mass_kg") and element.findtext("mass_kg"):
+            star.mass_kg = float(element.findtext("mass_kg"))
+        if hasattr(star, "radius_km") and element.findtext("radius_km"):
+            star.radius_km = float(element.findtext("radius_km"))
+        if hasattr(star, "density_kg_m3") and element.findtext("density_kg_m3"):
+            star.density_kg_m3 = float(element.findtext("density_kg_m3"))
+        if hasattr(star, "temperature_k") and element.findtext("temperature_k"):
+            star.temperature_k = float(element.findtext("temperature_k"))
+        if hasattr(star, "luminosity_solar") and element.findtext("luminosity_solar"):
+            star.luminosity_solar = float(element.findtext("luminosity_solar"))
+
+        star.save()
         
         self.object_cache[star.name] = star
         
