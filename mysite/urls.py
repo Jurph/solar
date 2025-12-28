@@ -33,5 +33,8 @@ urlpatterns = [
     path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
     # API endpoint for audio clip presets (WAV):
     path("api/audio/preset/<str:preset>/", views.audio_preset, name="audio_preset"),
+    # Dev tool: Audio lab (standalone UI + render endpoint)
+    path("audio-lab/", views.audio_lab, name="audio_lab"),
+    path("api/audio/lab/render/", views.audio_lab_render, name="audio_lab_render"),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

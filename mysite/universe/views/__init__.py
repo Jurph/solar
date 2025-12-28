@@ -40,6 +40,8 @@ from mysite.universe.views.missions import (
 # Audio
 from mysite.universe.views.audio import (
     audio_preset,
+    audio_lab,
+    audio_lab_render,
 )
 
 # Backwards compatibility alias for consolidated clear function
@@ -65,4 +67,6 @@ __all__ = [
     'run_demo',
     # Audio
     'audio_preset',
+    'audio_lab',
+    'audio_lab_render',
 ]

@@ -119,14 +119,14 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Script a small number of "anomalies" with simple resolutions
 
 ### Four - Character Development
-- Contextual dialogue generation that isn't terrible or clunky 
+- Contextual dialogue generation that isn't terrible or clunky ✓
 - Persistent characters with personality notes
 - Build out source files for ship names, planets, stars &c. ✓
-- Implement a richer Mission model for narrative-driven journeys
-- Involve satellites more (check-ins, etc.) so they can beep and squawk 
+- Implement a richer Mission model for narrative-driven journeys 
+- Involve satellites more (check-ins, etc.) so they can beep and squawk ✓
 - Get a local LLM to respond to dialogue prompts "in character" ✓
 - Enhance Actor model with voice templates
-- Implement different mission types beyond transport
+- Implement different mission types beyond transport ✓
 
 ### Five - Vox Populi 
 - Text to speech first efforts 
@@ -191,3 +191,33 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Some systems may not have a NavSat; if you choose a random star and it has no NavSat, create the Actor 
 - Eventually I'd like the modem noise to encode the text of the broadcast but this is a stretch goal; for now we can just build a blob of text like "IF THIS WERE A REAL NAV UPDATE YOU'D BE ABLE TO READ IT BY NOW // 256 bytes of random hex" 
 - Broadcast should be very low data rate - maybe 1200 baud - to ensure that it sounds like tones and not just a millisecond-long burst of noise 
+
+---
+
+#### Feature: Hazards 
+
+**Big Picture:** Generate persistent hazards to navigation that pilots can interact with. Spent booster stages around populated planets, comets, asteroids, unregistered satellites, derelict ships & stations, debris fields, etc. Use these as prompts that raise the likelihood of NavSat hazard messages or safety holds. 
+
+**Some details:**
+- Sketch in the idea of a Hazard (probably its own Class) 
+- Hazards need a location, a duration, and a description at minimum  
+- Actors need to be able to read whether a location has a Hazard 
+- TODO: is a Hazard a property of a Location? What's the right density for them? How do they come into being? 
+- Hazard could use the Event logic, and have its own "mission" (Hazard exists, transits a few nearby bodies, goes away)
+
+---
+
+#### Feature: Audio Generation UI 
+
+**Big Picture:** A web service that can directly stimulate audio, to allow for experimentation without having to go through mission generation  
+
+**Pieces:** 
+- Volume slider top center
+- Text input box in the center 
+- Below the text box, left side, "Play with TTS" button (NOP for now, either grayed out or does nothing)
+- Below the text box, right side, "Play as Modem Noise" button 
+- Below both buttons, an "add static" panel controlling the pitch and rumble of static 
+- Left panel: voice settings (dropdown for picking voice file, speed, pitch)
+- Right panel: modem settings (baud, pitch fields, all the variables)  
+- These variables all build an API call into the code that tells the code to play sound 
+
