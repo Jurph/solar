@@ -270,7 +270,7 @@ def audio_lab_render(request):
 
         end_time = voice_start + voice_duration
 
-        # Add 10 looped audio fragments (audio-01.oga through audio-10.oga)
+        # Add 10 looped audio fragments (audio-01.wav through audio-10.wav)
         # These loop for the duration of the voice clip.
         from django.contrib.staticfiles import finders
 
