@@ -146,7 +146,21 @@ class WavFileClip:
     gain: float = 1.0
 
 
-AudioComponent = SineBeep | WhiteNoise | ModemNoise | WavFileClip
+@dataclass(frozen=True)
+class LoopedAudioFragment:
+    """
+    Load a WAV audio fragment and loop it for a specified duration.
+
+    Used for mixing multiple ambient soundscape components (e.g., engine rumble,
+    static, room tone fragments) that loop continuously.
+    """
+    start_seconds: float = 0.0
+    path: str = ""
+    gain: float = 1.0
+    loop_duration_seconds: float = 0.0  # How long to loop (0 = loop for full mix duration)
+
+
+AudioComponent = SineBeep | WhiteNoise | ModemNoise | WavFileClip | LoopedAudioFragment
 
 
 def render_wav_bytes(
@@ -180,6 +194,8 @@ def render_wav_bytes(
             _mix_modem_noise(mix, comp, sample_rate_hz)
         elif isinstance(comp, WavFileClip):
             _mix_wav_file_clip(mix, comp, sample_rate_hz)
+        elif isinstance(comp, LoopedAudioFragment):
+            _mix_looped_audio_fragment(mix, comp, sample_rate_hz)
         else:
             raise TypeError(f"Unsupported component type: {type(comp)!r}")
 
@@ -216,6 +232,9 @@ def _compute_total_duration(components: Iterable[AudioComponent]) -> float:
                 dur = 0.0
         elif isinstance(c, WavFileClip):
             dur = _get_wav_duration_seconds(c.path)
+        elif isinstance(c, LoopedAudioFragment):
+            # Looped fragments use loop_duration_seconds (0 = full mix duration, handled in mixer)
+            dur = float(c.loop_duration_seconds) if c.loop_duration_seconds > 0 else 0.0
         else:
             dur = float(getattr(c, "duration_seconds", 0.0) or 0.0)
         end = max(end, max(0.0, start) + max(0.0, dur))
@@ -535,6 +554,50 @@ def _mix_wav_file_clip(mix: list[float], clip: WavFileClip, sr: int) -> None:
 
     for local_i, i in enumerate(range(start_i, end_i)):
         mix[i] += samples[local_i] * gain
+
+
+def _mix_looped_audio_fragment(mix: list[float], fragment: LoopedAudioFragment, sr: int) -> None:
+    """
+    Load a WAV fragment, loop it, and mix it into the output buffer.
+
+    If loop_duration_seconds is 0, loops for the full mix duration.
+    """
+    if not fragment.path:
+        return
+
+    try:
+        src_sr, loop_samples = _read_wav_mono_float(fragment.path)
+    except (ValueError, FileNotFoundError) as e:
+        # Graceful degradation: if WAV read fails, skip this fragment
+        # (In production, we'd log this, but for dev tooling we just skip)
+        return
+
+    # Resample to target sample rate
+    loop_samples = _resample_linear(loop_samples, src_sr, sr)
+    if not loop_samples:
+        return
+
+    gain = max(0.0, float(fragment.gain))
+    start_i = int(max(0.0, float(fragment.start_seconds)) * sr)
+
+    # Determine how long to loop
+    if fragment.loop_duration_seconds > 0:
+        loop_duration = fragment.loop_duration_seconds
+    else:
+        # Loop for remaining mix duration
+        loop_duration = (len(mix) - start_i) / float(sr) if sr > 0 else 0.0
+
+    loop_frames = int(math.ceil(loop_duration * sr))
+    end_i = min(len(mix), start_i + loop_frames)
+
+    # Loop the fragment
+    loop_len = len(loop_samples)
+    if loop_len == 0:
+        return
+
+    for i in range(start_i, end_i):
+        local_i = (i - start_i) % loop_len
+        mix[i] += loop_samples[local_i] * gain
 
 
 def _float_to_int16_le_bytes(samples: Sequence[float]) -> bytes:
