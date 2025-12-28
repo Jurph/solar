@@ -19,6 +19,7 @@ import random
 import wave
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
+import struct
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -112,9 +113,40 @@ class ModemNoise:
     carrier_gain: float = 0.1  # Carrier amplitude relative to data tones
     attack_seconds: float = 0.01  # Modem handshake ramp-up
     release_seconds: float = 0.01  # Modem handshake ramp-down
+    # Optional "warble" to mimic older modem character (slow FM drift).
+    # This is not protocol-accurate, but it produces the nostalgic wobble.
+    wow_rate_hz: float = 0.0
+    wow_depth_hz: float = 0.0
 
 
-AudioComponent = SineBeep | WhiteNoise | ModemNoise
+@dataclass(frozen=True)
+class Echo:
+    """
+    Simple echo/reverb-like post-effect applied to the mixed waveform.
+
+    - delay_ms: delay tap in milliseconds
+    - decay: feedback amount per echo (0..1)
+    - wet: wet mix (0..1)
+    """
+    delay_ms: float = 80.0
+    decay: float = 0.25
+    wet: float = 0.15
+
+
+@dataclass(frozen=True)
+class WavFileClip:
+    """
+    Load a WAV file from disk and mix it into the output.
+
+    This is for dev tooling (Audio Lab) and for future TTS pipelines where we
+    have a rendered voice clip to mix with static/tones.
+    """
+    start_seconds: float = 0.0
+    path: str = ""
+    gain: float = 1.0
+
+
+AudioComponent = SineBeep | WhiteNoise | ModemNoise | WavFileClip
 
 
 def render_wav_bytes(
@@ -122,6 +154,7 @@ def render_wav_bytes(
     *,
     sample_rate_hz: int = 48_000,
     pcm_bits: int = 16,
+    post_effects: Sequence[Echo] | None = None,
 ) -> bytes:
     """
     Render a list of components mixed into a single mono WAV.
@@ -145,8 +178,14 @@ def render_wav_bytes(
             _mix_white_noise(mix, comp, sample_rate_hz)
         elif isinstance(comp, ModemNoise):
             _mix_modem_noise(mix, comp, sample_rate_hz)
+        elif isinstance(comp, WavFileClip):
+            _mix_wav_file_clip(mix, comp, sample_rate_hz)
         else:
             raise TypeError(f"Unsupported component type: {type(comp)!r}")
+
+    if post_effects:
+        for eff in post_effects:
+            _apply_echo(mix, eff, sample_rate_hz)
 
     # Hard clamp to [-1, 1]. (Future: soft limiter.)
     for i in range(total_frames):
@@ -175,10 +214,26 @@ def _compute_total_duration(components: Iterable[AudioComponent]) -> float:
                 dur = len(bits) * bit_duration + c.attack_seconds + c.release_seconds
             else:
                 dur = 0.0
+        elif isinstance(c, WavFileClip):
+            dur = _get_wav_duration_seconds(c.path)
         else:
             dur = float(getattr(c, "duration_seconds", 0.0) or 0.0)
         end = max(end, max(0.0, start) + max(0.0, dur))
     return end
+
+
+def _get_wav_duration_seconds(path: str) -> float:
+    if not path:
+        return 0.0
+    try:
+        with wave.open(path, "rb") as wf:
+            sr = float(wf.getframerate())
+            frames = float(wf.getnframes())
+        if sr <= 0:
+            return 0.0
+        return frames / sr
+    except Exception:
+        return 0.0
 
 
 def _mix_sine_beep(mix: list[float], beep: SineBeep, sr: int) -> None:
@@ -351,7 +406,7 @@ def _mix_modem_noise(mix: list[float], modem: ModemNoise, sr: int) -> None:
         bit_end_time = bit_start_time + bit_duration
         
         # Choose frequency based on bit value
-        freq = mark_freq if bit == 1 else space_freq
+        base_freq = mark_freq if bit == 1 else space_freq
         
         # Render this bit
         bit_start_i = int((start + bit_start_time) * sr)
@@ -382,8 +437,104 @@ def _mix_modem_noise(mix: list[float], modem: ModemNoise, sr: int) -> None:
                 release=r,
             )
             
+            freq = base_freq
+            if modem.wow_rate_hz > 0.0 and modem.wow_depth_hz > 0.0:
+                # Slow frequency modulation for "warble".
+                freq = base_freq + modem.wow_depth_hz * math.sin(2.0 * math.pi * modem.wow_rate_hz * t)
+
             phase = 2.0 * math.pi * freq * (t - bit_start_time)
             mix[i] += math.sin(phase) * data_gain * bit_env * overall_env
+
+
+def _apply_echo(mix: list[float], echo: Echo, sr: int) -> None:
+    delay_ms = max(0.0, float(echo.delay_ms))
+    decay = _clamp(float(echo.decay), 0.0, 0.999)
+    wet = _clamp(float(echo.wet), 0.0, 1.0)
+    if delay_ms <= 0.0 or wet <= 0.0 or decay <= 0.0:
+        return
+
+    delay_samples = int(sr * (delay_ms / 1000.0))
+    if delay_samples <= 0 or delay_samples >= len(mix):
+        return
+
+    dry = mix[:]  # copy
+
+    # Single-tap feedback delay. (Good enough for “roomy” feel in a dev tool.)
+    for i in range(delay_samples, len(mix)):
+        delayed = mix[i - delay_samples] * decay
+        mix[i] = dry[i] * (1.0 - wet) + (dry[i] + delayed) * wet
+
+
+def _read_wav_mono_float(path: str) -> tuple[int, list[float]]:
+    """
+    Read a WAV file and return (sample_rate_hz, mono_samples_float[-1..1]).
+
+    Supports:
+    - 16-bit PCM (mono or stereo)
+    """
+    with wave.open(path, "rb") as wf:
+        sr = int(wf.getframerate())
+        channels = int(wf.getnchannels())
+        sampwidth = int(wf.getsampwidth())
+        frames = int(wf.getnframes())
+        raw = wf.readframes(frames)
+
+    if sampwidth != 2:
+        raise ValueError("Only 16-bit PCM WAV is supported for WavFileClip.")
+    if channels not in (1, 2):
+        raise ValueError("Only mono/stereo WAV is supported for WavFileClip.")
+
+    # Unpack int16 little-endian
+    count = frames * channels
+    fmt = "<" + ("h" * count)
+    ints = struct.unpack(fmt, raw)
+
+    out: list[float] = []
+    if channels == 1:
+        out = [i / 32768.0 for i in ints]
+    else:
+        # average stereo to mono
+        for i in range(0, len(ints), 2):
+            out.append(((ints[i] + ints[i + 1]) / 2.0) / 32768.0)
+
+    return sr, out
+
+
+def _resample_linear(samples: list[float], src_sr: int, dst_sr: int) -> list[float]:
+    if src_sr == dst_sr or not samples:
+        return samples
+    if src_sr <= 0 or dst_sr <= 0:
+        return samples
+
+    ratio = float(dst_sr) / float(src_sr)
+    out_len = int(math.ceil(len(samples) * ratio))
+    out: list[float] = []
+    for j in range(out_len):
+        src_pos = j / ratio
+        i0 = int(math.floor(src_pos))
+        i1 = min(len(samples) - 1, i0 + 1)
+        frac = src_pos - i0
+        if i0 < 0:
+            out.append(samples[0])
+        elif i0 >= len(samples):
+            out.append(samples[-1])
+        else:
+            out.append(samples[i0] * (1.0 - frac) + samples[i1] * frac)
+    return out
+
+
+def _mix_wav_file_clip(mix: list[float], clip: WavFileClip, sr: int) -> None:
+    if not clip.path:
+        return
+
+    src_sr, samples = _read_wav_mono_float(clip.path)
+    samples = _resample_linear(samples, src_sr, sr)
+    gain = max(0.0, float(clip.gain))
+    start_i = int(max(0.0, float(clip.start_seconds)) * sr)
+    end_i = min(len(mix), start_i + len(samples))
+
+    for local_i, i in enumerate(range(start_i, end_i)):
+        mix[i] += samples[local_i] * gain
 
 
 def _float_to_int16_le_bytes(samples: Sequence[float]) -> bytes:

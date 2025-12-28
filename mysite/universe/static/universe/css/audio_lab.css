@@ -1,0 +1,149 @@
+.audio-lab {
+  max-width: 980px;
+  margin: 24px auto;
+  padding: 16px;
+  background: #0b0b0b;
+  color: #e6e6e6;
+  border: 1px solid #333;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.audio-lab h2 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+}
+
+.audio-lab .row {
+  margin: 12px 0;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.audio-lab .row.grid {
+  flex-wrap: wrap;
+}
+
+.audio-lab textarea {
+  width: 100%;
+  background: #111;
+  color: #e6e6e6;
+  border: 1px solid #333;
+  padding: 8px;
+}
+
+.audio-lab .block {
+  flex: 1;
+}
+
+.audio-lab .panel {
+  flex: 1;
+  min-width: 280px;
+  border: 1px solid #333;
+  padding: 12px;
+  background: #0f0f0f;
+}
+
+.audio-lab .panel h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #ddd;
+}
+
+.audio-lab label {
+  display: block;
+  margin: 8px 0;
+}
+
+.audio-lab input[type="range"] {
+  width: 100%;
+}
+
+.audio-lab .controls {
+  align-items: center;
+}
+
+.audio-lab button {
+  background: #1f1f1f;
+  color: #e6e6e6;
+  border: 1px solid #444;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.audio-lab button:hover {
+  border-color: #888;
+}
+
+.audio-lab .status {
+  opacity: 0.9;
+  font-size: 12px;
+}
+
+.audio-lab .hint {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 8px;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-content {
+  width: min(900px, 92vw);
+  background: #0b0b0b;
+  border: 1px solid #333;
+  padding: 12px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.modal textarea {
+  width: 100%;
+  background: #111;
+  color: #e6e6e6;
+  border: 1px solid #333;
+  padding: 8px;
+  resize: vertical;
+}
+
+.modal input[type="text"] {
+  width: 100%;
+  background: #111;
+  color: #e6e6e6;
+  border: 1px solid #333;
+  padding: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.modal-close {
+  padding: 6px 10px;
+}
+
