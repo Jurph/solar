@@ -254,7 +254,8 @@ class ScriptService:
         
         # Check if broadcast should generate a gratitude response (5% chance)
         next_particle_probs = broadcast_particle.get_next_particle_probabilities()
-        if "gratitude" in next_particle_probs:
+        gratitude_prob = float(next_particle_probs.get("gratitude", 0.0) or 0.0)
+        if gratitude_prob > 0.0 and random.random() < gratitude_prob:
             # Try to find a random ship with a pilot
             # Query for ships that have pilots assigned
             ships_with_pilots = Ship.objects.filter(pilot__isnull=False).select_related('pilot')
@@ -277,17 +278,29 @@ class ScriptService:
                 
                 # Generate gratitude message using LLM
                 # Use the dialogue service to generate the message
-                gratitude_messages = self.dialogue_service.generate_chain_iteratively(
-                    initial_particle=gratitude_particle,
-                    pilot=pilot,
-                    controller=None,
-                    nav_context={
-                        "satellite_name": satellite.name.upper(),
-                        "previous_broadcast": broadcast_text,
-                    },
-                    temperature=getattr(self.llm, 'temperature', None),
-                    satellite=None,
-                )
+                try:
+                    gratitude_messages = self.dialogue_service.generate_chain_iteratively(
+                        initial_particle=gratitude_particle,
+                        pilot=pilot,
+                        controller=None,
+                        nav_context={
+                            "satellite_name": satellite.name.upper(),
+                            "previous_broadcast": broadcast_text,
+                        },
+                        temperature=getattr(self.llm, 'temperature', None),
+                        satellite=None,
+                    )
+                except Exception as e:
+                    # Gratitude is optional; failing to generate it should not prevent the
+                    # nav broadcast itself from being emitted.
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        "Nav broadcast gratitude generation failed; continuing without gratitude. "
+                        f"error={e!r}"
+                    )
+                    gratitude_messages = []
                 
                 # Convert gratitude message to event
                 if gratitude_messages:
