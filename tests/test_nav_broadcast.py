@@ -20,6 +20,8 @@ from mysite.universe.models.scale import Scale
 from mysite.universe.models.simulation import SimulationState
 from mysite.universe.services.script_server import ScriptService
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
+from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+from mysite.universe.models.station import Station
 
 
 class NavBroadcastTest(TestCase):
@@ -28,8 +30,19 @@ class NavBroadcastTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         """Set up test data shared across all nav broadcast tests."""
-        cls.location = Location.objects.create(name="Test Station", scale=Scale.STATION)
-        cls.satellite = Satellite.create(name="Relay Alpha 1")
+        galaxy = Galaxy.objects.create(name="Test Galaxy", galaxy_type="SP", galaxy_size="L")
+        cls.system = StarSystem.objects.create(
+            name="Test System",
+            orbits=galaxy,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        star = Star.objects.create(name="Test Star", orbits=cls.system, star_type="G")
+        planet = Planet.objects.create(name="Test Planet", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        cls.location = Station.objects.create(name="Test Station", orbits=planet, scale=Scale.STATION)
+
+        cls.satellite = Satellite.objects.create(name=f"{cls.system.name} Navsat", location=cls.system)
         
         # Create ship and pilot for gratitude tests
         cls.ship = Ship.create(location=cls.location, name="TEST SHIP")
@@ -213,19 +226,34 @@ class TestNavBroadcastMissionType(NavBroadcastTest):
             self.assertEqual(response.status_code, 200)
         
         events = list(DialogueEventLog.objects.order_by("timestamp"))
-        self.assertGreater(len(events), 0, f"Expected events to be created, but got {len(events)}. Events: {list(events)}")
+        self.assertEqual(
+            len(events),
+            14,
+            f"Expected 14 scheduled nav broadcasts, got {len(events)}. Events: {list(events)}",
+        )
+
+        # First broadcast should be on the hour.
+        self.assertEqual(events[0].timestamp % 3600.0, 0.0)
         
         # All events should be from satellite
         for event in events:
             self.assertEqual(event.actor_name, self.satellite.name)
             self.assertIn("NAV UPDATE", event.text)
+            self.assertEqual(event.metadata.get("type"), "nav_broadcast")
+
+        # Last broadcast should carry the next-cycle marker (long-term scheduling hook)
+        last = events[-1]
+        self.assertIn("navsat_next_cycle_anchor_ts", last.metadata)
+        self.assertEqual(last.metadata["navsat_cycle_count"], 14)
+        self.assertEqual(last.metadata["navsat_cycle_cadence_hours"], 12.0)
+        self.assertEqual(last.metadata["navsat_star_system_name"], self.system.name)
     
     def test_spawn_nav_broadcast_with_specific_satellite(self):
         """Test nav_broadcast mission with specific satellite name."""
         from django.urls import reverse
         
         # Create another satellite
-        satellite2 = Satellite.create(name="Relay Beta 2")
+        satellite2 = Satellite.objects.create(name="Relay Beta 2", location=self.system)
         
         url = reverse("spawn_mission")
         
@@ -265,8 +293,12 @@ class TestNavBroadcastMissionType(NavBroadcastTest):
             self.assertEqual(response.status_code, 200)
         
         # Check that events were created from the specific satellite
-        events = list(DialogueEventLog.objects.all())
-        self.assertGreater(len(events), 0, f"Expected events to be created, but got {len(events)}. Events: {list(events)}")
+        events = list(DialogueEventLog.objects.order_by("timestamp"))
+        self.assertEqual(
+            len(events),
+            14,
+            f"Expected 14 scheduled nav broadcasts, got {len(events)}. Events: {list(events)}",
+        )
         
         for event in events:
             self.assertEqual(event.actor_name, satellite2.name)

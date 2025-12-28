@@ -354,6 +354,10 @@
             // Quindar "start of transmission" tone
             // Avoid beeping during catch-up (historical fast scroll) to prevent audio spam.
             enqueueAudioForTrigger(event, "event_start", useFastMode);
+
+            // "During transmission" audio (e.g., modem tones for satellites, room tone/static).
+            // This is the key hook for NavSat modem-noise playback.
+            enqueueAudioForTrigger(event, "event_during", useFastMode);
             
             typeEventLine(event, () => {
                 // Quindar "end of transmission" tone (still a generic sine_beep)

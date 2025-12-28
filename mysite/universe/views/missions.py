@@ -70,75 +70,138 @@ def spawn_mission(request):
             if mission_type == "nav_broadcast":
                 # Nav broadcast mission: generate broadcast from satellite(s)
                 script_service = ScriptService.get_instance()
-                
-                # Get satellite(s) to broadcast from
+
+                import math
+                import random
+                from mysite.universe.services.location_service import find_star_system_for_location
+
+                # Get satellite to broadcast from
                 if satellite_name:
                     try:
-                        satellites = [Satellite.objects.get(name=satellite_name)]
+                        satellite = Satellite.objects.get(name=satellite_name)
+                        satellites = [satellite]
                     except Satellite.DoesNotExist:
                         logger.error(f"spawn_mission: Satellite '{satellite_name}' not found")
                         return
-                else:
-                    # Per design doc: "Randomly choose an existing navigation satellite"
-                    # Filter for navigation satellites (name contains "nav" or ends with "Navsat")
-                    all_satellites = Satellite.objects.all()
-                    nav_satellites = [
-                        sat for sat in all_satellites 
-                        if "nav" in sat.name.lower() or sat.name.endswith("Navsat")
-                    ]
-                    if nav_satellites:
-                        satellites = nav_satellites
-                    else:
-                        # Fallback: if the DB has satellites but none are explicitly named as nav sats,
-                        # still allow nav_broadcast missions to run (tests and early dev data).
-                        satellites = list(all_satellites)
-                
-                # Per design doc: "Some systems may not have a NavSat; if you choose a random star 
-                # and it has no NavSat, create the Actor"
-                if not satellites:
-                    logger.info("spawn_mission: No navigation satellites found, creating one")
-                    from mysite.universe.models.celestial import StarSystem
-                    star_systems = list(StarSystem.objects.all())
-                    if star_systems:
-                        import random
-                        random_system = random.choice(star_systems)
-                        satellite = Satellite.create_navigation_satellite(location=random_system)
-                        satellites = [satellite]
-                        logger.info(f"spawn_mission: Created navigation satellite '{satellite.name}' for {random_system.name}")
-                    else:
-                        # Test-mode / minimal-DB fallback: allow nav broadcasts even when the
-                        # universe hasn't been imported (no StarSystems exist).
-                        logger.warning(
-                            "spawn_mission: No star systems found; creating a generic navigation satellite"
-                        )
-                        satellite = Satellite.create(name="Navigation Satellite")
-                        satellites = [satellite]
-                else:
-                    # Randomly choose from existing navigation satellites
-                    import random
-                    if len(satellites) > 1:
-                        satellites = [random.choice(satellites)]
-                
-                # Generate broadcast events from each satellite
-                events_saved = 0
-                for i, satellite in enumerate(satellites):
-                    # Space broadcasts by 10 seconds each
-                    broadcast_timestamp = base_sim_time + (i * 10.0)
-                    broadcast_chain = script_service.generate_nav_broadcast_chain(
-                        satellite=satellite,
-                        base_timestamp=broadcast_timestamp
+                    target_system = (
+                        find_star_system_for_location(satellite.location)
+                        if getattr(satellite, "location", None) is not None
+                        else None
                     )
-                    
+                else:
+                    # NavSats epic:
+                    # - Choose a *random* star system that currently has ships in it
+                    # - Ensure a NavSat exists for that system (create if missing)
+                    # - Schedule 14 broadcasts, 12h apart, exactly on the hour,
+                    #   avoiding collisions with other satellites' nav broadcasts.
+                    from mysite.universe.models.celestial import StarSystem
+
+                    # 1) Choose a star system that has ships active in it.
+                    ships = list(Ship.objects.select_related("current_location").all())
+                    systems_with_ships = []
+                    seen_ids = set()
+                    for ship in ships:
+                        if not ship.current_location:
+                            continue
+                        system = find_star_system_for_location(ship.current_location)
+                        if system and system.id not in seen_ids:
+                            seen_ids.add(system.id)
+                            systems_with_ships.append(system)
+
+                    if systems_with_ships:
+                        target_system = random.choice(systems_with_ships)
+                    else:
+                        # Fallback: if we can't derive a system from ship locations, pick any system.
+                        all_systems = list(StarSystem.objects.all())
+                        if all_systems:
+                            target_system = random.choice(all_systems)
+                        else:
+                            # Minimal-DB fallback: allow nav broadcasts even with no imported universe.
+                            logger.warning("spawn_mission: No star systems found; creating a generic navigation satellite")
+                            satellite = Satellite.create(name="Navigation Satellite")
+                            satellites = [satellite]
+                            target_system = None
+
+                    # 2) Choose or create a navigation satellite for that system.
+                    if target_system is not None:
+                        nav_sats = list(
+                            Satellite.objects.filter(location=target_system)
+                        )
+                        if nav_sats:
+                            satellite = random.choice(nav_sats)
+                        else:
+                            satellite = Satellite.create_navigation_satellite(location=target_system)
+                            logger.info(
+                                f"spawn_mission: Created navigation satellite '{satellite.name}' for {target_system.name}"
+                            )
+                        satellites = [satellite]
+
+                # 3) Pick an on-the-hour time slot that isn't already used by another NavSat broadcast.
+                #    Broadcast cadence: 14 updates, 12 hours apart.
+                hours = 3600.0
+                cadence = 12.0 * hours
+                count = 14
+
+                def next_hour_boundary(t: float) -> float:
+                    return float(int(math.ceil(t / hours) * hours))
+
+                first_candidate = next_hour_boundary(base_sim_time)
+
+                # Consider "used" timestamps to be any existing nav_broadcast events.
+                occupied = set(
+                    DialogueEventLog.objects.filter(metadata__type="nav_broadcast")
+                    .values_list("timestamp", flat=True)
+                )
+
+                start_time = None
+                for slot_offset_hours in range(0, 24):
+                    candidate = first_candidate + (slot_offset_hours * hours)
+                    scheduled = [candidate + (i * cadence) for i in range(count)]
+                    if all(ts not in occupied for ts in scheduled):
+                        start_time = candidate
+                        break
+
+                if start_time is None:
+                    # If the next 24 hourly slots are all blocked, fall back to the earliest
+                    # hour boundary and accept collisions (should be extremely rare).
+                    start_time = first_candidate
+
+                # 4) Generate and persist all scheduled broadcasts (and optional gratitude replies).
+                events_saved = 0
+                for i in range(count):
+                    broadcast_timestamp = start_time + (i * cadence)
+                    broadcast_chain = script_service.generate_nav_broadcast_chain(
+                        satellite=satellites[0],
+                        base_timestamp=broadcast_timestamp,
+                    )
                     for event in broadcast_chain:
+                        # Long-term: allow the last scheduled NavSat broadcast to carry a "next cycle"
+                        # marker so a future scheduler can re-enqueue another NavSat mission on the same
+                        # per-hour cadence without having to re-derive the schedule.
+                        if (
+                            i == count - 1
+                            and event.metadata
+                            and event.metadata.get("type") == "nav_broadcast"
+                        ):
+                            event.metadata["navsat_next_cycle_anchor_ts"] = start_time + (count * cadence)
+                            event.metadata["navsat_cycle_count"] = count
+                            event.metadata["navsat_cycle_cadence_hours"] = cadence / hours
+                            event.metadata["navsat_cycle_anchor_ts"] = start_time
+                            if target_system is not None:
+                                event.metadata["navsat_star_system_name"] = target_system.name
+                                event.metadata["navsat_star_system_id"] = target_system.id
                         DialogueEventLog.objects.create(
                             timestamp=event.timestamp,
                             actor_name=event.actor.name,
                             text=event.text,
-                            metadata=event.metadata if event.metadata else {}
+                            metadata=event.metadata if event.metadata else {},
                         )
                         events_saved += 1
-                
-                logger.info(f"spawn_mission: Generated {events_saved} nav broadcast event(s)")
+
+                logger.info(
+                    f"spawn_mission: Generated {events_saved} nav broadcast event(s) "
+                    f"({count} broadcasts scheduled)"
+                )
                 
             else:
                 # Cargo mission (default): ship, pilot, route, dialogue
