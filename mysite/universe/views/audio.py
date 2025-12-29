@@ -259,6 +259,7 @@ def audio_lab_render(request):
     include_quindar = bool(payload.get("include_quindar", True))
     include_static = bool(payload.get("include_static", True))
     quindar_gain = float(payload.get("quindar_gain", 0.45))
+    engine_bed_gain = float(payload.get("engine_bed_gain", 1.0))
 
     if mode == "tts":
         tts_gain = float(payload.get("tts_gain", 2.0))
@@ -321,8 +322,6 @@ def audio_lab_render(request):
             # If header read fails, keep a small non-zero bed duration.
             pass
 
-        end_time = voice_start + voice_duration
-
         # Add 10 looped audio fragments with robust fallback filenames.
         # These loop for the duration of the voice clip.
         from django.contrib.staticfiles import finders
@@ -341,7 +340,7 @@ def audio_lab_render(request):
         ]
 
         for i in range(1, 11):
-            component_gain = float(payload.get(f"component_{i}_gain", 0.0))
+            component_gain = float(payload.get(f"component_{i}_gain", 0.0)) * engine_bed_gain
             if component_gain <= 0.0:
                 continue  # Skip components with zero gain
 
@@ -386,8 +385,20 @@ def audio_lab_render(request):
             )
 
         if include_quindar:
+            # Place trailing quindar right after the voice clip
+            voice_duration = 0.5  # fallback
+            try:
+                import wave
+
+                with wave.open(tts_clip_path, "rb") as wf:
+                    sr = wf.getframerate() or 0
+                    frames = wf.getnframes() or 0
+                if sr > 0 and frames > 0:
+                    voice_duration = frames / float(sr)
+            except Exception:
+                pass
+            end_time = voice_start + voice_duration
             components.append(SineBeep(start_seconds=end_time + 0.05, duration_seconds=0.25, frequency_hz=2475.0, gain=quindar_gain))
-            end_time = end_time + 0.05 + 0.25
 
         if include_static:
             components.append(
@@ -449,22 +460,6 @@ def audio_lab_render(request):
     wow_rate_hz = float(payload.get("wow_rate_hz", 0.0))
     wow_depth_hz = float(payload.get("wow_depth_hz", 0.0))
 
-    static_gain = float(payload.get("static_gain", 0.08))
-    static_intensity = float(payload.get("static_intensity", 0.6))
-    static_lowpass_hz = float(payload.get("static_lowpass_hz", 5000.0))
-    static_highpass_hz = float(payload.get("static_highpass_hz", 80.0))
-
-    # Engine rumble (simple sin + optional harmonics)
-    include_rumble = bool(payload.get("include_rumble", False))
-    rumble_gain = float(payload.get("rumble_gain", 0.05))
-    rumble_frequency_hz = float(payload.get("rumble_frequency_hz", 55.0))
-
-    # Echo/reverb post effect (simple feedback delay)
-    include_echo = bool(payload.get("include_echo", False))
-    echo_delay_ms = float(payload.get("echo_delay_ms", 90.0))
-    echo_decay = float(payload.get("echo_decay", 0.25))
-    echo_wet = float(payload.get("echo_wet", 0.12))
-
     # Build components with simple timing:
     # optional quindar_start → modem → optional quindar_end; static overlays full duration.
     quindar_duration = 0.25
@@ -510,45 +505,6 @@ def audio_lab_render(request):
         )
         end_time = end_time + quindar_gap + quindar_duration
 
-    if include_static:
-        components.append(
-            WhiteNoise(
-                start_seconds=0.0,
-                duration_seconds=max(0.001, end_time),
-                gain=static_gain,
-                intensity=static_intensity,
-                lowpass_hz=static_lowpass_hz,
-                highpass_hz=static_highpass_hz,
-            )
-        )
-
-    if include_rumble:
-        components.append(
-            SineBeep(
-                start_seconds=0.0,
-                duration_seconds=max(0.001, end_time),
-                frequency_hz=rumble_frequency_hz,
-                gain=rumble_gain,
-                attack_seconds=0.02,
-                release_seconds=0.05,
-            )
-        )
-        # light harmonic for texture
-        components.append(
-            SineBeep(
-                start_seconds=0.0,
-                duration_seconds=max(0.001, end_time),
-                frequency_hz=rumble_frequency_hz * 2.0,
-                gain=rumble_gain * 0.25,
-                attack_seconds=0.02,
-                release_seconds=0.05,
-            )
-        )
-
-    post_effects = []
-    if include_echo:
-        post_effects.append(Echo(delay_ms=echo_delay_ms, decay=echo_decay, wet=echo_wet))
-
-    wav_bytes = render_wav_bytes(components, post_effects=post_effects)
+    wav_bytes = render_wav_bytes(components, post_effects=[])
     return HttpResponse(wav_bytes, content_type="audio/wav")
 

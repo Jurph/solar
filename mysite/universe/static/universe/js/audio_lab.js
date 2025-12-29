@@ -50,19 +50,6 @@
       carrier_frequency_hz: parseFloat(el("carrierFreq").value),
       carrier_gain: parseFloat(el("carrierGain").value),
       baud_rate: parseInt(el("baudRate").value, 10),
-      static_gain: parseFloat(el("staticGain").value),
-      static_intensity: parseFloat(el("staticIntensity").value),
-      static_highpass_hz: parseFloat(el("staticHighpass").value),
-      static_lowpass_hz: parseFloat(el("staticLowpass").value),
-
-      include_rumble: el("includeRumble").checked,
-      rumble_frequency_hz: parseFloat(el("rumbleFreq").value),
-      rumble_gain: parseFloat(el("rumbleGain").value),
-
-      include_echo: el("includeEcho").checked,
-      echo_delay_ms: parseFloat(el("echoDelay").value),
-      echo_decay: parseFloat(el("echoDecay").value),
-      echo_wet: parseFloat(el("echoWet").value),
     };
 
     // Add 10 component gains and voice settings (always send for TTS)
@@ -74,6 +61,7 @@
     payload.voice_id = el("voiceSelect") ? el("voiceSelect").value : "";
     payload.tts_gain = el("voiceGain") ? parseFloat(el("voiceGain").value) : 2.0;
     payload.engine_preset = el("enginePreset") ? el("enginePreset").value : "custom";
+    payload.engine_bed_gain = el("engineBedGain") ? parseFloat(el("engineBedGain").value) : 1.0;
 
     return payload;
   }
