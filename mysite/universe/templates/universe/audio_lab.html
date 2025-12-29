@@ -47,8 +47,15 @@
       </div>
 
       <div class="panel">
+        <h3>Mix Levels</h3>
+        <div class="hint">Set overall loudness for the main elements.</div>
+        <label>Quindar Gain <input id="quindarGain" type="range" min="0" max="1" step="0.01" value="0.45" /></label>
+        <label>Voice Gain <input id="voiceGain" type="range" min="0" max="3" step="0.01" value="2.0" /></label>
+        <label>Background Gain <input id="staticGain" type="range" min="0" max="0.5" step="0.005" value="0.08" /></label>
+      </div>
+
+      <div class="panel">
         <h3>Static / Room Tone</h3>
-        <label>Gain <input id="staticGain" type="range" min="0" max="0.5" step="0.005" value="0.08" /></label>
         <label>Intensity <input id="staticIntensity" type="range" min="0" max="2" step="0.01" value="0.60" /></label>
         <label>Highpass Hz <input id="staticHighpass" type="number" min="0" max="2000" step="10" value="80" /></label>
         <label>Lowpass Hz <input id="staticLowpass" type="number" min="200" max="12000" step="100" value="5000" /></label>
@@ -64,22 +71,7 @@
       </div>
 
       <div class="panel">
-        <h3>Engine Noise</h3>
-        <div class="hint">Mix 10 looped audio components with A/B variants for seamless looping.</div>
-        <label>Deep Rumble <input id="component01Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Medium Rumble <input id="component02Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Low Roar <input id="component03Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Low Warble <input id="component04Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>High Warble <input id="component05Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Sonar Pings <input id="component06Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>High Pings <input id="component07Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Modems &amp; Teletypes <input id="component08Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Quindars &amp; Radios <input id="component09Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-        <label>Interference Static <input id="component10Gain" type="range" min="0" max="1" step="0.01" value="0.0" /></label>
-      </div>
-
-      <div class="panel">
-        <h3>Voice &amp; Mix</h3>
+        <h3>Voice</h3>
         <label>
           Voice (Chatterbox)
           <select id="voiceSelect">
@@ -89,10 +81,33 @@
             {% endfor %}
           </select>
         </label>
-        <label>Voice Gain <input id="voiceGain" type="range" min="0" max="2" step="0.01" value="1.0" /></label>
-        <label class="disabled"><input type="range" id="masterEngineGain" min="0" max="1" step="0.01" value="1.0" disabled /> Master Engine Noise (disabled)</label>
-        <label class="disabled"><input type="checkbox" id="loopEngineNoise" disabled /> Loop engine noise (disabled)</label>
-        <div class="hint">Engine bed is rendered server-side to match the TTS clip length.</div>
+        <div class="hint">Voice loudness is controlled by the Mix Levels panel.</div>
+      </div>
+
+      <div class="panel">
+        <h3>Engine &amp; Bed</h3>
+        <div class="hint">Pick a preset or dial in your own 10-channel bed.</div>
+        <label>
+          Engine preset
+          <select id="enginePreset">
+            <option value="small_ship">Small ship</option>
+            <option value="medium_ship" selected>Medium ship</option>
+            <option value="control_station">Control station</option>
+            <option value="large_ship">Large ship</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label>Deep Rumble <input id="component01Gain" type="range" min="0" max="1" step="0.01" value="0.73" /></label>
+        <label>Medium Rumble <input id="component02Gain" type="range" min="0" max="1" step="0.01" value="0.64" /></label>
+        <label>Low Roar <input id="component03Gain" type="range" min="0" max="1" step="0.01" value="0.65" /></label>
+        <label>Low Warble <input id="component04Gain" type="range" min="0" max="1" step="0.01" value="0.30" /></label>
+        <label>High Warble <input id="component05Gain" type="range" min="0" max="1" step="0.01" value="0.22" /></label>
+        <label>Sonar Pings <input id="component06Gain" type="range" min="0" max="1" step="0.01" value="0.00" /></label>
+        <label>High Pings <input id="component07Gain" type="range" min="0" max="1" step="0.01" value="0.00" /></label>
+        <label>Modems &amp; Teletypes <input id="component08Gain" type="range" min="0" max="1" step="0.01" value="0.17" /></label>
+        <label>Quindars &amp; Radios <input id="component09Gain" type="range" min="0" max="1" step="0.01" value="0.01" /></label>
+        <label>Interference Static <input id="component10Gain" type="range" min="0" max="1" step="0.01" value="0.72" /></label>
+        <div class="hint">Adjust any slider to switch to the Custom preset.</div>
       </div>
     </div>
 

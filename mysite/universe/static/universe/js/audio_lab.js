@@ -22,6 +22,14 @@
   let isPlaying = false;
   let nextPlayTimeA = [];
   let nextPlayTimeB = [];
+  let applyingPreset = false;
+  const ENGINE_PRESETS = {
+    // Sourced from scripts/*_engine_settings.json (component_1_gain ... component_10_gain)
+    small_ship: [0.04, 0.75, 1.0, 0.27, 0.02, 0.06, 0.1, 0.12, 0.0, 0.15],
+    medium_ship: [0.73, 0.64, 0.65, 0.3, 0.22, 0.0, 0.0, 0.17, 0.01, 0.72],
+    large_ship: [0.65, 0.83, 1.0, 0.17, 0.54, 0.1, 0.27, 0.31, 0.01, 0.9],
+    control_station: null, // falls back to medium in applyEnginePreset
+  };
 
   function setStatus(msg) {
     statusEl.textContent = msg || "";
@@ -62,8 +70,10 @@
       const id = `component${String(i).padStart(2, "0")}Gain`;
       payload[`component_${i}_gain`] = el(id) ? parseFloat(el(id).value) : 0.0;
     }
+    payload.quindar_gain = el("quindarGain") ? parseFloat(el("quindarGain").value) : 0.45;
     payload.voice_id = el("voiceSelect") ? el("voiceSelect").value : "";
-    payload.tts_gain = el("voiceGain") ? parseFloat(el("voiceGain").value) : 1.0;
+    payload.tts_gain = el("voiceGain") ? parseFloat(el("voiceGain").value) : 2.0;
+    payload.engine_preset = el("enginePreset") ? el("enginePreset").value : "custom";
 
     return payload;
   }
@@ -437,6 +447,30 @@
     }
   }
 
+  function markCustomEnginePreset() {
+    if (applyingPreset) return;
+    const presetSelect = el("enginePreset");
+    if (presetSelect && presetSelect.value !== "custom") {
+      presetSelect.value = "custom";
+    }
+  }
+
+  function applyEnginePreset(name) {
+    const values = ENGINE_PRESETS[name] || ENGINE_PRESETS.medium_ship;
+    if (!values || values.length !== 10) return;
+
+    applyingPreset = true;
+    values.forEach((val, idx) => {
+      const sliderId = `component${String(idx + 1).padStart(2, "0")}Gain`;
+      const slider = el(sliderId);
+      if (slider) {
+        slider.value = val;
+        slider.dispatchEvent(new Event("input"));
+      }
+    });
+    applyingPreset = false;
+  }
+
   // Connect sliders to gain nodes for real-time updates
   function connectSlidersToGainNodes() {
     // Component sliders
@@ -450,6 +484,7 @@
           if (gain <= 0 || isNaN(gain)) {
             gain = 0;
           }
+          markCustomEnginePreset();
           if (isPlaying && audioContext) {
             updateComponentGain(i - 1, gain);
           }
@@ -475,6 +510,16 @@
         const gain = parseFloat(voiceSlider.value);
         if (isPlaying && audioContext) {
           updateVoiceGain(gain);
+        }
+      });
+    }
+
+    // Engine preset selector
+    const enginePreset = el("enginePreset");
+    if (enginePreset) {
+      enginePreset.addEventListener("change", () => {
+        if (enginePreset.value !== "custom") {
+          applyEnginePreset(enginePreset.value);
         }
       });
     }
