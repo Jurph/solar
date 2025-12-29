@@ -199,12 +199,31 @@ def audio_preset(request, preset: str):
     return resp
 
 
+def _list_available_voice_templates() -> list[str]:
+    """
+    Enumerate available voice prompt files (WAV) for chatterbox.
+    Looks only in static/universe/voices.
+    Returns basenames without extension, sorted.
+    """
+    import os
+    from glob import glob
+
+    candidates = set()
+
+    static_dir = os.path.join(settings.BASE_DIR, "mysite", "universe", "static", "universe", "voices")
+    for path in glob(os.path.join(static_dir, "*.wav")):
+        candidates.add(os.path.splitext(os.path.basename(path))[0])
+
+    return sorted(candidates)
+
+
 @require_GET
 def audio_lab(request):
     """
     Standalone dev tool UI for audio experimentation (no coupling to event feed).
     """
-    return render(request, "universe/audio_lab.html")
+    voices = _list_available_voice_templates()
+    return render(request, "universe/audio_lab.html", {"voices": voices})
 
 
 @csrf_exempt
@@ -228,38 +247,57 @@ def audio_lab_render(request):
 
     if mode == "tts":
         tts_gain = float(payload.get("tts_gain", 1.0))
+        voice_id = (payload.get("voice_id") or "").strip()
+        generated_tmp_path = None
 
-        sample_path = _find_audio_lab_tts_sample_path()
-        if not sample_path:
+        # Resolve voice clip: if voice_id provided, generate via chatterbox; otherwise use sample clip
+        tts_clip_path = None
+        try:
+            if voice_id:
+                from mysite.universe.services.tts_service import get_tts_service
+                import tempfile
+
+                tts_service = get_tts_service()
+                logger.info("audio_lab TTS generation: voice_id=%s text_len=%d", voice_id, len(text))
+                wav_bytes = tts_service.generate(text=text, voice_id=voice_id)
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+                tmp.write(wav_bytes)
+                tmp.flush()
+                generated_tmp_path = tmp.name
+                tts_clip_path = generated_tmp_path
+            else:
+                tts_clip_path = _find_audio_lab_tts_sample_path()
+        except Exception as e:
+            logger.warning(f"TTS generation failed in audio_lab_render: {e}")
+            tts_clip_path = _find_audio_lab_tts_sample_path()
+
+        if not tts_clip_path:
             return JsonResponse(
                 {
                     "status": "error",
                     "message": (
-                        "TTS preset clip not found. Expected static file at "
-                        f"{AUDIO_LAB_TTS_SAMPLE_STATIC_PATH!r}."
+                        "TTS clip not found or generation failed. "
+                        "Provide a valid voice or sample clip."
                     ),
                 },
                 status=501,
             )
 
         # Build a mix that treats the WAV as a "voice" clip, then overlays optional
-        # static/rumble/echo/quindar.
-        # We ignore `text` for now (placeholder), but keep it in the UI for later TTS integration.
         voice_start = (0.25 + 0.05) if include_quindar else 0.0
 
-        # The render pipeline will compute exact WAV duration from the clip.
         components = []
         if include_quindar:
             components.append(SineBeep(start_seconds=0.0, duration_seconds=0.25, frequency_hz=2525.0, gain=0.9))
 
-        components.append(WavFileClip(start_seconds=voice_start, path=sample_path, gain=tts_gain))
+        components.append(WavFileClip(start_seconds=voice_start, path=tts_clip_path, gain=tts_gain))
 
         # Compute voice clip duration for looping the 10 soundscape components.
         voice_duration = 0.5  # fallback
         try:
             import wave
 
-            with wave.open(sample_path, "rb") as wf:
+            with wave.open(tts_clip_path, "rb") as wf:
                 sr = wf.getframerate() or 0
                 frames = wf.getnframes() or 0
             if sr > 0 and frames > 0:
