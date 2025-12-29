@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -81,6 +82,18 @@ def _find_audio_lab_tts_sample_path() -> str | None:
         return legacy
 
     return None
+
+
+def _save_last_playback(wav_bytes: bytes) -> None:
+    """
+    Persist the last rendered audio to a single file for manual inspection.
+    Overwrites the same file each time; best-effort only.
+    """
+    try:
+        out_path = Path(settings.BASE_DIR) / "last-playback.wav"
+        out_path.write_bytes(wav_bytes)
+    except Exception:
+        logger.warning("Failed to save last-playback.wav", exc_info=True)
 
 _PRESET_DEFINITIONS = {
     # Quindar tones (NASA comm beeps)
@@ -194,6 +207,7 @@ def audio_preset(request, preset: str):
         ]
 
     wav_bytes = render_wav_bytes(components)
+    _save_last_playback(wav_bytes)
     resp = HttpResponse(wav_bytes, content_type="audio/wav")
     resp["Cache-Control"] = "public, max-age=86400"
     return resp
@@ -421,6 +435,7 @@ def audio_lab_render(request):
             )
 
         wav_bytes = render_wav_bytes(components, post_effects=post_effects)
+        _save_last_playback(wav_bytes)
         return HttpResponse(wav_bytes, content_type="audio/wav")
 
     # Defaults tuned for audibility without being painfully loud.
