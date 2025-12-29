@@ -129,7 +129,8 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Implement different mission types beyond transport ✓
 
 ### Five - Vox Populi 
-- Text to speech first efforts 
+- Text-to-speech scaffolding (Chatterbox service, voice template discovery, dev audio_lab endpoint) ✓
+- Voice registration to generate ~30 or so unique male and female voices 
 - Are SOTA voices good enough? 
 - Simple sound generation ✓
 - Beeps, garbles, other fun trimmings ✓

@@ -258,9 +258,10 @@ def audio_lab_render(request):
     text = payload.get("text") or "Sphinx of black quartz, judge my vow."
     include_quindar = bool(payload.get("include_quindar", True))
     include_static = bool(payload.get("include_static", True))
+    quindar_gain = float(payload.get("quindar_gain", 0.45))
 
     if mode == "tts":
-        tts_gain = float(payload.get("tts_gain", 1.0))
+        tts_gain = float(payload.get("tts_gain", 2.0))
         voice_id = (payload.get("voice_id") or "").strip()
         generated_tmp_path = None
 
@@ -302,7 +303,7 @@ def audio_lab_render(request):
 
         components = []
         if include_quindar:
-            components.append(SineBeep(start_seconds=0.0, duration_seconds=0.25, frequency_hz=2525.0, gain=0.9))
+            components.append(SineBeep(start_seconds=0.0, duration_seconds=0.25, frequency_hz=2525.0, gain=quindar_gain))
 
         components.append(WavFileClip(start_seconds=voice_start, path=tts_clip_path, gain=tts_gain))
 
@@ -385,7 +386,7 @@ def audio_lab_render(request):
             )
 
         if include_quindar:
-            components.append(SineBeep(start_seconds=end_time + 0.05, duration_seconds=0.25, frequency_hz=2475.0, gain=0.9))
+            components.append(SineBeep(start_seconds=end_time + 0.05, duration_seconds=0.25, frequency_hz=2475.0, gain=quindar_gain))
             end_time = end_time + 0.05 + 0.25
 
         if include_static:
@@ -478,7 +479,7 @@ def audio_lab_render(request):
 
     components = []
     if include_quindar:
-        components.append(SineBeep(start_seconds=0.0, duration_seconds=quindar_duration, frequency_hz=2525.0, gain=0.9))
+        components.append(SineBeep(start_seconds=0.0, duration_seconds=quindar_duration, frequency_hz=2525.0, gain=quindar_gain))
 
     components.append(
         ModemNoise(
@@ -504,7 +505,7 @@ def audio_lab_render(request):
                 start_seconds=end_time + quindar_gap,
                 duration_seconds=quindar_duration,
                 frequency_hz=2475.0,
-                gain=0.9,
+                gain=quindar_gain,
             )
         )
         end_time = end_time + quindar_gap + quindar_duration
