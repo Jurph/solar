@@ -146,14 +146,32 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
             }
         })
     
-    # TODO: TTS action would go here when TTS is implemented
-    # if profile.voice_template:
-    #     plan.append({
-    #         "trigger": "event_during",
-    #         "action": "tts",
-    #         "text": event.text,
-    #         "params": profile.get_voice_params(),
-    #     })
+    # Add TTS action if voice template exists
+    voice_params = profile.get_voice_params()
+    voice_template = voice_params.get("voice_template")
+    
+    # If no explicit voice_template, try to infer from actor type
+    if not voice_template:
+        from mysite.universe.models.actor import Pilot, Controller
+        if isinstance(actor, Pilot):
+            voice_template = "pilot_default"
+        elif isinstance(actor, Controller):
+            voice_template = "controller_default"
+        # Satellites don't get TTS (they use modem noise)
+    
+    if voice_template:
+        plan.append({
+            "trigger": "event_during",
+            "action": "tts",
+            "text": event.text,
+            "voice_id": voice_template,
+            "params": {
+                "pitch_shift_cents": voice_params.get("pitch_shift_cents", 0),
+                "speed_factor": voice_params.get("speed_factor", 1.0),
+                "cfg_weight": 0.5,  # Chatterbox default
+                "exaggeration": 0.5,  # Chatterbox default
+            }
+        })
     
     return plan
 

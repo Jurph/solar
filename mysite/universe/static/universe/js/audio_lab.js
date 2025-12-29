@@ -161,33 +161,64 @@
     audioBuffersA = [];
     audioBuffersB = [];
 
-    // Load both A and B variants for each component (using numeric order)
+    const descriptiveNames = [
+      "controls-and-quindars",
+      "modems-and-teletypes",
+      "burbly-sonar",
+      "slower-burbles",
+      "engine-hum",
+      "engine-thrum",
+      "engine-rumble",
+      "deep-engine-rumble",
+      "infra-engine-rumble",
+      "staticky-crickets",
+    ];
+
+    // Load both A and B variants for each component with fallbacks
     for (let i = 1; i <= 10; i++) {
       const num = String(i).padStart(2, "0");
-      
-      // Load WAV variant files (numeric order only)
-      const urlA = `/static/universe/audio/audio-${num}-variant-a.wav`;
-      const urlB = `/static/universe/audio/audio-${num}-variant-b.wav`;
-      
+      const name = descriptiveNames[i - 1];
+
+      const candidatesA = [
+        `/static/universe/audio/audio-${num}-variant-a.wav`,
+        `/static/universe/audio/audio-${num}-${name}.wav`,
+        `/static/universe/audio/audio-${num}.wav`,
+      ];
+
+      const candidatesB = [
+        `/static/universe/audio/audio-${num}-variant-b.wav`,
+        `/static/universe/audio/audio-${num}-${name}.wav`,
+        `/static/universe/audio/audio-${num}.wav`,
+      ];
+
       let bufferA = null;
-      try {
-        bufferA = await loadAudioFile(urlA);
-      } catch (err) {
-        console.warn(`Failed to load variant A for component ${i}:`, err);
+      for (const url of candidatesA) {
+        try {
+          bufferA = await loadAudioFile(url);
+          break;
+        } catch (err) {
+          // Try next candidate
+        }
+      }
+      if (!bufferA) {
+        console.warn(`Failed to load any A variant for component ${i}`);
       }
       audioBuffersA[i - 1] = bufferA;
 
       let bufferB = null;
-      try {
-        bufferB = await loadAudioFile(urlB);
-      } catch (err) {
-        console.warn(`Failed to load variant B for component ${i}:`, err);
+      for (const url of candidatesB) {
+        try {
+          bufferB = await loadAudioFile(url);
+          break;
+        } catch (err) {
+          // Try next candidate
+        }
+      }
+      if (!bufferB) {
+        bufferB = bufferA; // fallback to A
+        console.warn(`Failed to load any B variant for component ${i}, using A`);
       }
       audioBuffersB[i - 1] = bufferB;
-      if (!bufferB) {
-        console.warn(`Failed to load variant B for component ${i}, using variant A`);
-        audioBuffersB[i - 1] = bufferA; // Fallback to A if B not available
-      }
     }
 
     // Load voice clip

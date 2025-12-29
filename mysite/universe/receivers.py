@@ -104,11 +104,47 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
                     display_text = "[Error: Could not parse dialogue response]"
         
         # Create and save the log entry with natural language text only
-        DialogueEventLog.objects.create(
+        log_entry = DialogueEventLog.objects.create(
             timestamp=event.timestamp,
             actor_name=actor_name,
-            text=display_text
+            text=display_text,
+            metadata=event.metadata if hasattr(event, 'metadata') else {}
         )
+        
+        # Trigger async TTS generation (if TTS is available)
+        try:
+            from mysite.universe.tasks import generate_tts_async
+            from mysite.universe.models.actor import Actor
+            from mysite.universe.models.audio_profile import AudioProfile
+            
+            # Get actor and voice profile
+            actor = Actor.objects.filter(name=actor_name).first()
+            if actor:
+                profile, _ = AudioProfile.objects.get_or_create(actor=actor)
+                voice_params = profile.get_voice_params()
+                voice_template = voice_params.get("voice_template")
+                
+                # If no explicit voice_template, try to infer from actor type
+                if not voice_template:
+                    from mysite.universe.models.actor import Pilot, Controller
+                    if isinstance(actor, Pilot):
+                        voice_template = "pilot_default"
+                    elif isinstance(actor, Controller):
+                        voice_template = "controller_default"
+                
+                # Trigger async TTS generation if we have a voice
+                if voice_template:
+                    generate_tts_async.delay(
+                        text=display_text,
+                        voice_id=voice_template,
+                        event_id=log_entry.id,
+                        cfg_weight=0.5,
+                        exaggeration=0.5,
+                    )
+        except Exception as tts_error:
+            # TTS generation failure shouldn't block event saving
+            logger.warning(f"Failed to trigger TTS generation for event {log_entry.id}: {tts_error}")
+        
     except Exception as e:
         # Log the error but don't crash the simulation
         logger.error(f"Failed to save dialogue event to database: {e}", exc_info=True)

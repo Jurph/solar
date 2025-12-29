@@ -270,30 +270,58 @@ def audio_lab_render(request):
 
         end_time = voice_start + voice_duration
 
-        # Add 10 looped audio fragments (using variant-a files for server-side mixing)
+        # Add 10 looped audio fragments with robust fallback filenames.
         # These loop for the duration of the voice clip.
         from django.contrib.staticfiles import finders
+
+        descriptive_names = [
+            "controls-and-quindars",
+            "modems-and-teletypes",
+            "burbly-sonar",
+            "slower-burbles",
+            "engine-hum",
+            "engine-thrum",
+            "engine-rumble",
+            "deep-engine-rumble",
+            "infra-engine-rumble",
+            "staticky-crickets",
+        ]
 
         for i in range(1, 11):
             component_gain = float(payload.get(f"component_{i}_gain", 0.0))
             if component_gain <= 0.0:
                 continue  # Skip components with zero gain
 
-            # Use variant-a files (numeric order only)
-            fragment_path = finders.find(f"universe/audio/audio-{i:02d}-variant-a.wav")
+            name = descriptive_names[i - 1]
+            candidates = [
+                f"universe/audio/audio-{i:02d}-variant-a.wav",
+                f"universe/audio/audio-{i:02d}-{name}.wav",
+                f"universe/audio/audio-{i:02d}.wav",
+            ]
+
+            fragment_path = None
+            for candidate in candidates:
+                found = finders.find(candidate)
+                if found:
+                    fragment_path = found
+                    break
+
             if not fragment_path:
                 # Fallback to root audio/ folder (source assets location)
                 import os
-                fallback_path = os.path.join(
-                    settings.BASE_DIR,
-                    "audio",
-                    f"audio-{i:02d}-variant-a.wav",
-                )
-                if os.path.exists(fallback_path):
-                    fragment_path = fallback_path
-                else:
-                    logger.warning(f"Audio fragment audio-{i:02d}-variant-a.wav not found, skipping")
-                    continue
+                root_candidates = [
+                    os.path.join(settings.BASE_DIR, "audio", f"audio-{i:02d}-variant-a.wav"),
+                    os.path.join(settings.BASE_DIR, "audio", f"audio-{i:02d}-{name}.wav"),
+                    os.path.join(settings.BASE_DIR, "audio", f"audio-{i:02d}.wav"),
+                ]
+                for rc in root_candidates:
+                    if os.path.exists(rc):
+                        fragment_path = rc
+                        break
+
+            if not fragment_path:
+                logger.warning(f"Audio fragment audio-{i:02d} not found (variant, descriptive, numeric), skipping")
+                continue
 
             components.append(
                 LoopedAudioFragment(
