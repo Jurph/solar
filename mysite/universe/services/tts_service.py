@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import logging
 import wave
 from abc import ABC, abstractmethod
@@ -20,7 +21,6 @@ import torchaudio as ta
 
 from django.conf import settings
 from django.core.cache import cache
-from django.contrib.staticfiles import finders
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,19 @@ class ChatterboxTTSService(TTSService):
         if self.model is None:
             try:
                 from chatterbox.tts_turbo import ChatterboxTurboTTS
-                self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
-                logger.info("Chatterbox-Turbo model loaded successfully")
+
+                # Prefer local path if provided (no network)
+                local_path = os.getenv("CHATTERBOX_LOCAL_PATH")
+                if not local_path:
+                    # default local path under project root
+                    local_path = str(Path(settings.BASE_DIR) / "models" / "chatterbox-turbo")
+
+                if Path(local_path).exists():
+                    self.model = ChatterboxTurboTTS.from_local(local_path, device=self.device)
+                    logger.info(f"Chatterbox-Turbo model loaded from local path: {local_path}")
+                else:
+                    self.model = ChatterboxTurboTTS.from_pretrained(device=self.device)
+                    logger.info("Chatterbox-Turbo model loaded (remote download)")
             except ImportError:
                 logger.error("chatterbox-tts not installed. Run: pip install chatterbox-tts")
                 raise
@@ -129,20 +140,19 @@ class ChatterboxTTSService(TTSService):
         return None
     
     def _find_voice_file(self, voice_id: str) -> Optional[Path]:
-        """Find a specific voice file in static files or project directory."""
-        # Try Django static files finder first
-        static_path = finders.find(f"universe/voices/{voice_id}.wav")
-        if static_path:
-            return Path(static_path)
+        """
+        Find a specific voice file.
         
-        # Fallback to project directory
+        Checks only: mysite/universe/static/universe/voices/{voice_id}.wav
+        
+        Voice ID format: exact basename, e.g., "pilot-M-002_canonical_all"
+        """
         project_root = Path(settings.BASE_DIR)
-        fallback_path = (
-            project_root / "mysite" / "universe" / "static" / "universe" / "voices" / f"{voice_id}.wav"
-        )
-        if fallback_path.exists():
-            return fallback_path
-        
+
+        static_path = project_root / "mysite" / "universe" / "static" / "universe" / "voices" / f"{voice_id}.wav"
+        if static_path.exists():
+            return static_path
+
         return None
     
     def generate(
@@ -199,8 +209,8 @@ class ChatterboxTTSService(TTSService):
                 exaggeration=exaggeration,
             )
             
-            # Convert to bytes (16-bit PCM, mono, 48kHz)
-            wav_bytes = self._wav_to_bytes(wav, self.sample_rate)
+            # Convert to bytes (16-bit PCM, mono) - use model's actual sample rate
+            wav_bytes = self._wav_to_bytes(wav, self.model.sr)
             
             # Cache result (1 hour TTL)
             cache.set(cache_key, wav_bytes, timeout=3600)

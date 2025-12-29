@@ -20,9 +20,10 @@
 
     <div class="row">
       <div class="mode">
-        <div class="label">Mode</div>
-        <label><input type="radio" name="mode" value="modem" checked /> Modem</label>
-        <label><input type="radio" name="mode" value="tts" /> TTS (preset voice clip)</label>
+        <div class="label">Mode (server-rendered)</div>
+        <label><input type="radio" name="mode" value="modem" disabled /> Modem (disabled)</label>
+        <label><input type="radio" name="mode" value="tts" checked disabled /> TTS</label>
+        <div class="hint">TTS is always used; client-side mixing is disabled.</div>
       </div>
 
       <div class="toggles">
@@ -79,10 +80,19 @@
 
       <div class="panel">
         <h3>Voice &amp; Mix</h3>
-        <label>Master Engine Noise <input id="masterEngineGain" type="range" min="0" max="1" step="0.01" value="1.0" /></label>
-        <label>Voice Clip <input id="voiceGain" type="range" min="0" max="2" step="0.01" value="1.0" /></label>
-        <label><input type="checkbox" id="loopEngineNoise" checked /> Loop engine noise continuously</label>
-        <div class="hint">Engine noise loops continuously. Voice clip plays once when you click Play.</div>
+        <label>
+          Voice (Chatterbox)
+          <select id="voiceSelect">
+            <option value="">(sample clip)</option>
+            {% for v in voices %}
+              <option value="{{ v }}">{{ v }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Voice Gain <input id="voiceGain" type="range" min="0" max="2" step="0.01" value="1.0" /></label>
+        <label class="disabled"><input type="range" id="masterEngineGain" min="0" max="1" step="0.01" value="1.0" disabled /> Master Engine Noise (disabled)</label>
+        <label class="disabled"><input type="checkbox" id="loopEngineNoise" disabled /> Loop engine noise (disabled)</label>
+        <div class="hint">Engine bed is rendered server-side to match the TTS clip length.</div>
       </div>
     </div>
 

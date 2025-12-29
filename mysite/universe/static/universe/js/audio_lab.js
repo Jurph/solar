@@ -27,14 +27,10 @@
     statusEl.textContent = msg || "";
   }
 
-  function getMode() {
-    const selected = document.querySelector('input[name="mode"]:checked');
-    return selected ? selected.value : "modem";
-  }
-
   function buildPayload() {
     const payload = {
-      mode: getMode(),
+      // Force server-side TTS rendering
+      mode: "tts",
       text: el("labText").value,
       include_quindar: el("includeQuindar").checked,
       include_static: el("includeStatic").checked,
@@ -61,16 +57,13 @@
       echo_wet: parseFloat(el("echoWet").value),
     };
 
-    // Add 10 component gains, master engine gain, and voice gain for TTS mode
-    if (getMode() === "tts") {
-      for (let i = 1; i <= 10; i++) {
-        const id = `component${String(i).padStart(2, "0")}Gain`;
-        payload[`component_${i}_gain`] = el(id) ? parseFloat(el(id).value) : 0.0;
-      }
-      payload.master_engine_gain = el("masterEngineGain") ? parseFloat(el("masterEngineGain").value) : 1.0;
-      payload.voice_gain = el("voiceGain") ? parseFloat(el("voiceGain").value) : 1.0;
-      payload.loop_engine_noise = el("loopEngineNoise") ? el("loopEngineNoise").checked : true;
+    // Add 10 component gains and voice settings (always send for TTS)
+    for (let i = 1; i <= 10; i++) {
+      const id = `component${String(i).padStart(2, "0")}Gain`;
+      payload[`component_${i}_gain`] = el(id) ? parseFloat(el(id).value) : 0.0;
     }
+    payload.voice_id = el("voiceSelect") ? el("voiceSelect").value : "";
+    payload.tts_gain = el("voiceGain") ? parseFloat(el("voiceGain").value) : 1.0;
 
     return payload;
   }
@@ -502,7 +495,7 @@
   // Legacy Server-Side Playback (for modem mode)
   // ============================================================================
 
-  async function playModemMode() {
+  async function playServerMode() {
     setStatus("Rendering…");
 
     const payload = buildPayload();
@@ -552,37 +545,13 @@
   // ============================================================================
 
   async function play() {
-    const mode = getMode();
-
-    if (mode === "tts") {
-      // Client-side Web Audio API mixing
-      try {
-        if (!audioContext) {
-          await initWebAudio();
-        }
-        if (audioBuffersA.length === 0) {
-          await loadAllSoundscapeFiles();
-        }
-        startWebAudioPlayback();
-      } catch (err) {
-        setStatus(`Error: ${err.message}`);
-        console.error(err);
-      }
-    } else {
-      // Server-side rendering (modem mode)
-      await playModemMode();
-    }
+    // Always render on the server (modem or TTS), then play returned WAV
+    await playServerMode();
   }
 
   function stop() {
-    const mode = getMode();
-
-    if (mode === "tts" && isPlaying) {
-      stopWebAudioPlayback();
-    } else {
-      audio.pause();
-      audio.currentTime = 0;
-    }
+    audio.pause();
+    audio.currentTime = 0;
     setStatus("");
   }
 
@@ -613,12 +582,6 @@
   document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     radio.addEventListener("change", () => {
       stop();
-      if (getMode() === "tts" && audioBuffersA.length === 0) {
-        // Preload files when switching to TTS mode
-        initWebAudio()
-          .then(() => loadAllSoundscapeFiles())
-          .catch((err) => console.warn("Preload failed:", err));
-      }
     });
   });
 })();

@@ -24,6 +24,7 @@ requests>=2.32.0
 chatterbox-tts>=0.1.2
 torch>=2.0.0
 torchaudio>=2.0.0
+numpy>=1.23
 
 # Async task processing
 celery>=5.3.0
