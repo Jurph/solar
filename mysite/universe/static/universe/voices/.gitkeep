@@ -1,0 +1,12 @@
+# Voice reference clips go here
+# 
+# Required files for MVP:
+# - pilot_default.wav (10+ seconds, single speaker, clear audio)
+# - controller_default.wav (10+ seconds, single speaker, clear audio)
+#
+# Custom voices can be added as:
+# - pilot_male_01.wav, pilot_female_01.wav, etc.
+# - controller_male_01.wav, controller_female_01.wav, etc.
+#
+# The TTS service will try custom voices first, then fall back to defaults.
+
