@@ -123,7 +123,7 @@ Pay close attention to the examples and counterexamples provided. """
         if ship:
             pilot.ship = ship
             pilot.save()
-        
+        cls.assign_audio_profile(pilot)
         return pilot
 
     @classmethod
@@ -139,16 +139,21 @@ Pay close attention to the examples and counterexamples provided. """
         import random
         import glob
         from pathlib import Path
-        base_dir = Path(__file__).resolve().parent.parent.parent
+        from django.core.exceptions import ObjectDoesNotExist
+        # project root (e.g., .../solar)
+        base_dir = Path(__file__).resolve().parents[3]
         generated_dir = base_dir / "audio" / "voices" / "generated"
-        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-        if not candidates:
-            return
-        voice_path = random.choice(candidates)
-        voice_template = Path(voice_path).stem
 
-        profile = getattr(actor, "audio_profile", None) or AudioProfile.create_default_for_actor(actor)
-        profile.set_voice_template(voice_template)
+        try:
+            profile = actor.audio_profile
+        except ObjectDoesNotExist:
+            profile = None
+        profile = profile or AudioProfile.create_default_for_actor(actor)
+        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+        if candidates:
+            voice_path = random.choice(candidates)
+            voice_template = Path(voice_path).stem
+            profile.set_voice_template(voice_template)
 
         # Room tone based on ship size
         ship_size = 'medium'
@@ -234,16 +239,20 @@ CRITICAL SAFETY RULES:
         import random
         import glob
         from pathlib import Path
-        base_dir = Path(__file__).resolve().parent.parent.parent
+        from django.core.exceptions import ObjectDoesNotExist
+        base_dir = Path(__file__).resolve().parents[3]
         generated_dir = base_dir / "audio" / "voices" / "generated"
-        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-        if not candidates:
-            return
-        voice_path = random.choice(candidates)
-        voice_template = Path(voice_path).stem
 
-        profile = getattr(actor, "audio_profile", None) or AudioProfile.create_default_for_actor(actor)
-        profile.set_voice_template(voice_template)
+        try:
+            profile = actor.audio_profile
+        except ObjectDoesNotExist:
+            profile = None
+        profile = profile or AudioProfile.create_default_for_actor(actor)
+        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+        if candidates:
+            voice_path = random.choice(candidates)
+            voice_template = Path(voice_path).stem
+            profile.set_voice_template(voice_template)
         profile.set_room_tone_preset("room_tone_controller")
 
     @classmethod
@@ -323,16 +332,20 @@ class Satellite(Actor):
         import random
         import glob
         from pathlib import Path
-        base_dir = Path(__file__).resolve().parent.parent.parent
+        from django.core.exceptions import ObjectDoesNotExist
+        base_dir = Path(__file__).resolve().parents[3]
         generated_dir = base_dir / "audio" / "voices" / "generated"
-        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-        if not candidates:
-            return
-        voice_path = random.choice(candidates)
-        voice_template = Path(voice_path).stem
 
-        profile = getattr(actor, "audio_profile", None) or AudioProfile.create_default_for_actor(actor)
-        profile.set_voice_template(voice_template)
+        try:
+            profile = actor.audio_profile
+        except ObjectDoesNotExist:
+            profile = None
+        profile = profile or AudioProfile.create_default_for_actor(actor)
+        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+        if candidates:
+            voice_path = random.choice(candidates)
+            voice_template = Path(voice_path).stem
+            profile.set_voice_template(voice_template)
         # No room tone for satellites
         profile.set_room_tone_preset(None)
 
