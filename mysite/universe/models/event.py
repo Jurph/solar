@@ -110,29 +110,38 @@ class DialogueEventLog(models.Model):
     If JSON is needed, it can be stored in metadata, but 'text' is for display only.
     """
     timestamp = models.FloatField(help_text="Simulation time when event occurred")
-    actor_name = models.CharField(max_length=200, help_text="Name of the speaking actor")
+    actor = models.ForeignKey(
+        Actor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dialogue_events',
+        help_text="The actor speaking this dialogue"
+    )
+    actor_name = models.CharField(max_length=200, help_text="Name of the speaking actor (cached for display)")
     text = models.TextField(help_text="The dialogue message")
     metadata = models.JSONField(default=dict, blank=True, help_text="Additional event metadata (e.g., modem_data for nav broadcasts)")
     created_at = models.DateTimeField(auto_now_add=True, help_text="Database insertion time")
     
     class Meta:
         ordering = ['timestamp']
-
-    def save(self, *args, **kwargs):
-        """
-        Enforce that metadata contains actor_id.
-        This prevents name-based lookups later in the pipeline.
-        """
-        if self.metadata is None:
-            raise ValueError("DialogueEventLog.metadata must include actor_id (metadata is None)")
-        if 'actor_id' not in self.metadata:
-            raise ValueError("DialogueEventLog.metadata must include actor_id")
-        super().save(*args, **kwargs)
         indexes = [
             models.Index(fields=['timestamp']),
+            models.Index(fields=['actor']),
         ]
         verbose_name = "Dialogue Event Log"
         verbose_name_plural = "Dialogue Event Logs"
+
+    def save(self, *args, **kwargs):
+        """
+        Ensure metadata is at least an empty dict and actor_name is populated from actor if available.
+        """
+        if self.metadata is None:
+            self.metadata = {}
+        # Cache actor_name for display even if actor is deleted later
+        if self.actor and not self.actor_name:
+            self.actor_name = self.actor.name
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"[{self.timestamp:.2f}] {self.actor_name}: {self.text[:50]}"

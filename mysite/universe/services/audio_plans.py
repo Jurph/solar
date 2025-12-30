@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from mysite.universe.models.actor import Actor 
 from mysite.universe.models.audio_profile import AudioProfile
 from mysite.universe.models.event import DialogueEventLog
 
@@ -46,42 +45,30 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     import logging
     log = logging.getLogger(__name__)
     
-    actor = None
+    actor = event.actor
     is_satellite = False
     
-    # CRITICAL: Always use actor_id from metadata - never use name lookups
-    # Actors are uniquely identified by ID, not name
-    metadata = getattr(event, "metadata", None) or {}
-    actor_id = metadata.get("actor_id")
-    
-    if not actor_id:
-        log.error("Event %s missing actor_id in metadata (name='%s') - cannot build audio plan. "
-                 "Event should have actor_id stored in metadata.", event.id, event.actor_name)
+    # If no actor reference, return minimal plan
+    if not actor:
+        log.error("Event %s missing actor reference (name='%s') - cannot build audio plan.", 
+                 event.id, event.actor_name)
         # Return minimal plan with just Quindars - no TTS, no room tone
         return [
-            {"action": "quindar_start"},
-            {"action": "quindar_end"},
+            {"trigger": "event_start", "preset": "quindar_start"},
+            {"trigger": "event_end", "preset": "quindar_end"},
         ]
     
-    try:
-        actor = Actor.objects.get(id=actor_id)
-        if isinstance(actor, Satellite):
-            is_satellite = True
-    except Actor.DoesNotExist:
-        log.error("Event %s references non-existent actor_id=%s (name='%s') - cannot build audio plan", 
-                 event.id, actor_id, event.actor_name)
-        # Return minimal plan with just Quindars - no TTS, no room tone
-        return [
-            {"action": "quindar_start"},
-            {"action": "quindar_end"},
-        ]
-    
-    if actor is None:
-                # Fallback: use default presets if actor not found
-                return [
-                    {"trigger": "event_start", "preset": "quindar_start"},
-                    {"trigger": "event_end", "preset": "quindar_end"},
-                ]
+    # Django multi-table inheritance requires checking subclass attributes to get concrete type
+    if hasattr(actor, 'satellite'):
+        # This is a Satellite (has OneToOneField back-reference)
+        actor = actor.satellite
+        is_satellite = True
+    elif hasattr(actor, 'pilot'):
+        # This is a Pilot
+        actor = actor.pilot
+    elif hasattr(actor, 'controller'):
+        # This is a Controller
+        actor = actor.controller
     
     # Get or create AudioProfile for this actor
     # If missing or incomplete, assign it on-demand
@@ -120,7 +107,7 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     room_tone_params = profile.get_room_tone_params()
     static_params = profile.get_static_params()
     
-    # Shared quindars for all actors
+    # All actors (including satellites) get quindar start tone
     plan.append({
         "trigger": "event_start",
         "preset": "quindar_start",
@@ -129,12 +116,18 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
             "gain": quindar_params.get("gain", 0.9),
         }
     })
-
+    
+    # For satellites, prepare modem data (used later for modem noise)
+    modem_data = None
     if is_satellite:
-        # Satellites: TTS voice plus modem tail
-        # modem_data: payload; default to event.text
-        modem_data = event.metadata.get("modem_data") if event.metadata else event.text
-        # Room tone disabled for satellites
+        modem_data = event.metadata.get("modem_data") if event.metadata else None
+        if not modem_data:
+            modem_data = event.text
+    
+    if is_satellite:
+        # Satellites: Quindar, robotic TTS voice, then modem burst and closing quindar
+        # No room tone for satellites
+        pass
     else:
         # Pilots/Controllers: room tone + static
         if room_tone_params.get("enabled", True):
@@ -150,7 +143,7 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
                 "params": static_params,
             })
 
-    # Quindar end tone (customized from profile)
+    # All actors (including satellites) get quindar end tone
     plan.append({
         "trigger": "event_end",
         "preset": "quindar_end",
@@ -201,6 +194,21 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
                     "space_frequency_hz": 2200.0,
                 },
             })
+    elif is_satellite:
+        # Satellite with no TTS voice: still emit modem noise using text
+        plan.append({
+            "trigger": "event_end",
+            "preset": "modem_noise_example",
+            "params": {
+                "text": modem_data,
+                "gain": 0.8,
+                "baud_rate": 300,
+                "carrier_frequency_hz": 1800.0,
+                "carrier_gain": 0.15,
+                "mark_frequency_hz": 1200.0,
+                "space_frequency_hz": 2200.0,
+            },
+        })
     
     return plan
 

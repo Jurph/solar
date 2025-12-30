@@ -109,22 +109,14 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
         # Create and save the log entry with natural language text only
         # Note: TTS enqueue happens via post_save signal (enqueue_tts_on_log_save)
         # to avoid double-enqueueing
-        # CRITICAL: Always store actor_id in metadata - never use name lookups
-        # This is required for reliable actor resolution
-        metadata = dict(event.metadata) if hasattr(event, 'metadata') and event.metadata else {}
-        if hasattr(event, 'actor') and event.actor is not None:
-            if hasattr(event.actor, 'id'):
-                metadata['actor_id'] = event.actor.id
-            else:
-                logger.error("Event actor has no 'id' attribute: %s", type(event.actor))
-        else:
-            logger.error("Event has no actor or actor is None - cannot store actor_id in metadata")
-        
+        # Store event with actor ForeignKey reference
+        # actor_name is cached from actor.name for display (survives if actor is deleted)
         DialogueEventLog.objects.create(
             timestamp=event.timestamp,
+            actor=event.actor if hasattr(event, 'actor') else None,
             actor_name=actor_name,
             text=display_text,
-            metadata=metadata
+            metadata=dict(event.metadata) if hasattr(event, 'metadata') and event.metadata else {}
         )
         
     except Exception as e:

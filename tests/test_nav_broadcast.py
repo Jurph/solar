@@ -308,7 +308,7 @@ class TestAudioPlanSatelliteDetection(NavBroadcastTest):
     """Test audio plan detection for Satellite actors."""
     
     def test_audio_plan_for_satellite_uses_modem_noise(self):
-        """Test that Satellite actors get modem noise in audio plan."""
+        """Test that Satellite actors get modem noise in audio plan (with quindars)."""
         # Ensure satellite has an audio profile
         from mysite.universe.models.audio_profile import AudioProfile
         AudioProfile.create_default_for_actor(self.satellite)
@@ -316,20 +316,13 @@ class TestAudioPlanSatelliteDetection(NavBroadcastTest):
         # Create a nav broadcast event
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
-            actor_name=self.satellite.name,
+            actor=self.satellite,
             text="RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
         )
         
         audio_plan = build_audio_plan_for_dialogue_event(event)
         
-        # Debug: print the audio plan to see what we got
-        # print(f"Audio plan: {audio_plan}")
-        # print(f"Satellite class: {self.satellite.__class__.__name__}")
-        # from mysite.universe.models.actor import Actor
-        # actor = Actor.objects.get(name=self.satellite.name)
-        # print(f"Actor from DB class: {actor.__class__.__name__}")
-        
-        # Should have modem noise preset
+        # Satellites should have modem noise preset
         modem_actions = [a for a in audio_plan if "modem_noise" in a.get("preset", "")]
         if len(modem_actions) == 0:
             # If no modem actions, check what we actually got
@@ -337,16 +330,17 @@ class TestAudioPlanSatelliteDetection(NavBroadcastTest):
             self.fail(f"Expected modem_noise preset, but got: {all_presets}. Full plan: {audio_plan}")
         self.assertGreater(len(modem_actions), 0, "Satellite events should use modem noise")
         
-        # Should NOT have Quindar tones
+        # Satellites SHOULD have Quindar tones (start/end of transmission)
+        # Comment in audio_plans.py says: "Don't remove Quindars from satellites"
         quindar_actions = [a for a in audio_plan if "quindar" in a.get("preset", "")]
-        self.assertEqual(len(quindar_actions), 0, f"Satellite events should NOT use Quindar tones, but got: {quindar_actions}")
+        self.assertGreater(len(quindar_actions), 0, "Satellite events SHOULD use Quindar tones")
     
     def test_audio_plan_for_pilot_uses_quindar(self):
         """Test that Pilot actors get Quindar tones in audio plan."""
         # Create a dialogue event from pilot
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
-            actor_name=self.pilot.name,
+            actor=self.pilot,
             text="Requesting clearance for departure."
         )
         
@@ -369,7 +363,7 @@ class TestAudioPlanSatelliteDetection(NavBroadcastTest):
         broadcast_text = "RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
-            actor_name=self.satellite.name,
+            actor=self.satellite,
             text=broadcast_text
         )
         

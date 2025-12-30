@@ -266,21 +266,13 @@ def spawn_mission(request):
                 for event in dialogue_events_iter:
                     scheduled_time = base_sim_time + event.timestamp
                     
-                    # CRITICAL: Store actor_id in metadata - never use name lookups
-                    metadata = dict(event.metadata) if event.metadata else {}
-                    if hasattr(event, 'actor') and event.actor is not None:
-                        if hasattr(event.actor, 'id'):
-                            metadata['actor_id'] = event.actor.id
-                        else:
-                            logger.error("Cargo mission event actor has no 'id' attribute: %s", type(event.actor))
-                    else:
-                        logger.error("Cargo mission event has no actor or actor is None")
-                    
+                    # Store event with actor ForeignKey reference
                     DialogueEventLog.objects.create(
                         timestamp=scheduled_time,
-                        actor_name=event.actor.name,
+                        actor=event.actor if hasattr(event, 'actor') else None,
+                        actor_name=event.actor.name if hasattr(event, 'actor') and event.actor else "Unknown",
                         text=event.text,
-                        metadata=metadata,
+                        metadata=dict(event.metadata) if event.metadata else {},
                     )
                     events_saved += 1
                     last_relative_timestamp = event.timestamp

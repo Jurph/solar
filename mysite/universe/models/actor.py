@@ -37,6 +37,16 @@ class Actor(models.Model):
         role_name = self.__class__.__name__
         return f"{self.name} ({role_name})"
 
+    def __eq__(self, other):
+        if not isinstance(other, Actor):
+            return False
+        if self.pk is None or other.pk is None:
+            return self is other
+        return self.pk == other.pk
+
+    def __hash__(self):
+        return hash(self.pk) if self.pk is not None else super().__hash__()
+
     def get_identity_prompt(self) -> str:
         """Return a basic identity prompt for this actor."""
         # Use class name as role identifier for LLM prompts
@@ -381,6 +391,7 @@ class Satellite(Actor):
             profile = None
         profile = profile or AudioProfile.create_default_for_actor(actor)
         
+        # Satellites DO get voice_template (robotic TTS voice)
         # Only assign voice_template if not already set (idempotent)
         vp = profile.get_voice_params() or {}
         if not vp.get("voice_template"):
@@ -389,6 +400,7 @@ class Satellite(Actor):
                 voice_path = random.choice(candidates)
                 voice_template = Path(voice_path).stem
                 profile.set_voice_template(voice_template)
+        
         # No room tone for satellites
         profile.set_room_tone_preset(None)
 
