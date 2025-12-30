@@ -8,8 +8,10 @@ from mysite.universe.services.log_buffer import get_log_handler
 @require_GET
 def logs_view(request):
     """
-    Return recent logs (tail) and allow setting log level via ?level=INFO|DEBUG|WARN|ERROR.
+    Return recent logs (tail) and allow filtering by level via ?min_level=INFO|DEBUG|WARN|ERROR.
+    Also allows setting root logger level via ?level=INFO|DEBUG|WARN|ERROR.
     """
+    # Set root logger level if requested
     level = request.GET.get("level")
     if level:
         try:
@@ -17,7 +19,27 @@ def logs_view(request):
         except Exception:
             pass
 
+    # Filter logs by minimum level if requested
+    min_level = request.GET.get("min_level", "DEBUG")
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "WARN": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    min_level_no = level_map.get(min_level.upper(), logging.DEBUG)
+
     tail_n = int(request.GET.get("n", "200"))
     handler = get_log_handler()
-    return JsonResponse({"logs": handler.tail(tail_n)})
+    all_logs = handler.tail(tail_n)
+    
+    # Filter by minimum level
+    filtered_logs = [
+        log for log in all_logs
+        if level_map.get(log["level"], logging.DEBUG) >= min_level_no
+    ]
+    
+    return JsonResponse({"logs": filtered_logs, "filtered": len(all_logs) - len(filtered_logs)})
 
