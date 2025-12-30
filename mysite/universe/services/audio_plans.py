@@ -40,38 +40,58 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     - TTS will use: voice_template, pitch_shift_cents, speed_factor from AudioProfile
     - For now, no TTS actions are generated - only tones, static, and room tone
     """
-    # Look up Actor by name (DialogueEventLog stores actor_name as string)
-    # Try to get from concrete models first (Satellite, Pilot, Controller) to get proper type
+    # Look up Actor by actor_id (preferred) or name (fallback)
+    # DialogueEventLog stores actor_name as string, but metadata may have actor_id
     from mysite.universe.models.actor import Satellite, Pilot, Controller
+    import logging
+    log = logging.getLogger(__name__)
     
     actor = None
     is_satellite = False
     
-    # Names are not unique; always use filter().first() to avoid MultipleObjectsReturned.
-    # Prefer concrete subclasses in a stable order so audio behavior is deterministic.
+    # Prefer actor_id from metadata to avoid name collisions
+    metadata = getattr(event, "metadata", None) or {}
+    actor_id = metadata.get("actor_id")
+    if actor_id:
+        try:
+            actor = Actor.objects.get(id=actor_id)
+            if isinstance(actor, Satellite):
+                is_satellite = True
+        except Actor.DoesNotExist:
+            log.warning("Event %s references non-existent actor_id=%s", event.id, actor_id)
+    
+    # Fallback to name lookup if no actor_id
+    if not actor:
+        # Names are not unique; always use filter().first() to avoid MultipleObjectsReturned.
+        # Prefer concrete subclasses in a stable order so audio behavior is deterministic.
 
-    # Try Satellite first (for nav broadcasts)
-    actor = Satellite.objects.filter(name=event.actor_name).order_by("-id").first()
-    if actor is not None:
-        is_satellite = True
-    
-    # Try Pilot if not found
-    if actor is None:
-        actor = Pilot.objects.filter(name=event.actor_name).order_by("-id").first()
-    
-    # Try Controller if not found
-    if actor is None:
-        actor = Controller.objects.filter(name=event.actor_name).order_by("-id").first()
-    
-    # Fallback to base Actor model
-    if actor is None:
-        actor = Actor.objects.filter(name=event.actor_name).order_by("-id").first()
+        # Try Satellite first (for nav broadcasts)
+        actor = Satellite.objects.filter(name=event.actor_name).order_by("-id").first()
+        if actor is not None:
+            is_satellite = True
+        
+        # Try Pilot if not found
         if actor is None:
-            # Fallback: use default presets if actor not found
-            return [
-                {"trigger": "event_start", "preset": "quindar_start"},
-                {"trigger": "event_end", "preset": "quindar_end"},
-            ]
+            actor = Pilot.objects.filter(name=event.actor_name).order_by("-id").first()
+        
+        # Try Controller if not found
+        if actor is None:
+            actor = Controller.objects.filter(name=event.actor_name).order_by("-id").first()
+        
+        # Fallback to base Actor model
+        if actor is None:
+            actors = list(Actor.objects.filter(name=event.actor_name).order_by("-id"))
+            if len(actors) > 1:
+                log.warning("Multiple actors found with name '%s' (count=%d), using most recent (id=%s) for event %s",
+                           event.actor_name, len(actors), actors[0].id, event.id)
+            actor = actors[0] if actors else None
+            
+            if actor is None:
+                # Fallback: use default presets if actor not found
+                return [
+                    {"trigger": "event_start", "preset": "quindar_start"},
+                    {"trigger": "event_end", "preset": "quindar_end"},
+                ]
     
     # Get or create AudioProfile for this actor
     profile, _ = AudioProfile.objects.get_or_create(

@@ -81,7 +81,8 @@
         let lastFetchedSimTime = null; // Sim time at last fetch
         let nextEventTimestamp = null; // Timestamp of next pending event
         let pendingEventCount = 0; // Number of pending events
-        let waitingAudio = new Map(); // event_id -> event awaiting audio_ready
+        let waitingAudio = new Map(); // event_id -> {event: Event, addedAt: number} awaiting audio_ready
+        const AUDIO_WAIT_TIMEOUT_MS = 30000; // 30 seconds - if audio not ready, display anyway
         
         // DOM elements
         const eventLog = document.getElementById('eventLog');
@@ -124,10 +125,32 @@
             return url;
         }
 
-        function enqueueEventAudio(event, useFastMode) {
+        async function enqueueEventAudio(event, useFastMode) {
             if (useFastMode) return;
             if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return;
             if (!event || !event.audio_url || !event.audio_ready) return;
+            
+            // Try to fetch audio; if 404, trigger re-generation
+            try {
+                const resp = await fetch(event.audio_url, { method: "HEAD" });
+                if (resp.status === 404) {
+                    console.warn(`Audio for event ${event.id} was evicted (404), requesting re-generation`);
+                    // Clear audio flags so event falls back to legacy audio
+                    event.audio_ready = false;
+                    event.audio_url = null;
+                    // Optionally trigger re-prefetch (best-effort)
+                    try {
+                        await fetch("{% url 'ensure_audio_worker' %}", { method: "POST" });
+                    } catch (e) {
+                        console.warn("Failed to ensure worker for retry:", e);
+                    }
+                    return; // Don't enqueue missing audio
+                }
+            } catch (e) {
+                console.warn(`Failed to check audio for event ${event.id}:`, e);
+                // Continue anyway - maybe it's a network hiccup
+            }
+            
             audioPlayer.enqueueWavUrl(event.audio_url);
         }
 
@@ -424,7 +447,7 @@
             for (const ev of newEvents) {
                 if (audioPlayer.isEnabled() && !audioPlayer.isMuted() && ev.audio_url) {
                     if (!ev.audio_ready) {
-                        waitingAudio.set(ev.id, ev);
+                        waitingAudio.set(ev.id, {event: ev, addedAt: Date.now()});
                         continue;
                     } else {
                         waitingAudio.delete(ev.id);
@@ -478,11 +501,11 @@
                     // Update waitingAudio with fresh audio_ready flags from server
                     for (const freshEvent of data.events) {
                         if (waitingAudio.has(freshEvent.id)) {
-                            const waitingEv = waitingAudio.get(freshEvent.id);
+                            const waitingData = waitingAudio.get(freshEvent.id);
                             // Update with fresh data from server
-                            waitingEv.audio_ready = freshEvent.audio_ready;
-                            waitingEv.audio_url = freshEvent.audio_url;
-                            waitingEv.audio_duration_s = freshEvent.audio_duration_s;
+                            waitingData.event.audio_ready = freshEvent.audio_ready;
+                            waitingData.event.audio_url = freshEvent.audio_url;
+                            waitingData.event.audio_duration_s = freshEvent.audio_duration_s;
                         }
                     }
                     
@@ -504,17 +527,33 @@
                 console.error('Error fetching events:', error);
             } finally {
                 isFetching = false;
-                // Promote waiting events that are now ready (using updated flags from server)
-                if (waitingAudio.size > 0 && audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
+                // Promote waiting events that are now ready or timed out
+                if (waitingAudio.size > 0) {
                     const readyIds = [];
-                    for (const [id, ev] of waitingAudio.entries()) {
+                    const timedOutIds = [];
+                    const now = Date.now();
+                    
+                    for (const [id, waitingData] of waitingAudio.entries()) {
+                        const ev = waitingData.event;
+                        const waitTime = now - waitingData.addedAt;
+                        
                         if (ev.audio_ready) {
+                            // Audio is ready - promote to queue
                             eventQueue.push(ev);
                             readyIds.push(id);
+                        } else if (waitTime > AUDIO_WAIT_TIMEOUT_MS) {
+                            // Timed out - display without audio (fall back to legacy or silent)
+                            console.warn(`Event ${id} audio timed out after ${waitTime}ms, displaying without audio`);
+                            ev.audio_ready = false;  // Ensure flag is false
+                            ev.audio_url = null;  // Clear URL so legacy path is used
+                            eventQueue.push(ev);
+                            timedOutIds.push(id);
                         }
                     }
+                    
                     readyIds.forEach((id) => waitingAudio.delete(id));
-                    if (readyIds.length > 0) {
+                    timedOutIds.forEach((id) => waitingAudio.delete(id));
+                    if (readyIds.length > 0 || timedOutIds.length > 0) {
                         processNextEvent();
                     }
                 }

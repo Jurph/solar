@@ -54,10 +54,24 @@ def _get_audio_queue() -> AudioJobQueue:
 
 
 def _ensure_worker():
+    """Ensure audio worker is running and healthy; restart if dead or stuck."""
     global _audio_worker
-    if _audio_worker is None:
+    import logging
+    log = logging.getLogger(__name__)
+    
+    if _audio_worker is None or not _audio_worker.is_alive_and_healthy():
+        # Stop old worker if it exists but is dead
+        if _audio_worker is not None:
+            try:
+                _audio_worker.stop()
+                _audio_worker.join(timeout=2.0)
+            except Exception:
+                pass
+            log.warning("Audio worker was dead or unhealthy, restarting")
+        
         _audio_worker = AudioWorker(cache=_get_audio_cache(), queue=_get_audio_queue())
         _audio_worker.start()
+        log.info("Audio worker started")
 
 
 def _prefetch_audio_for_events(events):
@@ -83,12 +97,27 @@ def _prefetch_audio_for_events(events):
         # Resolve voice from metadata or actor profile
         voice_id = meta.get("voice_id")
         if not voice_id:
-            actor = (
-                Pilot.objects.filter(name=ev.actor_name).order_by("-id").first()
-                or Controller.objects.filter(name=ev.actor_name).order_by("-id").first()
-                or Satellite.objects.filter(name=ev.actor_name).order_by("-id").first()
-                or BaseActor.objects.filter(name=ev.actor_name).order_by("-id").first()
-            )
+            actor = None
+            # Prefer actor_id from metadata to avoid name collisions
+            actor_id = meta.get("actor_id")
+            if actor_id:
+                try:
+                    actor = BaseActor.objects.get(id=actor_id)
+                except BaseActor.DoesNotExist:
+                    log.warning("Event %s references non-existent actor_id=%s", ev.id, actor_id)
+            
+            # Fallback to name lookup if no actor_id
+            if not actor:
+                actors = list(Pilot.objects.filter(name=ev.actor_name).order_by("-id"))
+                actors.extend(Controller.objects.filter(name=ev.actor_name).order_by("-id"))
+                actors.extend(Satellite.objects.filter(name=ev.actor_name).order_by("-id"))
+                actors.extend(BaseActor.objects.filter(name=ev.actor_name).order_by("-id"))
+                
+                if len(actors) > 1:
+                    log.warning("Multiple actors found with name '%s' (count=%d), using most recent (id=%s) for event %s",
+                               ev.actor_name, len(actors), actors[0].id, ev.id)
+                actor = actors[0] if actors else None
+            
             if actor:
                 try:
                     profile = actor.audio_profile
@@ -110,10 +139,25 @@ def _prefetch_audio_for_events(events):
 def _select_upcoming_events(sim_time, limit: int = 12):
     """
     Fetch upcoming events after sim_time within a horizon, ordered by timestamp/id.
+    Prioritizes near-term events by using a smaller horizon first, then expanding.
     """
-    horizon = sim_time + _AUDIO_PREFETCH_HORIZON_SECONDS
-    qs = DialogueEventLog.objects.filter(timestamp__gt=sim_time, timestamp__lte=horizon).order_by("timestamp", "id")
-    return qs[:min(limit, _AUDIO_PREFETCH_MAX_EVENTS)]
+    # First, try to get events within a shorter horizon (5 minutes) to prioritize near-term
+    near_horizon = sim_time + min(300.0, _AUDIO_PREFETCH_HORIZON_SECONDS / 6)
+    near_events = list(DialogueEventLog.objects.filter(
+        timestamp__gt=sim_time, 
+        timestamp__lte=near_horizon
+    ).order_by("timestamp", "id")[:limit])
+    
+    # If we have room, expand to full horizon
+    if len(near_events) < limit:
+        far_horizon = sim_time + _AUDIO_PREFETCH_HORIZON_SECONDS
+        far_events = DialogueEventLog.objects.filter(
+            timestamp__gt=near_horizon,
+            timestamp__lte=far_horizon
+        ).order_by("timestamp", "id")[:limit - len(near_events)]
+        near_events.extend(far_events)
+    
+    return near_events[:min(limit, _AUDIO_PREFETCH_MAX_EVENTS)]
 
 
 def _sentence_case(text: str) -> str:

@@ -107,11 +107,16 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
         # Create and save the log entry with natural language text only
         # Note: TTS enqueue happens via post_save signal (enqueue_tts_on_log_save)
         # to avoid double-enqueueing
+        metadata = event.metadata if hasattr(event, 'metadata') else {}
+        # Store actor_id in metadata to avoid name collision issues
+        if hasattr(event.actor, 'id'):
+            metadata = {**metadata, 'actor_id': event.actor.id}
+        
         log_entry = DialogueEventLog.objects.create(
             timestamp=event.timestamp,
             actor_name=actor_name,
             text=display_text,
-            metadata=event.metadata if hasattr(event, 'metadata') else {}
+            metadata=metadata
         )
         
     except Exception as e:

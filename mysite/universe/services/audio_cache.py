@@ -86,10 +86,19 @@ class AudioWorker(threading.Thread):
         self.queue = queue
         self.sample_rate = sample_rate
         self._stop = threading.Event()
+        self._last_activity = time.time()  # Track last successful job completion
         import os
         # Defensive env to dodge protobuf descriptor issues
         os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
         os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+    
+    def is_alive_and_healthy(self, max_idle_seconds: float = 300.0) -> bool:
+        """Check if worker is alive and has been active recently."""
+        if not self.is_alive():
+            return False
+        # If worker has been idle too long, consider it unhealthy (may be stuck)
+        idle_time = time.time() - self._last_activity
+        return idle_time < max_idle_seconds
 
     def run(self):
         import logging
@@ -120,12 +129,15 @@ class AudioWorker(threading.Thread):
                 )
                 self.cache.put(entry)
                 log.info("TTS generate done event_id=%s duration=%.2fs bytes=%d", job.event_id, duration, len(wav_bytes))
+                self._last_activity = time.time()  # Track successful completion
             except Exception as e:
                 # Log error but don't crash worker - mark job complete so queue doesn't block
                 log.error("TTS generate failed for event_id=%s voice=%s: %s", job.event_id, job.voice_id, e, exc_info=True)
                 # Job will be marked complete in finally, but no cache entry = audio_ready stays False
             finally:
                 self.queue.complete(job)
+                # Update activity even on failure (worker is still processing)
+                self._last_activity = time.time()
 
     def stop(self):
         self._stop.set()
