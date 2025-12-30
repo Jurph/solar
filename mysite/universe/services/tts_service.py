@@ -11,6 +11,7 @@ import hashlib
 import io
 import os
 import logging
+import threading
 import wave
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -56,6 +57,8 @@ class TTSService(ABC):
 class ChatterboxTTSService(TTSService):
     """Chatterbox TTS implementation (Turbo model for low latency)."""
     
+    _model_load_lock = threading.Lock()  # Class-level lock for thread-safe model loading
+    
     def __init__(self, device: Optional[str] = None):
         """
         Initialize Chatterbox TTS service.
@@ -73,11 +76,21 @@ class ChatterboxTTSService(TTSService):
         logger.info(f"ChatterboxTTSService initialized with device={device}")
     
     def _load_model(self):
-        """Lazy-load the model (expensive operation, ~350MB)."""
-        if self.model is None:
+        """Lazy-load the model (expensive operation, ~350MB). Thread-safe."""
+        if self.model is not None:
+            return  # Already loaded
+        
+        with self._model_load_lock:
+            # Double-check after acquiring lock (another thread may have loaded it)
+            if self.model is not None:
+                logger.info("Model already loaded by another thread")
+                return
+            
             try:
                 from chatterbox.tts_turbo import ChatterboxTurboTTS
 
+                logger.info("Starting model load (this may take 30-60 seconds)...")
+                
                 # Prefer local path if provided (no network)
                 local_path = os.getenv("CHATTERBOX_LOCAL_PATH")
                 if not local_path:
@@ -290,19 +303,26 @@ class ChatterboxTTSService(TTSService):
 
 # Singleton instance (lazy-loaded)
 _tts_service: Optional[TTSService] = None
+_tts_service_lock = threading.Lock()
 
 
 def get_tts_service() -> TTSService:
     """
-    Get singleton TTS service instance.
+    Get singleton TTS service instance (thread-safe).
     
     Returns:
         TTSService instance (Chatterbox implementation)
     """
     global _tts_service
-    if _tts_service is None:
-        _tts_service = ChatterboxTTSService()
-    return _tts_service
+    if _tts_service is not None:
+        return _tts_service
+    
+    with _tts_service_lock:
+        # Double-check after acquiring lock
+        if _tts_service is None:
+            logger.info("Creating singleton TTS service instance")
+            _tts_service = ChatterboxTTSService()
+        return _tts_service
 
 
 def warm_tts_service(voice_id: str = "pilot_default", text: str = "check"):
