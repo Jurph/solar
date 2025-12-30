@@ -31,6 +31,8 @@ urlpatterns = [
     path("api/simulation/status/", views.get_simulation_status, name="simulation_status"),
     # API endpoint to skip to next event:
     path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
+    # API endpoint to fetch generated event audio (in-memory)
+    path("api/event_audio/<int:event_id>/", views.event_audio, name="event_audio"),
     # API endpoint for audio clip presets (WAV):
     path("api/audio/preset/<str:preset>/", views.audio_preset, name="audio_preset"),
     # Dev tool: Audio lab (standalone UI + render endpoint)

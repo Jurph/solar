@@ -13,8 +13,9 @@ The event system handles:
 - Debug information for monitoring event queue status
 """
 import logging
+import os
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
@@ -23,8 +24,67 @@ from django.db.models import Q
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
+from mysite.universe.services.audio_cache import AudioCache, AudioJob, AudioJobQueue, AudioWorker
 
 logger = logging.getLogger(__name__)
+
+# Prefetch/config knobs
+_AUDIO_CACHE_CAPACITY = int(os.getenv("AUDIO_CACHE_CAPACITY", "24"))  # bump above 12 to allow horizon buffering
+_AUDIO_PREFETCH_HORIZON_SECONDS = float(os.getenv("AUDIO_PREFETCH_HORIZON_SECONDS", "1800"))  # 30 minutes
+_AUDIO_PREFETCH_MAX_EVENTS = int(os.getenv("AUDIO_PREFETCH_MAX_EVENTS", "200"))
+
+# Lightweight in-memory audio cache/queue/worker (no disk writes)
+_audio_cache: AudioCache | None = None
+_audio_queue: AudioJobQueue | None = None
+_audio_worker: AudioWorker | None = None
+
+
+def _get_audio_cache() -> AudioCache:
+    global _audio_cache
+    if _audio_cache is None:
+        _audio_cache = AudioCache(capacity=_AUDIO_CACHE_CAPACITY)
+    return _audio_cache
+
+
+def _get_audio_queue() -> AudioJobQueue:
+    global _audio_queue
+    if _audio_queue is None:
+        _audio_queue = AudioJobQueue(capacity=50)
+    return _audio_queue
+
+
+def _ensure_worker():
+    global _audio_worker
+    if _audio_worker is None:
+        _audio_worker = AudioWorker(cache=_get_audio_cache(), queue=_get_audio_queue())
+        _audio_worker.start()
+
+
+def _prefetch_audio_for_events(events):
+    """
+    Best-effort prefetch: enqueue events for which audio is not cached.
+    """
+    _ensure_worker()
+    cache = _get_audio_cache()
+    queue = _get_audio_queue()
+    for ev in events:
+        if cache.get(ev.id):
+            continue
+        text = getattr(ev, "text", "") or ""
+        if not text.strip():
+            continue
+        meta = getattr(ev, "metadata", None) or {}
+        voice_id = meta.get("voice_id") or "pilot_default"
+        queue.enqueue(AudioJob(event_id=ev.id, text=text, voice_id=voice_id))
+
+
+def _select_upcoming_events(sim_time, limit: int = 12):
+    """
+    Fetch upcoming events after sim_time within a horizon, ordered by timestamp/id.
+    """
+    horizon = sim_time + _AUDIO_PREFETCH_HORIZON_SECONDS
+    qs = DialogueEventLog.objects.filter(timestamp__gt=sim_time, timestamp__lte=horizon).order_by("timestamp", "id")
+    return qs[:min(limit, _AUDIO_PREFETCH_MAX_EVENTS)]
 
 
 def event_feed(request):
@@ -98,6 +158,13 @@ def event_feed(request):
 
     queryset = queryset.order_by("timestamp", "id")[:limit]
     
+    # Prefetch audio for returned events and additional upcoming events (best-effort)
+    _prefetch_audio_for_events(list(queryset))
+    remaining = max(0, _AUDIO_CACHE_CAPACITY - len(queryset))
+    if remaining > 0:
+        upcoming = _select_upcoming_events(sim_time=sim_time, limit=remaining)
+        _prefetch_audio_for_events(list(upcoming))
+
     # Convert to list of dicts with only essential fields
     events = [
         {
@@ -108,6 +175,9 @@ def event_feed(request):
             'metadata': event.metadata if event.metadata is not None else {},
             # Python-defined audio plan (client just queues & plays waveforms)
             'audio_plan': build_audio_plan_for_dialogue_event(event),
+            'audio_ready': bool(_get_audio_cache().get(event.id)),
+            'audio_duration_s': (_get_audio_cache().get(event.id).duration_s if _get_audio_cache().get(event.id) else None),
+            'audio_url': (f"/api/event_audio/{event.id}/" if _get_audio_cache().get(event.id) else None),
         }
         for event in queryset
     ]
@@ -189,3 +259,13 @@ def clear_events(request):
             'status': 'error',
             'message': f'Failed to clear events: {str(e)}'
         }, status=500)
+
+
+@require_http_methods(["GET"])
+def event_audio(request, event_id: int):
+    entry = _get_audio_cache().get(int(event_id))
+    if not entry:
+        return JsonResponse({"status": "error", "message": "Audio not ready"}, status=404)
+    resp = HttpResponse(entry.wav_bytes, content_type="audio/wav")
+    resp["Cache-Control"] = "no-store"
+    return resp

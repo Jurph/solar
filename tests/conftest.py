@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pytest
-
+import django
 
 _CURRENT_TEST_NODEID: ContextVar[Optional[str]] = ContextVar("_CURRENT_TEST_NODEID", default=None)
 
@@ -169,5 +169,22 @@ def _install_llm_benchmark_hooks():
     # Restore originals at end of session
     LLMService.chat = orig_chat  # type: ignore[method-assign]
     LLMService.generate_with_system_prompt = orig_gen  # type: ignore[method-assign]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _tts_warmup_if_slow(pytestconfig):
+    """
+    If running slow tests, kick off a small TTS warmup early to pay the cold-start cost up front.
+    """
+    markers = pytestconfig.getoption("-m") or ""
+    if "slow" not in markers:
+        return
+    try:
+        from mysite.universe.services.tts_service import warm_tts_service
+
+        warm_tts_service()
+    except Exception:
+        # Best-effort; don't fail collection if warmup is unavailable.
+        pass
 
 

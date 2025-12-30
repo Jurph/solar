@@ -183,3 +183,13 @@ def test_chatterbox_voice_switch_latency():
         with out_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
+
+@pytest.mark.slow
+def test_chatterbox_performance_artifacts_exist():
+    """
+    Helper to ensure performance artifacts were written for inspection.
+    """
+    artifacts_dir = Path(settings.BASE_DIR) / "artifacts"
+    out_path = artifacts_dir / "tts_performance.jsonl"
+    assert out_path.exists(), "tts_performance.jsonl not found; run performance tests to generate metrics"
+

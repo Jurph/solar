@@ -286,3 +286,15 @@ def get_tts_service() -> TTSService:
         _tts_service = ChatterboxTTSService()
     return _tts_service
 
+
+def warm_tts_service(voice_id: str = "pilot_default", text: str = "check"):
+    """
+    Warm the TTS model once to avoid first-hit latency.
+    Best-effort; logs but does not raise.
+    """
+    try:
+        svc = get_tts_service()
+        svc.generate(text=text, voice_id=voice_id)
+    except Exception as e:
+        logger.warning("TTS warmup failed: %s", e)
+

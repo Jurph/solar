@@ -7,6 +7,7 @@ saving dialogue events to the database for real-time display.
 import logging
 
 from django.dispatch import receiver
+from django.db.models.signals import post_save
 
 from mysite.universe.signals import dialogue_event_processed
 from mysite.universe.models.event import DialogueEventLog
@@ -111,41 +112,28 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
             metadata=event.metadata if hasattr(event, 'metadata') else {}
         )
         
-        # Trigger async TTS generation (if TTS is available)
+        # Trigger in-memory TTS prefetch (best-effort, no disk, no background task)
         try:
-            from mysite.universe.tasks import generate_tts_async
-            from mysite.universe.models.actor import Actor
-            from mysite.universe.models.audio_profile import AudioProfile
-            
-            # Get actor and voice profile
-            actor = Actor.objects.filter(name=actor_name).first()
-            if actor:
-                profile, _ = AudioProfile.objects.get_or_create(actor=actor)
-                voice_params = profile.get_voice_params()
-                voice_template = voice_params.get("voice_template")
-                
-                # If no explicit voice_template, try to infer from actor type
-                if not voice_template:
-                    from mysite.universe.models.actor import Pilot, Controller
-                    if isinstance(actor, Pilot):
-                        voice_template = "pilot_default"
-                    elif isinstance(actor, Controller):
-                        voice_template = "controller_default"
-                
-                # Trigger async TTS generation if we have a voice
-                if voice_template:
-                    generate_tts_async.delay(
-                        text=display_text,
-                        voice_id=voice_template,
-                        event_id=log_entry.id,
-                        cfg_weight=0.5,
-                        exaggeration=0.5,
-                    )
+            from mysite.universe.views import events as events_views
+
+            events_views._prefetch_audio_for_events([log_entry])
         except Exception as tts_error:
-            # TTS generation failure shouldn't block event saving
-            logger.warning(f"Failed to trigger TTS generation for event {log_entry.id}: {tts_error}")
+            logger.warning(f"Failed to enqueue TTS prefetch for event {log_entry.id}: {tts_error}")
         
     except Exception as e:
         # Log the error but don't crash the simulation
         logger.error(f"Failed to save dialogue event to database: {e}", exc_info=True)
 
+
+@receiver(post_save, sender=DialogueEventLog)
+def enqueue_tts_on_log_save(sender, instance: DialogueEventLog, created, **kwargs):
+    """
+    Prefetch TTS for freshly created DialogueEventLog entries.
+    """
+    if not created:
+        return
+    try:
+        from mysite.universe.views import events as events_views
+        events_views._prefetch_audio_for_events([instance])
+    except Exception as e:
+        logger.warning("Failed to enqueue TTS prefetch for log %s: %s", instance.id, e)
