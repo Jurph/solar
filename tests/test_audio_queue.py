@@ -1,4 +1,4 @@
-from mysite.universe.services.audio_cache import AudioJob, AudioJobQueue, AudioCache, AudioEntry
+from mysite.universe.services.audio_cache import AudioJob, AudioJobQueue, AudioCache, AudioEntry, EnqueueResult
 import time
 from django.test import RequestFactory
 from django.db import transaction
@@ -8,10 +8,10 @@ import pytest
 
 def test_queue_dedup_and_capacity():
     q = AudioJobQueue(capacity=2)
-    q.enqueue(AudioJob(event_id=1, text="a", voice_id="v1"))
-    q.enqueue(AudioJob(event_id=1, text="dup", voice_id="v1"))
-    q.enqueue(AudioJob(event_id=2, text="b", voice_id="v2"))
-    q.enqueue(AudioJob(event_id=3, text="c", voice_id="v3"))  # dropped due to capacity
+    assert q.enqueue(AudioJob(event_id=1, text="a", voice_id="v1")) == EnqueueResult.SUCCESS
+    assert q.enqueue(AudioJob(event_id=1, text="dup", voice_id="v1")) == EnqueueResult.DUPLICATE
+    assert q.enqueue(AudioJob(event_id=2, text="b", voice_id="v2")) == EnqueueResult.SUCCESS
+    assert q.enqueue(AudioJob(event_id=3, text="c", voice_id="v3")) == EnqueueResult.QUEUE_FULL  # dropped due to capacity
 
     jobs = [q.pop(), q.pop(), q.pop()]
     assert jobs[0].event_id == 1
@@ -20,17 +20,28 @@ def test_queue_dedup_and_capacity():
 
     q.complete(jobs[0])
     q.complete(jobs[1])
+    
+    # Verify statistics
+    stats = q.get_stats()
+    assert stats['rejects_duplicate'] == 1
+    assert stats['rejects_full'] == 1
 
 
 def test_cache_put_eviction():
     cache = AudioCache(capacity=2)
-    cache.put(AudioEntry(event_id=1, voice_id="v1", duration_s=1.0, wav_bytes=b"a", created_at=time.time()))
-    cache.put(AudioEntry(event_id=2, voice_id="v2", duration_s=1.0, wav_bytes=b"b", created_at=time.time()))
-    cache.put(AudioEntry(event_id=3, voice_id="v3", duration_s=1.0, wav_bytes=b"c", created_at=time.time()))
+    assert cache.put(AudioEntry(event_id=1, voice_id="v1", duration_s=1.0, wav_bytes=b"a", created_at=time.time())) is True
+    assert cache.put(AudioEntry(event_id=2, voice_id="v2", duration_s=1.0, wav_bytes=b"b", created_at=time.time())) is True
+    assert cache.put(AudioEntry(event_id=3, voice_id="v3", duration_s=1.0, wav_bytes=b"c", created_at=time.time())) is True
 
     assert cache.get(1) is None  # evicted
     assert cache.get(2) is not None
     assert cache.get(3) is not None
+    
+    # Verify statistics
+    stats = cache.get_stats()
+    assert stats['evictions'] == 1
+    assert stats['cached'] == 2
+    assert stats['capacity'] == 2
 
 
 def test_event_audio_view_serves_cached(monkeypatch):

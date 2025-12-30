@@ -82,7 +82,7 @@
         let nextEventTimestamp = null; // Timestamp of next pending event
         let pendingEventCount = 0; // Number of pending events
         let waitingAudio = new Map(); // event_id -> {event: Event, addedAt: number} awaiting audio_ready
-        const AUDIO_WAIT_TIMEOUT_MS = 30000; // 30 seconds - if audio not ready, display anyway
+        // NO TIMEOUT: If audio is enabled, we wait indefinitely for TTS. If TTS is stuck, we debug it.
         
         // DOM elements
         const eventLog = document.getElementById('eventLog');
@@ -126,32 +126,34 @@
         }
 
         async function enqueueEventAudio(event, useFastMode) {
-            if (useFastMode) return;
-            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return;
-            if (!event || !event.audio_url || !event.audio_ready) return;
+            if (useFastMode) return true; // Fast mode - allow text (historical events)
+            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return true; // Audio disabled/muted - allow text
+            if (!event || !event.audio_url || !event.audio_ready) return false; // No audio - fail
             
-            // Try to fetch audio; if 404, trigger re-generation
+            // Try to fetch audio; if 404, audio was evicted - return false to prevent text display
             try {
                 const resp = await fetch(event.audio_url, { method: "HEAD" });
                 if (resp.status === 404) {
-                    console.warn(`Audio for event ${event.id} was evicted (404), requesting re-generation`);
-                    // Clear audio flags so event falls back to legacy audio
+                    console.warn(`Audio for event ${event.id} was evicted (404), returning false to prevent text display`);
+                    // Clear audio flags - caller will move to waitingAudio
                     event.audio_ready = false;
                     event.audio_url = null;
-                    // Optionally trigger re-prefetch (best-effort)
+                    // Trigger re-prefetch to regenerate audio
                     try {
                         await fetch("{% url 'ensure_audio_worker' %}", { method: "POST" });
                     } catch (e) {
                         console.warn("Failed to ensure worker for retry:", e);
                     }
-                    return; // Don't enqueue missing audio
+                    return false; // Audio missing - do NOT display text
                 }
             } catch (e) {
                 console.warn(`Failed to check audio for event ${event.id}:`, e);
-                // Continue anyway - maybe it's a network hiccup
+                // Network error - still try to enqueue, but log the issue
+                // If it fails, the audio player will handle it
             }
             
             audioPlayer.enqueueWavUrl(event.audio_url);
+            return true; // Audio enqueued successfully
         }
 
         // Restore volume preference (safe: doesn't start audio)
@@ -370,8 +372,10 @@
         
         /**
          * Process the next event in the queue
+         * CRITICAL: If audio is enabled and not muted, events MUST have audio_url AND audio_ready=true
+         * No legacy beep path - if TTS isn't ready, we wait indefinitely.
          */
-        function processNextEvent() {
+        async function processNextEvent() {
             if (isTyping || eventQueue.length === 0) {
                 return; // Already typing or queue is empty
             }
@@ -389,29 +393,37 @@
                 catchUpComplete = true;
             }
 
-            // If audio is enabled and audio_url exists but not ready, defer
-            if (audioPlayer.isEnabled() && !audioPlayer.isMuted() && event.audio_url && !event.audio_ready) {
-                // Put it back at the front and retry later
-                eventQueue.unshift(event);
-                isTyping = false;
-                setTimeout(processNextEvent, 200);
-                return;
-            }
-
-            // If we have server-mixed audio, use it and skip legacy presets to avoid double-beeps
-            if (event.audio_url && event.audio_ready) {
-                enqueueEventAudio(event, useFastMode);
+            // CRITICAL: If audio is enabled and not muted, events MUST have audio_url AND audio_ready=true
+            // No legacy beep path - if TTS isn't ready, we wait.
+            if (audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
+                if (!event.audio_url || !event.audio_ready) {
+                    // Audio required but not ready - put back in waitingAudio, don't process
+                    console.warn(`[PROCESS] Event ${event.id} lacks required audio (audio_url=${!!event.audio_url}, audio_ready=${event.audio_ready}), moving to waitingAudio`);
+                    waitingAudio.set(event.id, {event: event, addedAt: Date.now()});
+                    eventQueue.unshift(event); // Put back in queue for retry
+                    isTyping = false;
+                    setTimeout(processNextEvent, 200);
+                    return; // Do NOT display text without TTS
+                }
+                // Audio is enabled and ready - try to enqueue audio
+                // If enqueueing fails (404 eviction), we must NOT display text
+                const audioEnqueued = await enqueueEventAudio(event, useFastMode);
+                if (!audioEnqueued) {
+                    // Audio was evicted or failed - put back in waitingAudio, don't display text
+                    console.warn(`[PROCESS] Event ${event.id} audio enqueue failed (evicted?), moving to waitingAudio`);
+                    waitingAudio.set(event.id, {event: event, addedAt: Date.now()});
+                    eventQueue.unshift(event); // Put back in queue for retry
+                    isTyping = false;
+                    setTimeout(processNextEvent, 200);
+                    return; // Do NOT display text without TTS
+                }
             } else {
-                // Legacy path: Quindars + preset plan
-                enqueueAudioForTrigger(event, "event_start", useFastMode);
-                enqueueAudioForTrigger(event, "event_during", useFastMode);
+                // Audio is disabled or muted - display text without audio (silent mode)
+                // No audio enqueueing
             }
             
             typeEventLine(event, () => {
-                if (!(event.audio_url && event.audio_ready)) {
-                    // Legacy end tone only if no server audio
-                    enqueueAudioForTrigger(event, "event_end", useFastMode);
-                }
+                // No legacy beep path - if we got here with audio enabled, we have TTS
                 // This event is done, process the next one
                 isTyping = false;
                 // In fast mode, add a tiny delay between lines for visual effect
@@ -444,15 +456,22 @@
             newEvents.forEach(e => displayedEventIds.add(e.id));
             
             // Add to queue or waiting list depending on audio readiness
+            // CRITICAL: If audio is enabled and not muted, events MUST have audio_url AND audio_ready=true
+            // No legacy beep path - if TTS isn't ready, we wait.
             for (const ev of newEvents) {
-                if (audioPlayer.isEnabled() && !audioPlayer.isMuted() && ev.audio_url) {
-                    if (!ev.audio_ready) {
+                if (audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
+                    // Audio is enabled - require both audio_url and audio_ready
+                    if (!ev.audio_url || !ev.audio_ready) {
                         waitingAudio.set(ev.id, {event: ev, addedAt: Date.now()});
-                        continue;
+                        console.log(`[APPEND] Event ${ev.id} held in waitingAudio (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
+                        continue; // Do NOT add to eventQueue - wait for TTS
                     } else {
                         waitingAudio.delete(ev.id);
                     }
                 }
+                // Only add to eventQueue if:
+                // - Audio is disabled/muted, OR
+                // - Audio is enabled and audio_url AND audio_ready are both true
                 eventQueue.push(ev);
             }
             // Start processing if not already typing
@@ -527,33 +546,30 @@
                 console.error('Error fetching events:', error);
             } finally {
                 isFetching = false;
-                // Promote waiting events that are now ready or timed out
+                // Promote waiting events that are now ready (NO TIMEOUT - we wait for TTS)
                 if (waitingAudio.size > 0) {
                     const readyIds = [];
-                    const timedOutIds = [];
                     const now = Date.now();
                     
                     for (const [id, waitingData] of waitingAudio.entries()) {
                         const ev = waitingData.event;
                         const waitTime = now - waitingData.addedAt;
                         
-                        if (ev.audio_ready) {
+                        if (ev.audio_ready && ev.audio_url) {
                             // Audio is ready - promote to queue
+                            console.log(`[WAITING] Event ${id} audio ready after ${waitTime}ms, promoting to eventQueue`);
                             eventQueue.push(ev);
                             readyIds.push(id);
-                        } else if (waitTime > AUDIO_WAIT_TIMEOUT_MS) {
-                            // Timed out - display without audio (fall back to legacy or silent)
-                            console.warn(`Event ${id} audio timed out after ${waitTime}ms, displaying without audio`);
-                            ev.audio_ready = false;  // Ensure flag is false
-                            ev.audio_url = null;  // Clear URL so legacy path is used
-                            eventQueue.push(ev);
-                            timedOutIds.push(id);
+                        } else {
+                            // Still waiting - log periodically to help debug stuck TTS
+                            if (waitTime > 10000 && waitTime % 5000 < 100) { // Log every 5 seconds after 10s
+                                console.warn(`[WAITING] Event ${id} still waiting for audio after ${Math.floor(waitTime/1000)}s (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
+                            }
                         }
                     }
                     
                     readyIds.forEach((id) => waitingAudio.delete(id));
-                    timedOutIds.forEach((id) => waitingAudio.delete(id));
-                    if (readyIds.length > 0 || timedOutIds.length > 0) {
+                    if (readyIds.length > 0) {
                         processNextEvent();
                     }
                 }
