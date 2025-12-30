@@ -89,9 +89,14 @@ def _prefetch_audio_for_events(events):
                 or Satellite.objects.filter(name=ev.actor_name).order_by("-id").first()
                 or BaseActor.objects.filter(name=ev.actor_name).order_by("-id").first()
             )
-            if actor and getattr(actor, "audio_profile", None):
-                vp = actor.audio_profile.get_voice_params() or {}
-                voice_id = vp.get("voice_template")
+            if actor:
+                try:
+                    profile = actor.audio_profile
+                    vp = profile.get_voice_params() or {}
+                    voice_id = vp.get("voice_template")
+                except BaseActor.audio_profile.RelatedObjectDoesNotExist:
+                    # Actor has no profile - use fallback
+                    voice_id = None
         if not voice_id:
             # Fallback defaults
             voice_id = "pilot_default"

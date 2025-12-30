@@ -120,6 +120,10 @@ class AudioWorker(threading.Thread):
                 )
                 self.cache.put(entry)
                 log.info("TTS generate done event_id=%s duration=%.2fs bytes=%d", job.event_id, duration, len(wav_bytes))
+            except Exception as e:
+                # Log error but don't crash worker - mark job complete so queue doesn't block
+                log.error("TTS generate failed for event_id=%s voice=%s: %s", job.event_id, job.voice_id, e, exc_info=True)
+                # Job will be marked complete in finally, but no cache entry = audio_ready stays False
             finally:
                 self.queue.complete(job)
 
