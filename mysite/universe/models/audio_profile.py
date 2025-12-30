@@ -167,7 +167,20 @@ class AudioProfile(models.Model):
             params["room_tone"]["enabled"] = False
             params["static"]["intensity"] = 0.0
         
-        profile = cls(actor=actor, params=params)
+        profile, created = cls.objects.get_or_create(actor=actor, defaults={"params": params})
+
+        # Preserve any existing voice_template if already set
+        existing_voice_template = None
+        if not created:
+            existing_voice_template = (profile.get_voice_params() or {}).get("voice_template")
+
+        # Always refresh params based on current actor state (e.g., ship size changes)
+        profile.params = params
+        if existing_voice_template:
+            vp = profile.params.get("voiceprint", {}) or {}
+            vp["voice_template"] = existing_voice_template
+            profile.params["voiceprint"] = vp
+
         profile.save()
         return profile
     

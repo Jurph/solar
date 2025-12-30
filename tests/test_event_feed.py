@@ -297,12 +297,16 @@ class EventFeedAudioPlanRobustnessTests(TestCase):
         """
         Regression test: Actor names are not unique. Duplicate Satellite names previously
         caused /api/events/ to 500 when audio plans were generated via .get(name=...).
+        
+        Now we use actor_id from metadata, so duplicate names don't cause issues.
+        Satellites get both quindars and modem noise.
         """
-        Satellite.objects.create(name="DUP SAT")
+        sat1 = Satellite.objects.create(name="DUP SAT")
         Satellite.objects.create(name="DUP SAT")
 
         DialogueEventLog.objects.create(
             timestamp=self.base_sim_time - 10.0,
+            actor=sat1,
             actor_name="DUP SAT",
             text="NAV UPDATE",
             metadata={"type": "nav_broadcast", "modem_data": "HELLO"},
@@ -313,8 +317,14 @@ class EventFeedAudioPlanRobustnessTests(TestCase):
         data = response.json()
         self.assertEqual(len(data["events"]), 1)
         self.assertIn("audio_plan", data["events"][0])
+        
+        # Verify we got an audio plan with expected satellite elements
         presets = [a.get("preset") for a in data["events"][0]["audio_plan"]]
-        self.assertIn("modem_noise_example", presets)
+        # Satellites should have modem noise AND quindars
+        self.assertIn("modem_noise_example", presets, "Satellites should have modem noise")
+        # At least one quindar (start or end)
+        has_quindar = any("quindar" in str(p) for p in presets)
+        self.assertTrue(has_quindar, "Satellites should have quindar tones")
 
 
 if __name__ == '__main__':

@@ -61,8 +61,8 @@ def test_satellite_create_assigns_audio_profile():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_dialogue_event_log_via_receiver_has_actor_id():
-    """DialogueEvent processed via signal must have actor_id in metadata."""
+def test_dialogue_event_log_via_receiver_has_actor():
+    """DialogueEvent processed via signal must have actor ForeignKey."""
     from mysite.universe.signals import dialogue_event_processed
     
     loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
@@ -78,11 +78,11 @@ def test_dialogue_event_log_via_receiver_has_actor_id():
     
     dialogue_event_processed.send(sender=None, event=event)
     
-    # Check that log entry was created with actor_id
+    # Check that log entry was created with actor ForeignKey
     log_entry = DialogueEventLog.objects.filter(actor_name=pilot.name).first()
     assert log_entry is not None, "DialogueEventLog should be created via receiver"
-    assert 'actor_id' in log_entry.metadata, "Metadata must contain actor_id"
-    assert log_entry.metadata['actor_id'] == pilot.id, "actor_id must match actor.id"
+    assert log_entry.actor is not None, "DialogueEventLog must have actor reference"
+    assert log_entry.actor.id == pilot.id, "actor_id must match actor.id"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -158,8 +158,8 @@ def test_dialogue_event_always_has_actor():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_dialogue_event_log_metadata_always_has_actor_id():
-    """All DialogueEventLog entries must have actor_id in metadata."""
+def test_dialogue_event_log_has_actor_reference():
+    """All DialogueEventLog entries should have actor ForeignKey."""
     loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
     ship = Ship.objects.create(name="TestShip", current_location=loc, size=Ship.Size.MEDIUM)
     pilot = Pilot.create(ship=ship)
@@ -176,44 +176,42 @@ def test_dialogue_event_log_metadata_always_has_actor_id():
             text=f"Test from {actor.name}",
         )
         
-        # Create log entry with proper metadata
-        metadata = dict(event.metadata) if event.metadata else {}
-        if hasattr(event, 'actor') and event.actor is not None:
-            if hasattr(event.actor, 'id'):
-                metadata['actor_id'] = event.actor.id
-        
+        # Create log entry with actor ForeignKey
         log_entry = DialogueEventLog.objects.create(
             timestamp=event.timestamp,
-            actor_name=event.actor.name,
+            actor=event.actor,
             text=event.text,
-            metadata=metadata,
         )
         
-        # Verify actor_id is present
-        assert 'actor_id' in log_entry.metadata, f"Event from {actor.name} missing actor_id"
-        assert log_entry.metadata['actor_id'] == actor.id, f"actor_id mismatch for {actor.name}"
+        # Verify actor reference is present and correct
+        assert log_entry.actor is not None, f"Event from {actor.name} missing actor"
+        assert log_entry.actor.id == actor.id, f"actor_id mismatch for {actor.name}"
+        assert log_entry.actor_name == actor.name, f"actor_name not cached for {actor.name}"
 
 
 @pytest.mark.django_db(transaction=True)
-def test_actor_id_preserved_in_metadata():
-    """If metadata already has actor_id, it should be preserved."""
+def test_actor_reference_survives_with_set_null():
+    """If actor is deleted, DialogueEventLog survives with cached actor_name."""
     loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
     ship = Ship.objects.create(name="TestShip", current_location=loc, size=Ship.Size.MEDIUM)
     pilot = Pilot.create(ship=ship)
     
-    # Create event with existing metadata
-    event = DialogueEvent(
+    log_entry = DialogueEventLog.objects.create(
         timestamp=100.0,
         actor=pilot,
-        text="Test",
-        metadata={'actor_id': pilot.id, 'other': 'data'},
+        text="Test"
     )
     
-    # Receiver should preserve existing actor_id
-    from mysite.universe.signals import dialogue_event_processed
-    dialogue_event_processed.send(sender=None, event=event)
+    # Verify actor reference exists
+    assert log_entry.actor is not None
+    assert log_entry.actor_name == pilot.name
     
-    log_entry = DialogueEventLog.objects.filter(actor_name=pilot.name).first()
-    assert log_entry.metadata['actor_id'] == pilot.id
-    assert log_entry.metadata['other'] == 'data'  # Other metadata preserved
+    # Delete actor
+    pilot_name = pilot.name
+    pilot.delete()
+    
+    # Reload log entry and verify it survives with cached name
+    log_entry.refresh_from_db()
+    assert log_entry.actor is None  # ForeignKey is now NULL
+    assert log_entry.actor_name == pilot_name  # Cached name survives
 

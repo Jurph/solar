@@ -206,6 +206,7 @@ class DummyStdout:
 class DummyActor:
     def __init__(self, name="Dummy Actor"):
         self.name = name
+        self.id = 1  # DialogueEvent requires actor to have an id attribute
 
 
 def test_queue_processes_only_due_events():

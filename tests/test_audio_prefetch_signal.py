@@ -23,11 +23,18 @@ def test_post_save_enqueues_prefetch(monkeypatch):
     monkeypatch.setattr(events_views, "_audio_queue", fake_queue)
     monkeypatch.setattr(events_views, "_ensure_worker", lambda: None)
 
+    # Create an actor to get a valid actor_id
+    from mysite.universe.models.actor import Pilot
+    from mysite.universe.models.base import Location
+    from mysite.universe.models.ship import Ship
+    loc = Location.objects.create(name="Test Location")
+    ship = Ship.objects.create(name="Test Ship", current_location=loc, size=Ship.Size.MEDIUM)
+    actor = Pilot.create(name="A", ship=ship)
+
     ev = DialogueEventLog.objects.create(
         timestamp=timezone.now().timestamp(),
-        actor_name="A",
-        text="hello world",
-        metadata={},
+        actor=actor,
+        text="hello world"
     )
 
     # Post-save receiver should have enqueued one job

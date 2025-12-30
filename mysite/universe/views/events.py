@@ -143,23 +143,16 @@ def _prefetch_audio_for_events(events):
         actor_lookup_method = None
         
         if not voice_id:
-            # MUST use actor_id from metadata - name lookups are unreliable
-            actor_id = meta.get("actor_id")
-            if not actor_id:
-                # No actor_id in metadata - this is an error, not a fallback case
+            # Use actor ForeignKey to get voice
+            if not ev.actor:
+                # No actor reference - this is an error, not a fallback case
                 stats['skipped_no_actor'] += 1
-                log.error("Event %s missing actor_id in metadata (name='%s') - cannot resolve voice. "
-                         "Event should have actor_id stored in metadata.", ev.id, ev.actor_name)
+                log.error("Event %s missing actor reference (name='%s') - cannot resolve voice.", 
+                         ev.id, ev.actor_name)
                 continue  # Skip this event - cannot generate audio without actor
             
-            try:
-                actor = BaseActor.objects.get(id=actor_id)
-                actor_lookup_method = "actor_id"
-            except BaseActor.DoesNotExist:
-                stats['skipped_no_actor'] += 1
-                log.error("Event %s references non-existent actor_id=%s (name='%s')", 
-                         ev.id, actor_id, ev.actor_name)
-                continue  # Skip this event - actor doesn't exist
+            actor = ev.actor
+            actor_lookup_method = "actor_fk"
             
             # Actor found - try to get voice from profile
             # If profile missing or incomplete, assign it on-demand

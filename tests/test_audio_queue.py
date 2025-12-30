@@ -89,8 +89,8 @@ def test_prefetch_skips_cached(monkeypatch):
     with transaction.atomic():
         actor_a = Actor.create(name="A")
         actor_b = Actor.create(name="B")
-        ev1 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor_name=actor_a.name, text="hello", metadata={"actor_id": actor_a.id})
-        ev2 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor_name=actor_b.name, text="world", metadata={"actor_id": actor_b.id})
+        ev1 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor=actor_a, text="hello")
+        ev2 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor=actor_b, text="world")
 
     fake_cache.put(AudioEntry(event_id=ev1.id, voice_id="v1", duration_s=1.0, wav_bytes=b"x", created_at=time.time()))
 

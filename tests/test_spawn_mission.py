@@ -27,6 +27,11 @@ class _FakeDialogueEvent:
     timestamp: float
     actor: Any
     text: str
+    metadata: dict = None
+    
+    def __post_init__(self):
+        if self.metadata is None:
+            object.__setattr__(self, 'metadata', {})
 
 
 class _ImmediateThread:
