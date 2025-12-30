@@ -65,8 +65,38 @@ class Actor(models.Model):
         # Create and save the actor
         actor = cls(name=name)
         actor.save()
-        
+        cls.assign_audio_profile(actor)
         return actor
+
+    @classmethod
+    def assign_audio_profile(cls, actor: 'Actor'):
+        """
+        Ensure the actor has an AudioProfile with a voice_template if available.
+        Base Actor uses a simple default (no room tone).
+        """
+        from mysite.universe.models.audio_profile import AudioProfile
+        import random
+        import glob
+        from pathlib import Path
+        from django.core.exceptions import ObjectDoesNotExist
+
+        base_dir = Path(__file__).resolve().parents[3]
+        generated_dir = base_dir / "audio" / "voices" / "generated"
+
+        try:
+            profile = actor.audio_profile
+        except ObjectDoesNotExist:
+            profile = None
+        profile = profile or AudioProfile.create_default_for_actor(actor)
+
+        # Only assign voice_template if not already set (idempotent)
+        vp = profile.get_voice_params() or {}
+        if not vp.get("voice_template"):
+            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+            if candidates:
+                voice_path = random.choice(candidates)
+                voice_template = Path(voice_path).stem
+                profile.set_voice_template(voice_template)
 
     @classmethod
     def generate_name(cls) -> str:

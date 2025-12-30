@@ -14,6 +14,10 @@ def _has_generated_voices():
     root = Path(__file__).resolve().parent.parent
     return bool(glob.glob(str(root / "audio" / "voices" / "generated" / "*.wav")))
 
+def _room_tone_candidates():
+    root = Path(__file__).resolve().parent.parent
+    return list((root / "audio" / "voices" / "raw").glob("**/combined*.wav"))
+
 
 @pytest.mark.skipif(not _has_generated_voices(), reason="No generated voices found under audio/voices/generated")
 @pytest.mark.django_db(transaction=True)
@@ -64,4 +68,25 @@ def test_satellite_audio_profile_has_voice_and_no_room_tone():
     root = Path(__file__).resolve().parent.parent
     voice_path = root / "audio" / "voices" / "generated" / f"{voice}.wav"
     assert voice_path.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_audio_assets_available_for_profiles():
+    """
+    Basic presence checks for assets used by audio profiles.
+
+    - Generated voice WAVs are required for assigning voice_template.
+    - Room tone uses presets (not files), but we keep a sanity check that
+      combined raw WAVs exist for potential room-tone sources.
+    """
+    root = Path(__file__).resolve().parent.parent
+    voices_dir = root / "audio" / "voices" / "generated"
+    voice_files = sorted(voices_dir.glob("*.wav"))
+    assert voices_dir.exists(), "voices dir missing: audio/voices/generated"
+    assert voice_files, "No generated voice WAVs found under audio/voices/generated"
+
+    raw_dir = root / "audio" / "voices" / "raw"
+    room_tone_candidates = _room_tone_candidates()
+    assert raw_dir.exists(), "raw voices dir missing: audio/voices/raw"
+    assert room_tone_candidates, "No room-tone candidate WAVs found under audio/voices/raw (combined*.wav)"
 
