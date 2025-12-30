@@ -8,7 +8,20 @@ class UniverseConfig(AppConfig):
     def ready(self):
         """Import signal receivers when the app is ready."""
         import mysite.universe.receivers  # noqa: F401
-        # Warm up TTS and start the audio worker (best-effort).
+        # Warm up TTS and start the audio worker (best-effort) — gated to avoid
+        # slowing management commands like makemigrations/collectstatic.
+        import os
+        import sys
+
+        # Only run warmup/worker if explicitly enabled.
+        if os.getenv("AUDIO_WARMUP", "0") != "1":
+            return
+
+        # Skip during management commands that shouldn't incur model load.
+        skip_cmds = {"makemigrations", "migrate", "collectstatic", "test", "shell"}
+        if len(sys.argv) >= 2 and sys.argv[1] in skip_cmds:
+            return
+
         try:
             from mysite.universe.views import events as events_views
             from mysite.universe.services.tts_service import warm_tts_service

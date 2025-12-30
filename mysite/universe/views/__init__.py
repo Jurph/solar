@@ -22,6 +22,7 @@ from mysite.universe.views.events import (
     event_scroller,
     event_scroller_wrapper,
     clear_events,
+    event_audio,
 )
 
 # Simulation time control
@@ -57,6 +58,7 @@ __all__ = [
     'event_scroller',
     'event_scroller_wrapper',
     'clear_events',
+    'event_audio',
     'clear_all_events',  # Alias for backwards compatibility
     # Simulation
     'set_time_scale',

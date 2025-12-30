@@ -208,3 +208,24 @@ class AudioProfile(models.Model):
         """
         return self.params.get("voiceprint", {})
 
+    def set_voice_template(self, voice_template: str):
+        params = self.params or {}
+        vp = params.get("voiceprint", {})
+        vp["voice_template"] = voice_template
+        params["voiceprint"] = vp
+        self.params = params
+        self.save(update_fields=["params"])
+
+    def set_room_tone_preset(self, preset: str | None):
+        params = self.params or {}
+        rt = params.get("room_tone", {})
+        if preset:
+            rt["preset"] = preset
+            rt["enabled"] = True
+        else:
+            rt["preset"] = None
+            rt["enabled"] = False
+        params["room_tone"] = rt
+        self.params = params
+        self.save(update_fields=["params"])
+
