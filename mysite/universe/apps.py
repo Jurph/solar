@@ -27,13 +27,7 @@ class UniverseConfig(AppConfig):
         if len(sys.argv) >= 2 and sys.argv[1] in skip_cmds:
             return
 
-        # Ensure worker always; warmup is opt-in.
-        try:
-            from mysite.universe.views import events as events_views
-            events_views._ensure_worker()
-        except Exception:
-            pass
-
+        # Optional TTS warmup (loads model into GPU on startup)
         if os.getenv("AUDIO_WARMUP", "0") == "1":
             try:
                 from mysite.universe.services.tts_service import warm_tts_service

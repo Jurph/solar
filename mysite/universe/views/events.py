@@ -170,6 +170,13 @@ def event_feed(request):
 
     queryset = queryset.order_by("timestamp", "id")[:limit]
     
+    # Check which events have cached TTS audio
+    cached_event_ids = set()
+    for event in queryset:
+        cache_key = f"tts_audio:{event.id}"
+        if cache.get(cache_key):
+            cached_event_ids.add(event.id)
+    
     # Convert to list of dicts with only essential fields
     events = [
         {
@@ -180,8 +187,8 @@ def event_feed(request):
             'metadata': event.metadata if event.metadata is not None else {},
             # Python-defined audio plan (client just queues & plays waveforms)
             'audio_plan': build_audio_plan_for_dialogue_event(event),
-            # Audio is generated on-demand when requested, not prefetched
-            'audio_ready': True,  # Always true - we generate synchronously if not cached
+            # Audio is generated on-demand - check if already cached
+            'audio_ready': event.id in cached_event_ids,
             'audio_duration_s': None,  # Client can determine from WAV headers
             'audio_url': f"/api/event_audio/{event.id}/",
         }
@@ -206,6 +213,10 @@ def event_feed(request):
     next_event_timestamp = next_event.timestamp if next_event else None
     time_until_next = (next_event_timestamp - sim_time) if next_event_timestamp else None
     
+    # TTS cache statistics
+    events_with_audio = len(cached_event_ids)
+    events_needing_audio = len(events) - events_with_audio
+    
     return JsonResponse({
         'events': events,
         'debug': {
@@ -219,6 +230,10 @@ def event_feed(request):
             'returned_count': len(events),
             'next_event_timestamp': next_event_timestamp,
             'time_until_next': time_until_next,
+            'audio': {
+                'cached': events_with_audio,
+                'pending': events_needing_audio,
+            },
         },
         'latest_id': latest_id,
         'latest_cursor': latest_cursor,
@@ -310,22 +325,40 @@ def event_audio(request, event_id: int):
     # Get text and voice
     text = event.text
     if not text or not text.strip():
+        logger.warning("Event %s has no text for TTS", event_id)
         return JsonResponse({
             "status": "error",
             "message": f"Event {event_id} has no text",
         }, status=400)
     
-    voice_id = _resolve_voice_for_event(event)
+    logger.info("Event %s text: %s", event_id, text[:100])
+    
+    # Resolve voice with detailed logging
+    try:
+        voice_id = _resolve_voice_for_event(event)
+        logger.info("Event %s resolved voice: %s", event_id, voice_id)
+    except Exception as e:
+        logger.error("Failed to resolve voice for event %s: %s", event_id, e, exc_info=True)
+        return JsonResponse({
+            "status": "error",
+            "message": f"Voice resolution failed: {str(e)}",
+        }, status=500)
     
     # Sentence-case to avoid spelled-out ALL CAPS
     speak_text = _sentence_case(text)
+    logger.info("Event %s speak_text: %s", event_id, speak_text[:100])
     
-    # Generate TTS
+    # Generate TTS with detailed error handling
     try:
+        logger.info("Event %s: Getting TTS service...", event_id)
         tts_service = get_tts_service()
+        logger.info("Event %s: TTS service obtained, calling generate(text=%d chars, voice=%s)", 
+                   event_id, len(speak_text), voice_id)
+        
         wav_bytes = tts_service.generate(text=speak_text, voice_id=voice_id)
         
         if not wav_bytes or len(wav_bytes) == 0:
+            logger.error("Event %s: TTS service returned empty audio", event_id)
             raise ValueError("TTS service returned empty audio")
         
         # Cache for 1 hour
@@ -339,8 +372,11 @@ def event_audio(request, event_id: int):
         return resp
         
     except Exception as e:
-        logger.error("TTS generation failed for event %s: %s", event_id, e, exc_info=True)
+        logger.error("TTS generation failed for event %s (voice=%s, text=%s): %s", 
+                    event_id, voice_id, speak_text[:50], e, exc_info=True)
         return JsonResponse({
             "status": "error",
             "message": f"TTS generation failed: {str(e)}",
+            "voice_id": voice_id,
+            "text_preview": speak_text[:50],
         }, status=500)

@@ -180,47 +180,65 @@ class ChatterboxTTSService(TTSService):
             ValueError: If voice_id not found (after all fallbacks)
             RuntimeError: If TTS generation fails
         """
+        logger.info(f"TTS generate called: voice={voice_id}, text_len={len(text)}, text_preview={text[:50]}")
+        
         # Check cache first
         cache_key = self._get_cache_key(text, voice_id, cfg_weight, exaggeration)
         cached = cache.get(cache_key)
         if cached:
-            logger.debug(f"TTS cache hit for voice={voice_id}, text_length={len(text)}")
+            logger.info(f"TTS cache hit for voice={voice_id}, text_length={len(text)}")
             return cached
         
+        logger.info(f"TTS cache miss, generating new audio...")
+        
         # Load model if needed
-        self._load_model()
+        try:
+            logger.info(f"Loading TTS model...")
+            self._load_model()
+            logger.info(f"TTS model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load TTS model: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to load TTS model: {e}")
         
         # Find voice reference clip (with fallback)
+        logger.info(f"Looking up voice path for: {voice_id}")
         voice_path = self._get_voice_path(voice_id)
         if not voice_path:
-            raise ValueError(
+            error_msg = (
                 f"Voice clip not found: {voice_id} "
                 "(tried custom voice and defaults: pilot_default, controller_default)"
             )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
+        logger.info(f"Found voice file: {voice_path}")
         logger.info(f"Generating TTS: voice={voice_id}, text_length={len(text)}, device={self.device}")
         
         # Generate audio
         try:
+            logger.info(f"Calling model.generate()...")
             wav = self.model.generate(
                 text,
                 audio_prompt_path=str(voice_path),
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
             )
+            logger.info(f"Model.generate() completed, converting to bytes...")
             
             # Convert to bytes (16-bit PCM, mono) - use model's actual sample rate
             wav_bytes = self._wav_to_bytes(wav, self.model.sr)
+            logger.info(f"Converted to WAV bytes: {len(wav_bytes)} bytes")
             
             # Cache result (1 hour TTL)
             cache.set(cache_key, wav_bytes, timeout=3600)
-            logger.debug(f"TTS generated and cached: {len(wav_bytes)} bytes")
+            logger.info(f"TTS generated and cached: {len(wav_bytes)} bytes")
             
             return wav_bytes
             
         except Exception as e:
-            logger.error(f"TTS generation failed: {e}", exc_info=True)
+            logger.error(f"TTS generation failed for voice={voice_id}, text={text[:50]}: {e}", exc_info=True)
             # Return silence as fallback (1 second)
+            logger.warning(f"Returning 1-second silence as fallback")
             return self._generate_silence(1.0)
     
     def _get_cache_key(self, text: str, voice_id: str, *args) -> str:
