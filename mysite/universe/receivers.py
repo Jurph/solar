@@ -105,20 +105,14 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
                     display_text = "[Error: Could not parse dialogue response]"
         
         # Create and save the log entry with natural language text only
+        # Note: TTS enqueue happens via post_save signal (enqueue_tts_on_log_save)
+        # to avoid double-enqueueing
         log_entry = DialogueEventLog.objects.create(
             timestamp=event.timestamp,
             actor_name=actor_name,
             text=display_text,
             metadata=event.metadata if hasattr(event, 'metadata') else {}
         )
-        
-        # Trigger in-memory TTS prefetch (best-effort, no disk, no background task)
-        try:
-            from mysite.universe.views import events as events_views
-
-            events_views._prefetch_audio_for_events([log_entry])
-        except Exception as tts_error:
-            logger.warning(f"Failed to enqueue TTS prefetch for event {log_entry.id}: {tts_error}")
         
     except Exception as e:
         # Log the error but don't crash the simulation

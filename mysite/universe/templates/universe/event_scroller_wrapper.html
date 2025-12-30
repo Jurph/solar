@@ -474,6 +474,18 @@
                 
                 if (data.events && data.events.length > 0) {
                     console.log(`[FETCH] Got ${data.events.length} events, cursor was ${lastEventCursor ? `${lastEventCursor.timestamp}/${lastEventCursor.id}` : 'null'}, will be ${data.latest_cursor ? `${data.latest_cursor.timestamp}/${data.latest_cursor.id}` : 'null'}`);
+                    
+                    // Update waitingAudio with fresh audio_ready flags from server
+                    for (const freshEvent of data.events) {
+                        if (waitingAudio.has(freshEvent.id)) {
+                            const waitingEv = waitingAudio.get(freshEvent.id);
+                            // Update with fresh data from server
+                            waitingEv.audio_ready = freshEvent.audio_ready;
+                            waitingEv.audio_url = freshEvent.audio_url;
+                            waitingEv.audio_duration_s = freshEvent.audio_duration_s;
+                        }
+                    }
+                    
                     appendEvents(data.events);
                     // Update cursor from the response (preferred)
                     if (data.latest_cursor) {
@@ -492,7 +504,7 @@
                 console.error('Error fetching events:', error);
             } finally {
                 isFetching = false;
-                // Promote waiting events that are now ready
+                // Promote waiting events that are now ready (using updated flags from server)
                 if (waitingAudio.size > 0 && audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
                     const readyIds = [];
                     for (const [id, ev] of waitingAudio.entries()) {
@@ -502,7 +514,9 @@
                         }
                     }
                     readyIds.forEach((id) => waitingAudio.delete(id));
-                    processNextEvent();
+                    if (readyIds.length > 0) {
+                        processNextEvent();
+                    }
                 }
             }
         }
