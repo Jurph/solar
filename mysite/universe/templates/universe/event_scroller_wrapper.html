@@ -132,15 +132,32 @@
         }
 
         async function enqueueEventAudio(event, useFastMode) {
-            if (useFastMode) return true; // Fast mode - allow text (historical events)
-            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return true; // Audio disabled/muted - allow text
-            if (!event || !event.audio_url || !event.audio_ready) return false; // No audio - fail
+            console.log(`[AUDIO] enqueueEventAudio called: event=${event.id}, useFastMode=${useFastMode}, audio_ready=${event.audio_ready}, audio_url=${event.audio_url}`);
+            
+            if (useFastMode) {
+                console.log(`[AUDIO] Fast mode - allowing text without audio`);
+                return true; // Fast mode - allow text (historical events)
+            }
+            
+            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) {
+                console.log(`[AUDIO] Audio disabled/muted - allowing text without audio`);
+                return true; // Audio disabled/muted - allow text
+            }
+            
+            if (!event || !event.audio_url) {
+                console.warn(`[AUDIO] No audio URL for event ${event?.id} - blocking text`);
+                return false; // No audio URL - fail
+            }
+            
+            // Note: audio_ready just means "cached" - we try anyway and let server generate on-demand
+            console.log(`[AUDIO] Checking audio availability via HEAD ${event.audio_url}...`);
             
             // Try to fetch audio; if 404, audio was evicted - return false to prevent text display
             try {
                 const resp = await fetch(event.audio_url, { method: "HEAD" });
+                console.log(`[AUDIO] HEAD response: ${resp.status}`);
                 if (resp.status === 404) {
-                    console.warn(`Audio for event ${event.id} returned 404 - will retry on next request`);
+                    console.warn(`[AUDIO] Audio for event ${event.id} returned 404 - will retry on next request`);
                     // Clear audio flags - caller will move to waitingAudio
                     event.audio_ready = false;
                     event.audio_url = null;
@@ -148,12 +165,14 @@
                     return false; // Audio missing - do NOT display text
                 }
             } catch (e) {
-                console.warn(`Failed to check audio for event ${event.id}:`, e);
+                console.warn(`[AUDIO] Failed to check audio for event ${event.id}:`, e);
                 // Network error - still try to enqueue, but log the issue
                 // If it fails, the audio player will handle it
             }
             
+            console.log(`[AUDIO] Enqueueing WAV URL: ${event.audio_url}`);
             audioPlayer.enqueueWavUrl(event.audio_url);
+            console.log(`[AUDIO] Audio enqueued successfully for event ${event.id}`);
             return true; // Audio enqueued successfully
         }
 
@@ -405,8 +424,8 @@
                     setTimeout(processNextEvent, 200);
                     return; // Do NOT display text without TTS
                 }
-                // Audio is enabled and ready - try to enqueue audio
-                // If enqueueing fails (404 eviction), we must NOT display text
+                
+                // Enqueue fully-mixed audio (server returns quindars + TTS + room tone + modem noise all mixed)
                 const audioEnqueued = await enqueueEventAudio(event, useFastMode);
                 if (!audioEnqueued) {
                     // Audio was evicted or failed - put back in waitingAudio, don't display text
@@ -464,6 +483,25 @@
                     if (!ev.audio_url || !ev.audio_ready) {
                         waitingAudio.set(ev.id, {event: ev, addedAt: Date.now()});
                         console.log(`[APPEND] Event ${ev.id} held in waitingAudio (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
+                        
+                        // Proactively trigger TTS generation if we have an audio_url
+                        if (ev.audio_url && !ev.audio_ready) {
+                            console.log(`[APPEND] Proactively triggering TTS generation for event ${ev.id}`);
+                            fetch(ev.audio_url, { method: "GET" })
+                                .then(resp => {
+                                    if (resp.ok) {
+                                        console.log(`[APPEND] TTS generated successfully for event ${ev.id}, marking audio_ready=true`);
+                                        // Update the event object to reflect that audio is now ready
+                                        ev.audio_ready = true;
+                                    } else {
+                                        console.warn(`[APPEND] TTS generation failed for event ${ev.id}: ${resp.status}`);
+                                    }
+                                })
+                                .catch(err => {
+                                    console.error(`[APPEND] TTS generation request failed for event ${ev.id}:`, err);
+                                });
+                        }
+                        
                         continue; // Do NOT add to eventQueue - wait for TTS
                     } else {
                         waitingAudio.delete(ev.id);
@@ -497,6 +535,11 @@
                 }
                 
                 const data = await response.json();
+                
+                console.log(`[FETCH] Response: ${data.events.length} events, debug:`, data.debug);
+                if (data.events.length > 0) {
+                    console.log(`[FETCH] First event:`, data.events[0]);
+                }
                 
                 // Update simulation time from response
                 if (data.simulation_time !== undefined) {
@@ -552,29 +595,35 @@
             } finally {
                 isFetching = false;
                 // Promote waiting events that are now ready (NO TIMEOUT - we wait for TTS)
+                // CRITICAL: Only promote the NEXT event (earliest timestamp) to maintain order
                 if (waitingAudio.size > 0) {
-                    const readyIds = [];
                     const now = Date.now();
+                    
+                    // Find the event with the earliest timestamp
+                    let nextEvent = null;
+                    let nextWaitData = null;
                     
                     for (const [id, waitingData] of waitingAudio.entries()) {
                         const ev = waitingData.event;
                         const waitTime = now - waitingData.addedAt;
                         
-                        if (ev.audio_ready && ev.audio_url) {
-                            // Audio is ready - promote to queue
-                            console.log(`[WAITING] Event ${id} audio ready after ${waitTime}ms, promoting to eventQueue`);
-                            eventQueue.push(ev);
-                            readyIds.push(id);
-                        } else {
-                            // Still waiting - log periodically to help debug stuck TTS
-                            if (waitTime > 10000 && waitTime % 5000 < 100) { // Log every 5 seconds after 10s
-                                console.warn(`[WAITING] Event ${id} still waiting for audio after ${Math.floor(waitTime/1000)}s (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
-                            }
+                        if (!nextEvent || ev.timestamp < nextEvent.timestamp) {
+                            nextEvent = ev;
+                            nextWaitData = waitingData;
+                        }
+                        
+                        // Log if waiting a long time (debug)
+                        if (!ev.audio_ready && waitTime > 10000 && waitTime % 5000 < 100) {
+                            console.warn(`[WAITING] Event ${id} still waiting for audio after ${Math.floor(waitTime/1000)}s (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
                         }
                     }
                     
-                    readyIds.forEach((id) => waitingAudio.delete(id));
-                    if (readyIds.length > 0) {
+                    // Only promote if the NEXT (earliest) event has audio ready
+                    if (nextEvent && nextEvent.audio_ready && nextEvent.audio_url) {
+                        const waitTime = now - nextWaitData.addedAt;
+                        console.log(`[WAITING] Next event ${nextEvent.id} (timestamp=${nextEvent.timestamp.toFixed(1)}) audio ready after ${waitTime}ms, promoting to eventQueue`);
+                        eventQueue.push(nextEvent);
+                        waitingAudio.delete(nextEvent.id);
                         processNextEvent();
                     }
                 }
