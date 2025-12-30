@@ -24,7 +24,7 @@ from django.db.models import Q
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
-from mysite.universe.services.audio_cache import AudioCache, AudioJob, AudioJobQueue, AudioWorker
+from mysite.universe.services.audio_cache import AudioCache, AudioJob, AudioJobQueue, AudioWorker, EnqueueResult
 
 logger = logging.getLogger(__name__)
 
@@ -63,20 +63,38 @@ def _ensure_worker():
         # Stop old worker if it exists but is dead
         if _audio_worker is not None:
             try:
+                was_alive = _audio_worker.is_alive()
                 _audio_worker.stop()
                 _audio_worker.join(timeout=2.0)
-            except Exception:
-                pass
-            log.warning("Audio worker was dead or unhealthy, restarting")
+                if was_alive:
+                    log.warning("Audio worker was alive but unhealthy, restarting")
+                else:
+                    log.warning("Audio worker was dead, restarting")
+            except Exception as e:
+                log.error("Error stopping old worker: %s", e, exc_info=True)
         
-        _audio_worker = AudioWorker(cache=_get_audio_cache(), queue=_get_audio_queue())
-        _audio_worker.start()
-        log.info("Audio worker started")
+        try:
+            _audio_worker = AudioWorker(cache=_get_audio_cache(), queue=_get_audio_queue())
+            _audio_worker.start()
+            # Give it a moment to start, then verify
+            import time
+            time.sleep(0.1)
+            if _audio_worker.is_alive():
+                log.info("Audio worker started successfully (thread alive)")
+            else:
+                log.error("Audio worker thread died immediately after start!")
+        except Exception as e:
+            log.error("Failed to start audio worker: %s", e, exc_info=True)
+            _audio_worker = None
 
 
 def _prefetch_audio_for_events(events):
     """
-    Best-effort prefetch: enqueue events for which audio is not cached.
+    Prefetch audio for events. Explicitly tracks and logs all failure modes.
+    
+    Returns:
+        dict with statistics: enqueued, skipped_cached, skipped_no_text, 
+        skipped_no_actor, skipped_no_voice, rejected_duplicate, rejected_full
     """
     _ensure_worker()
     cache = _get_audio_cache()
@@ -86,23 +104,44 @@ def _prefetch_audio_for_events(events):
     import logging
     log = logging.getLogger(__name__)
 
+    stats = {
+        'enqueued': 0,
+        'skipped_cached': 0,
+        'skipped_no_text': 0,
+        'skipped_no_actor': 0,
+        'skipped_no_voice': 0,
+        'rejected_duplicate': 0,
+        'rejected_full': 0,
+    }
+
     for ev in events:
+        # Check if already cached
         if cache.get(ev.id):
+            stats['skipped_cached'] += 1
+            log.debug("Prefetch skip event_id=%s (already cached)", ev.id)
             continue
+        
+        # Check for text
         text = getattr(ev, "text", "") or ""
         if not text.strip():
+            stats['skipped_no_text'] += 1
+            log.warning("Prefetch skip event_id=%s (no text)", ev.id)
             continue
+        
         meta = getattr(ev, "metadata", None) or {}
 
         # Resolve voice from metadata or actor profile
         voice_id = meta.get("voice_id")
+        actor = None
+        actor_lookup_method = None
+        
         if not voice_id:
-            actor = None
             # Prefer actor_id from metadata to avoid name collisions
             actor_id = meta.get("actor_id")
             if actor_id:
                 try:
                     actor = BaseActor.objects.get(id=actor_id)
+                    actor_lookup_method = "actor_id"
                 except BaseActor.DoesNotExist:
                     log.warning("Event %s references non-existent actor_id=%s", ev.id, actor_id)
             
@@ -117,23 +156,60 @@ def _prefetch_audio_for_events(events):
                     log.warning("Multiple actors found with name '%s' (count=%d), using most recent (id=%s) for event %s",
                                ev.actor_name, len(actors), actors[0].id, ev.id)
                 actor = actors[0] if actors else None
+                if actor:
+                    actor_lookup_method = "name"
             
-            if actor:
+            if not actor:
+                # Actor not found - will use fallback voice, but log the issue
+                log.warning("Event %s actor not found (name='%s', actor_id=%s), will use fallback voice", 
+                           ev.id, ev.actor_name, meta.get("actor_id"))
+                voice_id = None
+            else:
+                # Actor found - try to get voice from profile
                 try:
                     profile = actor.audio_profile
                     vp = profile.get_voice_params() or {}
                     voice_id = vp.get("voice_template")
                 except BaseActor.audio_profile.RelatedObjectDoesNotExist:
-                    # Actor has no profile - use fallback
+                    log.warning("Event %s actor (id=%s, name='%s', lookup=%s) has no audio_profile", 
+                               ev.id, actor.id, actor.name, actor_lookup_method)
                     voice_id = None
+        
         if not voice_id:
-            # Fallback defaults
+            # Fallback defaults - but log that we're using fallback
             voice_id = "pilot_default"
+            if actor is None:
+                stats['skipped_no_actor'] += 1
+                log.warning("Prefetch event_id=%s using fallback voice='%s' (no actor found)", 
+                           ev.id, voice_id)
+            else:
+                stats['skipped_no_voice'] += 1
+                log.warning("Prefetch event_id=%s using fallback voice='%s' (actor had no voice_template)", 
+                           ev.id, voice_id)
 
         # Sentence-case the text to avoid spelled-out ALL CAPS
         speak_text = _sentence_case(text)
-        queue.enqueue(AudioJob(event_id=ev.id, text=speak_text, voice_id=voice_id))
-        log.info("Prefetch enqueue event_id=%s voice=%s", ev.id, voice_id)
+        job = AudioJob(event_id=ev.id, text=speak_text, voice_id=voice_id)
+        
+        # Enqueue with explicit result tracking
+        result = queue.enqueue(job)
+        if result == EnqueueResult.SUCCESS:
+            stats['enqueued'] += 1
+            log.info("Prefetch enqueue event_id=%s voice=%s actor_lookup=%s", 
+                    ev.id, voice_id, actor_lookup_method or "metadata")
+        elif result == EnqueueResult.DUPLICATE:
+            stats['rejected_duplicate'] += 1
+            log.debug("Prefetch skip event_id=%s (already queued or in-flight)", ev.id)
+        elif result == EnqueueResult.QUEUE_FULL:
+            stats['rejected_full'] += 1
+            log.warning("Prefetch REJECTED event_id=%s (queue full, capacity=%d)", 
+                       ev.id, queue.capacity)
+    
+    # Log summary if any events were processed
+    if sum(stats.values()) > 0:
+        log.info("Prefetch summary: %s", stats)
+    
+    return stats
 
 
 def _select_upcoming_events(sim_time, limit: int = 12):
@@ -287,6 +363,22 @@ def event_feed(request):
     next_event_timestamp = next_event.timestamp if next_event else None
     time_until_next = (next_event_timestamp - sim_time) if next_event_timestamp else None
     
+    # Worker/queue/cache status for debugging - explicit failure tracking
+    worker_status = {}
+    if _audio_worker is not None:
+        worker_status = _audio_worker.get_stats()
+        worker_status['exists'] = True
+    else:
+        worker_status = {
+            'exists': False,
+            'alive': False,
+            'healthy': False,
+            'tts_available': False,
+        }
+    
+    queue_status = _get_audio_queue().get_stats()
+    cache_status = _get_audio_cache().get_stats()
+    
     return JsonResponse({
         'events': events,
         'debug': {
@@ -300,6 +392,9 @@ def event_feed(request):
             'returned_count': len(events),
             'next_event_timestamp': next_event_timestamp,
             'time_until_next': time_until_next,
+            'worker': worker_status,
+            'queue': queue_status,
+            'cache': cache_status,
         },
         'latest_id': latest_id,
         'latest_cursor': latest_cursor,
@@ -350,9 +445,43 @@ def clear_events(request):
 
 @require_http_methods(["GET"])
 def event_audio(request, event_id: int):
-    entry = _get_audio_cache().get(int(event_id))
+    """
+    Serve audio WAV for an event.
+    
+    Returns:
+        200 with WAV bytes if audio is ready
+        404 with error details if audio not found (never generated, evicted, or generation failed)
+    """
+    cache = _get_audio_cache()
+    queue = _get_audio_queue()
+    event_id_int = int(event_id)
+    
+    entry = cache.get(event_id_int)
     if not entry:
-        return JsonResponse({"status": "error", "message": "Audio not ready"}, status=404)
+        # Check if it's in queue or in-flight (being processed)
+        with queue._lock:
+            in_queue = any(j.event_id == event_id_int for j in queue._queue)
+            in_flight = event_id_int in queue._inflight
+        
+        reason = "not_found"
+        if in_flight:
+            reason = "generating"
+        elif in_queue:
+            reason = "queued"
+        else:
+            # Check cache stats to see if it was evicted
+            cache_stats = cache.get_stats()
+            if cache_stats['evictions'] > 0:
+                reason = "possibly_evicted"
+        
+        return JsonResponse({
+            "status": "error",
+            "message": f"Audio not ready for event {event_id_int}",
+            "reason": reason,
+            "in_queue": in_queue,
+            "in_flight": in_flight,
+        }, status=404)
+    
     resp = HttpResponse(entry.wav_bytes, content_type="audio/wav")
     resp["Cache-Control"] = "no-store"
     return resp
@@ -361,10 +490,53 @@ def event_audio(request, event_id: int):
 @require_http_methods(["POST"])
 def ensure_audio_worker(request):
     """
-    Ensure the audio worker is running; best-effort to start it if not.
+    Ensure the audio worker is running; explicitly reports status.
+    
+    Returns:
+        200 with worker status (exists, alive, healthy, tts_available)
+        500 if worker failed to start
     """
+    import logging
+    log = logging.getLogger(__name__)
+    
     try:
         _ensure_worker()
-        return JsonResponse({"status": "ok"})
+        worker = _audio_worker
+        if worker is None:
+            return JsonResponse({
+                "status": "error",
+                "message": "Worker is None after _ensure_worker()",
+            }, status=500)
+        
+        # Give it a moment to initialize
+        import time
+        time.sleep(0.2)
+        
+        stats = worker.get_stats() if hasattr(worker, 'get_stats') else {}
+        status = {
+            "status": "ok",
+            "worker": {
+                "exists": True,
+                "alive": worker.is_alive(),
+                "healthy": worker.is_alive_and_healthy() if hasattr(worker, 'is_alive_and_healthy') else worker.is_alive(),
+                **stats,
+            }
+        }
+        
+        if not worker.is_alive():
+            log.error("Worker thread died after start")
+            status["status"] = "error"
+            status["message"] = "Worker thread died immediately after start"
+            return JsonResponse(status, status=500)
+        
+        return JsonResponse(status)
     except Exception as e:
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        log.error("Failed to ensure audio worker: %s", e, exc_info=True)
+        return JsonResponse({
+            "status": "error",
+            "message": str(e),
+            "worker": {
+                "exists": _audio_worker is not None,
+                "alive": _audio_worker.is_alive() if _audio_worker else False,
+            }
+        }, status=500)
