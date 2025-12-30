@@ -8,7 +8,7 @@ the resulting waveform.
 Current primitives:
 - sine_beep: basic oscillator tone with envelope
 - white_noise: noise source with optional simple filtering + envelope
-- modem_noise: 1200-baud Kermit FSK encoding (text -> telephone modem tones)
+- modem_noise: 300-baud Kermit FSK encoding (text -> telephone modem tones)
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ class ModemNoise:
     start_seconds: float = 0.0
     text: str = ""
     gain: float = 1.0
-    baud_rate: int = 1200  # Bits per second
+    baud_rate: int = 300  # Bits per second
     mark_frequency_hz: float = 1200.0  # Frequency for bit=1
     space_frequency_hz: float = 2200.0  # Frequency for bit=0
     carrier_frequency_hz: Optional[float] = 1800.0  # Optional background carrier
@@ -381,7 +381,7 @@ def _kermit_encode_text(text: str) -> list[int]:
 
 def _mix_modem_noise(mix: list[float], modem: ModemNoise, sr: int) -> None:
     """
-    Render 1200-baud Kermit FSK modem tones.
+    Render 300-baud Kermit FSK modem tones.
     """
     if not modem.text:
         return

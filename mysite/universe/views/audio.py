@@ -102,12 +102,7 @@ _PRESET_DEFINITIONS = {
     # Outro: 2475 Hz ~250ms
     "quindar_end": [SineBeep(frequency_hz=2475.0, duration_seconds=0.25, gain=0.9)],
     # Static/radio noise presets (configurable)
-    # TODO: Ship-Specific Room Tone Presets
-    # - Add presets like "room_tone_small", "room_tone_medium", "room_tone_large"
-    # - Each should mix: engine_rumble (low-freq noise, ship-size-dependent) + reverb
-    # - Reverb parameters: delay_ms and decay_factor based on cockpit size
-    # - These presets will be referenced by build_audio_plan_for_dialogue_event()
-    #   when it queries the event's associated Ship model
+    # Static/radio noise presets (configurable)
     "static_light": [
         WhiteNoise(
             duration_seconds=1.0,
@@ -135,19 +130,7 @@ _PRESET_DEFINITIONS = {
             highpass_hz=50.0,
         )
     ],
-    # Placeholder room tone so event_during plans don't 404.
-    # This is intentionally simple (filtered noise); later we can replace it with
-    # ship-size-dependent rumble + reverb.
-    "room_tone_placeholder": [
-        WhiteNoise(
-            duration_seconds=0.6,
-            gain=0.08,
-            intensity=0.5,
-            lowpass_hz=1200.0,
-            highpass_hz=40.0,
-        )
-    ],
-    # Modem noise: 1200-baud Kermit encoding
+    # Modem noise: 300-baud Kermit encoding
     # Example: encode a short message
     "modem_noise_example": [
         ModemNoise(
@@ -186,7 +169,7 @@ def audio_preset(request, preset: str):
         carrier_gain = float(request.GET.get("carrier_gain", 0.15))
         mark_freq = float(request.GET.get("mark_frequency_hz", 1200.0))
         space_freq = float(request.GET.get("space_frequency_hz", 2200.0))
-        baud_rate = int(request.GET.get("baud_rate", 1200))
+        baud_rate = int(request.GET.get("baud_rate", 300))
         wow_rate = float(request.GET.get("wow_rate_hz", 0.0))
         wow_depth = float(request.GET.get("wow_depth_hz", 0.0))
         
@@ -454,7 +437,7 @@ def audio_lab_render(request):
     modem_gain = float(payload.get("modem_gain", 0.8))
     carrier_frequency_hz = float(payload.get("carrier_frequency_hz", 1800.0))
     carrier_gain = float(payload.get("carrier_gain", 0.15))
-    baud_rate = int(payload.get("baud_rate", 1200))
+    baud_rate = int(payload.get("baud_rate", 300))
     mark_frequency_hz = float(payload.get("mark_frequency_hz", 1200.0))
     space_frequency_hz = float(payload.get("space_frequency_hz", 2200.0))
     wow_rate_hz = float(payload.get("wow_rate_hz", 0.0))

@@ -34,8 +34,6 @@ class MaintenanceManager:
         """Handle a basic maintenance event"""
         self.active_events.append(event)
         
-        # Basic status update
-        event.ship.status = 'HOLD'
         event.ship.save()
         
         # Simple delay
@@ -45,6 +43,4 @@ class MaintenanceManager:
         event.mark_resolved()
         self.active_events.remove(event)
         
-        # Resume normal operation
-        event.ship.status = 'TRAN'
         event.ship.save()

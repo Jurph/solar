@@ -8,8 +8,8 @@ class TestAudioPresetEndpoint(TestCase):
     def setUp(self):
         self.client = Client()
 
-    def test_audio_preset_room_tone_placeholder_returns_wav(self):
-        url = reverse("audio_preset", kwargs={"preset": "room_tone_placeholder"})
+    def test_audio_preset_quindar_start_returns_wav(self):
+        url = reverse("audio_preset", kwargs={"preset": "quindar_start"})
         resp = self.client.get(url)
         assert resp.status_code == 200
         assert resp["Content-Type"] == "audio/wav"

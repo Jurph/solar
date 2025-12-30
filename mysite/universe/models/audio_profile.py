@@ -1,8 +1,15 @@
 """
 Audio Profile model for Actors.
 
-Stores parametric audio configuration (room tone, static, voiceprint, reverb)
-so that (Actor + Text) is sufficient to generate tailored audio clips.
+Stores audio configuration metadata that determines which pre-generated WAV files
+and voice templates to use for each Actor. This enables consistent audio identity
+per character without requiring regeneration.
+
+Audio Pipeline:
+- Voice: TTS via chatterbox using reference voice WAV files (e.g., pilot-M-002.wav)
+- Room tone: Pre-generated engine/ambient WAV files (small/medium/large_engine_noise.wav, Control_station_noise.wav)
+- Quindars: Pre-generated tones
+- Modem noise: 300-baud FSK encoding (satellites only)
 """
 
 from __future__ import annotations
@@ -12,45 +19,43 @@ from django.db import models
 
 class AudioProfile(models.Model):
     """
-    Parametric audio configuration for an Actor.
+    Audio configuration metadata for an Actor.
     
-    All parameters are stored as JSON in the database so that audio generation
-    can be deterministic and tailored per-actor without hardcoding, and we can
-    add new TTS/audio features without requiring migrations.
-    
-    When an Actor has an AudioProfile, (Actor + Text) is sufficient to
-    generate a complete audio clip with room tone, static, voiceprint, etc.
+    Stores which pre-generated audio files to use and how to apply them.
+    All parameters are stored as JSON to avoid migrations when adding new features.
     
     The `params` JSONField structure:
     {
         "room_tone": {
             "enabled": bool,
-            "engine_rumble_base_freq_hz": float,
-            "engine_rumble_harmonics": int,
-            "engine_rumble_intensity": float,
-            "reverb_delay_ms": float,
-            "reverb_decay_factor": float,
-            "reverb_room_size_hint": str,  # "small" | "medium" | "large" | "station"
+            "wav_file": str | null,  # Pre-generated WAV: "small_engine_noise.wav", "Control_station_noise.wav", etc.
+            "engine_rumble_base_freq_hz": float,    # Metadata (not used for synthesis)
+            "engine_rumble_harmonics": int,         # Metadata (not used for synthesis)
+            "engine_rumble_intensity": float,       # Metadata (not used for synthesis)
+            "reverb_delay_ms": float,               # Metadata (not used for synthesis)
+            "reverb_decay_factor": float,           # Metadata (not used for synthesis)
+            "reverb_room_size_hint": str,           # Metadata: "small" | "medium" | "large" | "station"
         },
         "static": {
-            "intensity": float,
+            "intensity": float,         # Metadata describing the room tone's static component
             "lowpass_hz": float | null,
             "highpass_hz": float | null,
             "bandwidth_hz": float | null,
         },
         "quindar": {
-            "start_freq_hz": float,
+            "start_freq_hz": float,     # Quindar tone frequencies (for reference)
             "end_freq_hz": float,
             "gain": float,
         },
         "voiceprint": {
-            # TODO: TTS not implemented yet - structure reserved for future
-            "voice_template": str | null,
-            "pitch_shift_cents": int,
-            "speed_factor": float,
-            # Additional TTS parameters can be added here without migrations
+            "voice_template": str | null,  # Reference voice file stem for chatterbox TTS (e.g., "pilot-M-002")
+            "pitch_shift_cents": int,      # TTS pitch adjustment
+            "speed_factor": float,         # TTS speed multiplier
         },
     }
+    
+    Note: Most numeric parameters (engine_rumble_*, reverb_*, static.*) are metadata for 
+    documentation/display purposes. The actual audio comes from pre-generated WAV files.
     """
     
     # One-to-one relationship with Actor
@@ -82,18 +87,22 @@ class AudioProfile(models.Model):
     @classmethod
     def create_default_for_actor(cls, actor: 'Actor') -> 'AudioProfile':
         """
-        Create a default audio profile for an actor with sensible defaults.
+        Create a default audio profile for an actor, assigning the appropriate
+        pre-generated room tone WAV file based on actor type and ship size.
         
-        Defaults by actor type:
-        - Satellite: no static, no reverb (clean transmission)
-        - Pilot: small-room reverb, engine rumble + static from ship size (default: medium ship)
-        - Controller: large-room reverb, no engine rumble (station ambient only)
+        Room tone assignments:
+        - Satellite: None (no room tone, just modem noise)
+        - Pilot: Ship-size-dependent engine noise WAV
+          - Small ship: small_engine_noise.wav
+          - Medium ship: medium_engine_noise.wav
+          - Large ship: large_engine_noise.wav
+        - Controller: Station ambient (Control_station_noise.wav)
         
         Args:
             actor: The Actor to create a profile for
             
         Returns:
-            A new AudioProfile instance with default params JSON
+            A new AudioProfile instance with params JSON pointing to the appropriate WAV files
         """
         from mysite.universe.models.actor import Pilot, Controller, Satellite
         
@@ -128,44 +137,53 @@ class AudioProfile(models.Model):
         
         # Customize by actor type
         if isinstance(actor, Satellite):
-            # Satellite: no static, no reverb
+            # Satellite: no static, no reverb, no room tone
             params["static"]["intensity"] = 0.0
             params["room_tone"]["enabled"] = False
             params["room_tone"]["engine_rumble_intensity"] = 0.0
             params["room_tone"]["reverb_delay_ms"] = 0.0
+            params["room_tone"]["wav_file"] = None
         
         elif isinstance(actor, Pilot):
             # Pilot: small-room reverb, engine rumble + static from ship size
             params["room_tone"]["reverb_room_size_hint"] = "small"
             params["room_tone"]["reverb_delay_ms"] = 30.0
             
-            # Derive engine rumble and static from ship size (default: medium)
-            ship_size = 'medium'  # Default
-            if hasattr(actor, 'ship') and actor.ship and actor.ship.size:
-                ship_size = actor.ship.size.lower()
+            # Derive engine rumble, static, and WAV file from ship size enum
+            from mysite.universe.models.ship import Ship
             
-            if ship_size == 's' or 'small' in ship_size:
-                params["room_tone"]["engine_rumble_base_freq_hz"] = 80.0
-                params["static"]["intensity"] = 0.03  # Very faint for small ships
-            elif ship_size == 'l' or 'large' in ship_size or 'freighter' in ship_size:
-                params["room_tone"]["engine_rumble_base_freq_hz"] = 40.0
-                params["static"]["intensity"] = 0.08  # Slightly more for large ships
+            if hasattr(actor, 'ship') and actor.ship and actor.ship.size:
+                if actor.ship.size == Ship.Size.SMALL:
+                    params["room_tone"]["engine_rumble_base_freq_hz"] = 80.0
+                    params["static"]["intensity"] = 0.03
+                    params["room_tone"]["wav_file"] = "small_engine_noise.wav"
+                elif actor.ship.size == Ship.Size.LARGE:
+                    params["room_tone"]["engine_rumble_base_freq_hz"] = 40.0
+                    params["static"]["intensity"] = 0.08
+                    params["room_tone"]["wav_file"] = "large_engine_noise.wav"
+                else:  # Ship.Size.MEDIUM
+                    params["room_tone"]["engine_rumble_base_freq_hz"] = 60.0
+                    params["static"]["intensity"] = 0.05
+                    params["room_tone"]["wav_file"] = "medium_engine_noise.wav"
             else:
-                # Medium ship (defaults already set)
+                # Default to medium if no ship
                 params["room_tone"]["engine_rumble_base_freq_hz"] = 60.0
-                params["static"]["intensity"] = 0.05  # Very faint for medium ships
+                params["static"]["intensity"] = 0.05
+                params["room_tone"]["wav_file"] = "medium_engine_noise.wav"
         
         elif isinstance(actor, Controller):
-            # Controller: large-room reverb, no engine rumble
+            # Controller: large-room reverb, no engine rumble, station ambient
             params["room_tone"]["reverb_room_size_hint"] = "large"
             params["room_tone"]["reverb_delay_ms"] = 150.0
             params["room_tone"]["engine_rumble_intensity"] = 0.0  # No engine rumble
             params["static"]["intensity"] = 0.1  # Light static for ground stations
+            params["room_tone"]["wav_file"] = "Control_station_noise.wav"
         
         else:
             # Unknown actor type - use minimal defaults
             params["room_tone"]["enabled"] = False
             params["static"]["intensity"] = 0.0
+            params["room_tone"]["wav_file"] = None
         
         profile, created = cls.objects.get_or_create(actor=actor, defaults={"params": params})
 
@@ -186,28 +204,36 @@ class AudioProfile(models.Model):
     
     def get_room_tone_params(self) -> dict:
         """
-        Get room tone parameters as a dictionary for audio synthesis.
+        Get room tone parameters as a dictionary.
         
         Returns:
-            Dict from params["room_tone"] with all room tone settings
+            Dict from params["room_tone"] including:
+            - wav_file: Pre-generated room tone WAV filename
+            - enabled: Whether room tone should be played
+            - Other metadata fields (for documentation/display)
         """
         return self.params.get("room_tone", {})
     
     def get_static_params(self) -> dict:
         """
-        Get static/radio noise parameters as a dictionary for audio synthesis.
+        Get static/radio noise parameters as a dictionary.
+        
+        Note: These are metadata describing the room tone's static characteristics.
+        The actual static is part of the pre-generated room tone WAV file.
         
         Returns:
-            Dict from params["static"] with all static noise settings
+            Dict from params["static"] with intensity and filter metadata
         """
         return self.params.get("static", {})
     
     def get_quindar_params(self) -> dict:
         """
-        Get Quindar tone parameters as a dictionary for audio synthesis.
+        Get Quindar tone parameters as a dictionary.
+        
+        Note: Quindars are pre-generated tones. These params are metadata for reference.
         
         Returns:
-            Dict from params["quindar"] with Quindar tone settings
+            Dict from params["quindar"] with frequency and gain metadata
         """
         return self.params.get("quindar", {})
     
@@ -216,8 +242,10 @@ class AudioProfile(models.Model):
         Get voiceprint/TTS parameters as a dictionary.
         
         Returns:
-            Dict from params["voiceprint"] with TTS settings
-            TODO: TTS not implemented yet - this structure is reserved for future use
+            Dict from params["voiceprint"] with:
+            - voice_template: Reference voice file stem (e.g., "pilot-M-002") used by chatterbox
+            - pitch_shift_cents: TTS pitch adjustment
+            - speed_factor: TTS speed multiplier
         """
         return self.params.get("voiceprint", {})
 
@@ -229,14 +257,15 @@ class AudioProfile(models.Model):
         self.params = params
         self.save(update_fields=["params"])
 
-    def set_room_tone_preset(self, preset: str | None):
+    def set_room_tone_wav(self, wav_file: str | None):
+        """Set the room tone WAV file for this actor."""
         params = self.params or {}
         rt = params.get("room_tone", {})
-        if preset:
-            rt["preset"] = preset
+        if wav_file:
+            rt["wav_file"] = wav_file
             rt["enabled"] = True
         else:
-            rt["preset"] = None
+            rt["wav_file"] = None
             rt["enabled"] = False
         params["room_tone"] = rt
         self.params = params

@@ -191,7 +191,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 **Notes:**
 - Some systems may not have a NavSat; if you choose a random star and it has no NavSat, create the Actor 
 - Eventually I'd like the modem noise to encode the text of the broadcast but this is a stretch goal; for now we can just build a blob of text like "IF THIS WERE A REAL NAV UPDATE YOU'D BE ABLE TO READ IT BY NOW // 256 bytes of random hex" 
-- Broadcast should be very low data rate - maybe 1200 baud - to ensure that it sounds like tones and not just a millisecond-long burst of noise 
+- Broadcast should be very low data rate - 300 baud - to ensure that it sounds like tones and not just a millisecond-long burst of noise 
 
 ---
 

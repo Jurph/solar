@@ -1,7 +1,11 @@
 """
-Test audio worker error handling and robustness.
+Audio worker tests.
 
-Ensures that TTS failures don't silently break the pipeline.
+Tests worker behavior:
+- Audio processing workflow
+- Error handling and robustness
+- TTS failure handling
+- Graceful degradation when resources unavailable
 """
 import pytest
 from unittest.mock import Mock, patch

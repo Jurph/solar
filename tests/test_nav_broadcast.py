@@ -6,20 +6,18 @@ Tests:
 2. GratitudeParticle generation and LLM integration
 3. generate_nav_broadcast_chain in ScriptService
 4. Nav broadcast mission type in spawn_mission
-5. Audio plan detection for Satellite actors
+
+Note: Audio plan tests for satellites have been moved to test_audio_plans.py
 """
-import random
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from tests.test_spawn_mission import _ImmediateThread
 from django.test import TestCase
 from mysite.universe.models.actor import Pilot, Satellite
 from mysite.universe.models.ship import Ship
 from mysite.universe.models.event import DialogueEventLog
-from mysite.universe.models.base import Location
 from mysite.universe.models.scale import Scale
 from mysite.universe.models.simulation import SimulationState
 from mysite.universe.services.script_server import ScriptService
-from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
 from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
 from mysite.universe.models.station import Station
 
@@ -131,7 +129,6 @@ class TestNavBroadcastChainGeneration(NavBroadcastTest):
             recipient_callsign="RELAY ALPHA 1",
             message="RELAY ALPHA 1, TEST SHIP. Thanks for the update.",
         )
-        original_generate = self.script_service.dialogue_service.generate_chain_iteratively
         self.script_service.dialogue_service.generate_chain_iteratively = Mock(
             return_value=[(gratitude_msg, 2.0)]
         )
@@ -304,80 +301,4 @@ class TestNavBroadcastMissionType(NavBroadcastTest):
             self.assertEqual(event.actor_name, satellite2.name)
 
 
-class TestAudioPlanSatelliteDetection(NavBroadcastTest):
-    """Test audio plan detection for Satellite actors."""
-    
-    def test_audio_plan_for_satellite_uses_modem_noise(self):
-        """Test that Satellite actors get modem noise in audio plan (with quindars)."""
-        # Ensure satellite has an audio profile
-        from mysite.universe.models.audio_profile import AudioProfile
-        AudioProfile.create_default_for_actor(self.satellite)
-        
-        # Create a nav broadcast event
-        event = DialogueEventLog.objects.create(
-            timestamp=100.0,
-            actor=self.satellite,
-            text="RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
-        )
-        
-        audio_plan = build_audio_plan_for_dialogue_event(event)
-        
-        # Satellites should have modem noise preset
-        modem_actions = [a for a in audio_plan if "modem_noise" in a.get("preset", "")]
-        if len(modem_actions) == 0:
-            # If no modem actions, check what we actually got
-            all_presets = [a.get("preset", "") for a in audio_plan]
-            self.fail(f"Expected modem_noise preset, but got: {all_presets}. Full plan: {audio_plan}")
-        self.assertGreater(len(modem_actions), 0, "Satellite events should use modem noise")
-        
-        # Satellites SHOULD have Quindar tones (start/end of transmission)
-        # Comment in audio_plans.py says: "Don't remove Quindars from satellites"
-        quindar_actions = [a for a in audio_plan if "quindar" in a.get("preset", "")]
-        self.assertGreater(len(quindar_actions), 0, "Satellite events SHOULD use Quindar tones")
-    
-    def test_audio_plan_for_pilot_uses_quindar(self):
-        """Test that Pilot actors get Quindar tones in audio plan."""
-        # Create a dialogue event from pilot
-        event = DialogueEventLog.objects.create(
-            timestamp=100.0,
-            actor=self.pilot,
-            text="Requesting clearance for departure."
-        )
-        
-        audio_plan = build_audio_plan_for_dialogue_event(event)
-        
-        # Should have Quindar tones
-        quindar_actions = [a for a in audio_plan if "quindar" in a.get("preset", "")]
-        self.assertGreater(len(quindar_actions), 0, "Pilot events should use Quindar tones")
-        
-        # Should NOT have modem noise
-        modem_actions = [a for a in audio_plan if "modem_noise" in a.get("preset", "")]
-        self.assertEqual(len(modem_actions), 0, "Pilot events should NOT use modem noise")
-    
-    def test_audio_plan_for_satellite_includes_broadcast_text(self):
-        """Test that satellite audio plan includes broadcast text in params."""
-        # Ensure satellite has an audio profile
-        from mysite.universe.models.audio_profile import AudioProfile
-        AudioProfile.create_default_for_actor(self.satellite)
-        
-        broadcast_text = "RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
-        event = DialogueEventLog.objects.create(
-            timestamp=100.0,
-            actor=self.satellite,
-            text=broadcast_text
-        )
-        
-        audio_plan = build_audio_plan_for_dialogue_event(event)
-        
-        # Find modem noise action
-        modem_action = next(
-            (a for a in audio_plan if "modem_noise" in a.get("preset", "")),
-            None
-        )
-        self.assertIsNotNone(modem_action, "Should have modem noise action")
-        
-        # Check that params include the broadcast text
-        params = modem_action.get("params", {})
-        self.assertIn("text", params)
-        self.assertEqual(params["text"], broadcast_text)
 

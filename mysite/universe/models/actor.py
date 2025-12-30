@@ -200,16 +200,19 @@ Pay close attention to the examples and counterexamples provided. """
                 profile.set_voice_template(voice_template)
 
         # Room tone based on ship size (always update - ship size may change)
-        ship_size = 'medium'
+        from mysite.universe.models.ship import Ship
+        
         if hasattr(actor, 'ship') and actor.ship and actor.ship.size:
-            ship_size = actor.ship.size.lower()
-        if ship_size == 's' or 'small' in ship_size:
-            rt = "room_tone_small"
-        elif ship_size == 'l' or 'large' in ship_size or 'freighter' in ship_size:
-            rt = "room_tone_large"
+            if actor.ship.size == Ship.Size.SMALL:
+                rt_wav = "small_engine_noise.wav"
+            elif actor.ship.size == Ship.Size.LARGE:
+                rt_wav = "large_engine_noise.wav"
+            else:  # Ship.Size.MEDIUM
+                rt_wav = "medium_engine_noise.wav"
         else:
-            rt = "room_tone_medium"
-        profile.set_room_tone_preset(rt)
+            # Default to medium if no ship or size
+            rt_wav = "medium_engine_noise.wav"
+        profile.set_room_tone_wav(rt_wav)
 
 class Controller(Actor):
     """A space traffic controller at a specific location."""
@@ -302,7 +305,7 @@ CRITICAL SAFETY RULES:
                 voice_template = Path(voice_path).stem
                 profile.set_voice_template(voice_template)
         
-        profile.set_room_tone_preset("room_tone_controller")
+        profile.set_room_tone_wav("Control_station_noise.wav")
 
     @classmethod
     def generate_name(cls, location: Location) -> str:
@@ -402,7 +405,7 @@ class Satellite(Actor):
                 profile.set_voice_template(voice_template)
         
         # No room tone for satellites
-        profile.set_room_tone_preset(None)
+        profile.set_room_tone_wav(None)
 
     @classmethod
     def generate_name(cls) -> str:
