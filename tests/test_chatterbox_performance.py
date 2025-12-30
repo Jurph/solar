@@ -125,3 +125,61 @@ def test_chatterbox_latency_short_and_long():
         with out_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 
+
+@pytest.mark.slow
+@pytest.mark.skipif(not _have_local_model(), reason="Local chatterbox model not found (set CHATTERBOX_LOCAL_PATH)")
+def test_chatterbox_voice_switch_latency():
+    # Measure per-voice latency to understand switching overhead.
+    voices = [
+        "pilot-M-002_canonical_all",
+        "pilot-F-001_canonical_all",
+        "controller-M-001_canonical_all",
+    ]
+
+    missing = [v for v in voices if not _have_voice(v)]
+    if missing:
+        pytest.skip(f"Missing voice prompts: {missing}")
+
+    service = get_tts_service()
+    device = getattr(service, "device", "unknown")
+    text = "Ready for departure clearance."
+
+    artifacts_dir = Path(settings.BASE_DIR) / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    out_path = artifacts_dir / "tts_performance.jsonl"
+
+    for v in voices:
+        start = time.perf_counter()
+        try:
+            wav_bytes = service.generate(text=text, voice_id=v)
+        except RuntimeError as e:
+            msg = str(e)
+            if "Descriptors cannot be created directly" in msg or "protobuf" in msg:
+                pytest.skip(
+                    "protobuf/TF dependency mismatch; set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python "
+                    "or install protobuf==3.20.x"
+                )
+            raise
+
+        elapsed = time.perf_counter() - start
+        duration = _wav_duration_seconds(wav_bytes)
+
+        assert len(wav_bytes) > 0, f"{v} produced empty audio"
+        assert duration > 0.0, f"{v} duration not positive"
+        if elapsed > 300.0:
+            raise AssertionError(f"{v} generation too slow ({elapsed:.1f}s)")
+
+        print(f"[voice_switch] voice={v} text_len={len(text)} duration={duration:.2f}s wall={elapsed:.2f}s")
+
+        record = {
+            "case": "voice_switch",
+            "voice_id": v,
+            "text_len": len(text),
+            "duration_s": duration,
+            "wall_s": elapsed,
+            "device": device,
+            "protobuf_version": _pb.__version__,
+        }
+        with out_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
