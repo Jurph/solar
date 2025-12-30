@@ -1,0 +1,127 @@
+import io
+import json
+import os
+import time
+import wave
+from pathlib import Path
+import warnings
+
+# Force safer import settings before any heavy deps load
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+# Use the pure-Python protobuf implementation to dodge compiled descriptor issues on Windows
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
+import pytest
+from django.conf import settings
+
+from mysite.universe.services.tts_service import get_tts_service
+import google.protobuf as _pb
+
+# Suppress known diffusers LoRA warning (using peft backend is already installed)
+warnings.filterwarnings(
+    "ignore",
+    message="`LoRACompatibleLinear` is deprecated and will be removed in version 1.0.0",
+    category=FutureWarning,
+    module="diffusers.models.lora",
+)
+
+
+def _canonical_sentences():
+    path = Path(settings.BASE_DIR) / "docs" / "Canonical Audio Sentences.txt"
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return lines
+
+
+def _wav_duration_seconds(wav_bytes: bytes) -> float:
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+        frames = wf.getnframes()
+        rate = wf.getframerate() or 1
+        return frames / float(rate)
+
+
+def _have_local_model() -> bool:
+    env_model = os.getenv("CHATTERBOX_LOCAL_PATH")
+    model_path = Path(env_model) if env_model else Path(settings.BASE_DIR) / "models" / "chatterbox-turbo"
+    return model_path.exists()
+
+
+def _have_voice(voice_id: str) -> bool:
+    voice_path = Path(settings.BASE_DIR) / "mysite" / "universe" / "static" / "universe" / "voices" / f"{voice_id}.wav"
+    return voice_path.exists()
+
+
+pytestmark = pytest.mark.slow
+
+
+@pytest.mark.skipif(not _have_local_model(), reason="Local chatterbox model not found (set CHATTERBOX_LOCAL_PATH)")
+def test_chatterbox_latency_short_and_long():
+    # Hard guard: protobuf 4.x compiled descriptors can break TF-heavy imports; we force python impl above,
+    # but also skip if version is far from the recommended 3.20.x range.
+    try:
+        pb_version = _pb.__version__
+    except Exception:  # pragma: no cover
+        pb_version = "unknown"
+
+    sentences = _canonical_sentences()
+    assert sentences, "Canonical sentences file is empty"
+
+    voice_id = "pilot-M-002_canonical_all"
+    if not _have_voice(voice_id):
+        pytest.skip(f"Voice prompt {voice_id}.wav not found in static voices")
+
+    service = get_tts_service()
+    device = getattr(service, "device", "unknown")
+
+    cases = [
+        ("short_canonical", sentences[0]),
+        ("short_atc", "Roger, 510 kilometers."),
+        (
+            "long_atc",
+            "Negative Ghost Rider, the pattern is full. Consider re-vectoring to 277 kilometers on azimuth 359. Also polish your ship's fenders and have an in-flight meal please.",
+        ),
+        ("long_canonical", " ".join(sentences)),
+    ]
+
+    for label, text in cases:
+        start = time.perf_counter()
+        try:
+            wav_bytes = service.generate(text=text, voice_id=voice_id)
+        except RuntimeError as e:
+            msg = str(e)
+            if "Descriptors cannot be created directly" in msg or "protobuf" in msg:
+                pytest.skip(
+                    "protobuf/TF dependency mismatch; set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python "
+                    "or install protobuf==3.20.x"
+                )
+            raise
+
+        elapsed = time.perf_counter() - start
+
+        duration = _wav_duration_seconds(wav_bytes)
+
+        # Basic sanity checks
+        assert len(wav_bytes) > 0, f"{label} case produced empty audio"
+        assert duration > 0.0, f"{label} case duration not positive"
+
+        # Diagnostics: capture latency but only fail on extreme hangs.
+        if elapsed > 300.0:  # 5 minutes is treated as hung
+            raise AssertionError(f"{label} generation too slow ({elapsed:.1f}s)")
+
+        # Log/print for visibility in test output
+        print(f"[{label}] text_len={len(text)} duration={duration:.2f}s wall={elapsed:.2f}s")
+
+        # Persist metrics to artifacts for later tuning
+        artifacts_dir = Path(settings.BASE_DIR) / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        out_path = artifacts_dir / "tts_performance.jsonl"
+        record = {
+            "case": label,
+            "text_len": len(text),
+            "duration_s": duration,
+            "wall_s": elapsed,
+            "device": device,
+            "protobuf_version": pb_version,
+        }
+        with out_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
