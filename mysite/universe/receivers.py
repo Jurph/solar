@@ -124,42 +124,6 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
         logger.error(f"Failed to save dialogue event to database: {e}", exc_info=True)
 
 
-@receiver(post_save, sender=DialogueEventLog)
-def enqueue_tts_on_log_save(sender, instance: DialogueEventLog, created, **kwargs):
-    """
-    Prefetch TTS for freshly created DialogueEventLog entries.
-    Explicitly tracks and logs all failure modes.
-    """
-    if not created:
-        return
-    
-    try:
-        from mysite.universe.views import events as events_views
-        stats = events_views._prefetch_audio_for_events([instance])
-        
-        # Log if enqueueing failed for any reason
-        if stats.get('enqueued', 0) == 0:
-            reason = "unknown"
-            if stats.get('skipped_cached', 0) > 0:
-                reason = "already_cached"
-            elif stats.get('skipped_no_text', 0) > 0:
-                reason = "no_text"
-            elif stats.get('skipped_no_actor', 0) > 0:
-                reason = "no_actor"
-            elif stats.get('rejected_duplicate', 0) > 0:
-                reason = "duplicate"
-            elif stats.get('rejected_full', 0) > 0:
-                reason = "queue_full"
-            
-            logger.warning("Event %s TTS prefetch failed: reason=%s stats=%s", 
-                          instance.id, reason, stats)
-        else:
-            logger.debug("Event %s TTS prefetch enqueued successfully", instance.id)
-            
-    except Exception as e:
-        logger.error("Failed to enqueue TTS prefetch for log %s: %s", instance.id, e, exc_info=True)
-
-
 @receiver(post_save, sender=Actor)
 @receiver(post_save, sender=Pilot)
 @receiver(post_save, sender=Controller)

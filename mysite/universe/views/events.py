@@ -13,7 +13,6 @@ The event system handles:
 - Debug information for monitoring event queue status
 """
 import logging
-import os
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -21,231 +20,72 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q
+from django.core.cache import cache
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
-from mysite.universe.services.audio_cache import AudioCache, AudioJob, AudioJobQueue, AudioWorker, EnqueueResult
 
 logger = logging.getLogger(__name__)
 
-# Prefetch/config knobs
-_AUDIO_CACHE_CAPACITY = int(os.getenv("AUDIO_CACHE_CAPACITY", "24"))  # bump above 12 to allow horizon buffering
-_AUDIO_PREFETCH_HORIZON_SECONDS = float(os.getenv("AUDIO_PREFETCH_HORIZON_SECONDS", "1800"))  # 30 minutes
-_AUDIO_PREFETCH_MAX_EVENTS = int(os.getenv("AUDIO_PREFETCH_MAX_EVENTS", "200"))
 
-# Lightweight in-memory audio cache/queue/worker (no disk writes)
-_audio_cache: AudioCache | None = None
-_audio_queue: AudioJobQueue | None = None
-_audio_worker: AudioWorker | None = None
-
-
-def _get_audio_cache() -> AudioCache:
-    global _audio_cache
-    if _audio_cache is None:
-        _audio_cache = AudioCache(capacity=_AUDIO_CACHE_CAPACITY)
-    return _audio_cache
-
-
-def _get_audio_queue() -> AudioJobQueue:
-    global _audio_queue
-    if _audio_queue is None:
-        _audio_queue = AudioJobQueue(capacity=50)
-    return _audio_queue
-
-
-def _ensure_worker():
-    """Ensure audio worker is running and healthy; restart if dead or stuck."""
-    global _audio_worker
-    import logging
-    log = logging.getLogger(__name__)
-    
-    if _audio_worker is None or not _audio_worker.is_alive_and_healthy():
-        # Stop old worker if it exists but is dead
-        if _audio_worker is not None:
-            try:
-                was_alive = _audio_worker.is_alive()
-                _audio_worker.stop()
-                # Wait for thread to finish, but don't use join() which conflicts with _stop
-                # Instead, poll is_alive() with timeout
-                import time
-                timeout = 2.0
-                start = time.time()
-                while _audio_worker.is_alive() and (time.time() - start) < timeout:
-                    time.sleep(0.1)
-                if was_alive:
-                    log.warning("Audio worker was alive but unhealthy, restarting")
-                else:
-                    log.warning("Audio worker was dead, restarting")
-            except Exception as e:
-                log.error("Error stopping old worker: %s", e, exc_info=True)
-        
-        try:
-            _audio_worker = AudioWorker(cache=_get_audio_cache(), queue=_get_audio_queue())
-            _audio_worker.start()
-            # Give it a moment to start, then verify
-            import time
-            time.sleep(0.1)
-            if _audio_worker.is_alive():
-                log.info("Audio worker started successfully (thread alive)")
-            else:
-                log.error("Audio worker thread died immediately after start!")
-        except Exception as e:
-            log.error("Failed to start audio worker: %s", e, exc_info=True)
-            _audio_worker = None
-
-
-def _prefetch_audio_for_events(events):
+def _resolve_voice_for_event(event: DialogueEventLog) -> str:
     """
-    Prefetch audio for events. Explicitly tracks and logs all failure modes.
+    Resolve voice_id for a dialogue event.
     
     Returns:
-        dict with statistics: enqueued, skipped_cached, skipped_no_text, 
-        skipped_no_actor, skipped_no_voice, rejected_duplicate, rejected_full
+        Voice ID string (e.g., "pilot-M-002_canonical_all")
     """
-    _ensure_worker()
-    cache = _get_audio_cache()
-    queue = _get_audio_queue()
-
-    from mysite.universe.models.actor import Actor as BaseActor, Pilot, Controller, Satellite
-    import logging
-    log = logging.getLogger(__name__)
-
-    stats = {
-        'enqueued': 0,
-        'skipped_cached': 0,
-        'skipped_no_text': 0,
-        'skipped_no_actor': 0,
-        'skipped_no_voice': 0,
-        'rejected_duplicate': 0,
-        'rejected_full': 0,
-    }
-
-    for ev in events:
-        # Check if already cached
-        if cache.get(ev.id):
-            stats['skipped_cached'] += 1
-            log.debug("Prefetch skip event_id=%s (already cached)", ev.id)
-            continue
-        
-        # Check for text
-        text = getattr(ev, "text", "") or ""
-        if not text.strip():
-            stats['skipped_no_text'] += 1
-            log.warning("Prefetch skip event_id=%s (no text)", ev.id)
-            continue
-        
-        meta = getattr(ev, "metadata", None) or {}
-
-        # Resolve voice from metadata or actor profile
-        # CRITICAL: Always use actor_id from metadata - never use name lookup
-        voice_id = meta.get("voice_id")
-        actor = None
-        actor_lookup_method = None
-        
-        if not voice_id:
-            # Use actor ForeignKey to get voice
-            if not ev.actor:
-                # No actor reference - this is an error, not a fallback case
-                stats['skipped_no_actor'] += 1
-                log.error("Event %s missing actor reference (name='%s') - cannot resolve voice.", 
-                         ev.id, ev.actor_name)
-                continue  # Skip this event - cannot generate audio without actor
-            
-            actor = ev.actor
-            actor_lookup_method = "actor_fk"
-            
-            # Actor found - try to get voice from profile
-            # If profile missing or incomplete, assign it on-demand
-            try:
-                profile = actor.audio_profile
-            except BaseActor.audio_profile.RelatedObjectDoesNotExist:
-                # Profile missing - assign it on-demand
-                log.info("Event %s actor (id=%s, name='%s') missing audio_profile, assigning on-demand", 
-                        ev.id, actor.id, actor.name)
-                # Call the appropriate assign_audio_profile method based on actor type
-                if isinstance(actor, Pilot):
-                    Pilot.assign_audio_profile(actor)
-                elif isinstance(actor, Controller):
-                    Controller.assign_audio_profile(actor)
-                elif isinstance(actor, Satellite):
-                    Satellite.assign_audio_profile(actor)
-                else:
-                    # Fallback for base Actor - create default profile
-                    from mysite.universe.models.audio_profile import AudioProfile
-                    profile = AudioProfile.create_default_for_actor(actor)
-                profile = actor.audio_profile  # Reload after assignment
-            
-            # Get voice_template from profile
-            vp = profile.get_voice_params() or {}
-            voice_id = vp.get("voice_template")
-            
-            # If voice_template still not set, try assigning again (may be no voices available)
-            if not voice_id:
-                log.warning("Event %s actor (id=%s, name='%s') has no voice_template after assignment", 
-                           ev.id, actor.id, actor.name)
-        
-        if not voice_id:
-            # Fallback defaults - but log that we're using fallback
-            voice_id = "pilot_default"
-            if actor is None:
-                stats['skipped_no_actor'] += 1
-                log.warning("Prefetch event_id=%s using fallback voice='%s' (no actor found)", 
-                           ev.id, voice_id)
-            else:
-                stats['skipped_no_voice'] += 1
-                log.warning("Prefetch event_id=%s using fallback voice='%s' (actor had no voice_template)", 
-                           ev.id, voice_id)
-
-        # Sentence-case the text to avoid spelled-out ALL CAPS
-        speak_text = _sentence_case(text)
-        job = AudioJob(event_id=ev.id, text=speak_text, voice_id=voice_id)
-        
-        # Enqueue with explicit result tracking
-        result = queue.enqueue(job)
-        if result == EnqueueResult.SUCCESS:
-            stats['enqueued'] += 1
-            log.info("Prefetch enqueue event_id=%s voice=%s actor_lookup=%s", 
-                    ev.id, voice_id, actor_lookup_method or "metadata")
-        elif result == EnqueueResult.DUPLICATE:
-            stats['rejected_duplicate'] += 1
-            log.debug("Prefetch skip event_id=%s (already queued or in-flight)", ev.id)
-        elif result == EnqueueResult.QUEUE_FULL:
-            stats['rejected_full'] += 1
-            log.warning("Prefetch REJECTED event_id=%s (queue full, capacity=%d)", 
-                       ev.id, queue.capacity)
+    meta = getattr(event, "metadata", None) or {}
     
-    # Log summary if any events were processed
-    if sum(stats.values()) > 0:
-        log.info("Prefetch summary: %s", stats)
+    # Check metadata first
+    voice_id = meta.get("voice_id")
+    if voice_id:
+        return voice_id
     
-    return stats
-
-
-def _select_upcoming_events(sim_time, limit: int = 12):
-    """
-    Fetch upcoming events after sim_time within a horizon, ordered by timestamp/id.
-    Prioritizes near-term events by using a smaller horizon first, then expanding.
-    """
-    # First, try to get events within a shorter horizon (5 minutes) to prioritize near-term
-    near_horizon = sim_time + min(300.0, _AUDIO_PREFETCH_HORIZON_SECONDS / 6)
-    near_events = list(DialogueEventLog.objects.filter(
-        timestamp__gt=sim_time, 
-        timestamp__lte=near_horizon
-    ).order_by("timestamp", "id")[:limit])
+    # Use actor ForeignKey to get voice from profile
+    if not event.actor:
+        logger.warning("Event %s missing actor reference (name='%s'), using fallback voice", 
+                      event.id, event.actor_name)
+        return "pilot_default"
     
-    # If we have room, expand to full horizon
-    if len(near_events) < limit:
-        far_horizon = sim_time + _AUDIO_PREFETCH_HORIZON_SECONDS
-        far_events = DialogueEventLog.objects.filter(
-            timestamp__gt=near_horizon,
-            timestamp__lte=far_horizon
-        ).order_by("timestamp", "id")[:limit - len(near_events)]
-        near_events.extend(far_events)
+    actor = event.actor
     
-    return near_events[:min(limit, _AUDIO_PREFETCH_MAX_EVENTS)]
+    # Get or create audio profile
+    from mysite.universe.models.audio_profile import AudioProfile
+    from mysite.universe.models.actor import Pilot, Controller, Satellite
+    
+    try:
+        profile = actor.audio_profile
+    except AudioProfile.DoesNotExist:
+        # Profile missing - assign on-demand
+        logger.info("Event %s actor (id=%s, name='%s') missing audio_profile, assigning on-demand", 
+                   event.id, actor.id, actor.name)
+        
+        if isinstance(actor, Pilot):
+            Pilot.assign_audio_profile(actor)
+        elif isinstance(actor, Controller):
+            Controller.assign_audio_profile(actor)
+        elif isinstance(actor, Satellite):
+            Satellite.assign_audio_profile(actor)
+        else:
+            profile = AudioProfile.create_default_for_actor(actor)
+        
+        profile = actor.audio_profile
+    
+    # Get voice_template from profile
+    vp = profile.get_voice_params() or {}
+    voice_id = vp.get("voice_template")
+    
+    if not voice_id:
+        logger.warning("Event %s actor (id=%s, name='%s') has no voice_template, using fallback", 
+                      event.id, actor.id, actor.name)
+        return "pilot_default"
+    
+    return voice_id
 
 
 def _sentence_case(text: str) -> str:
+    """Convert text to sentence case (lowercase with first letter capitalized)."""
     if not text:
         return text
     t = text.strip()
@@ -255,7 +95,7 @@ def _sentence_case(text: str) -> str:
         t = t.lower()
     for i, ch in enumerate(t):
         if ch.isalpha():
-            return t[:i] + ch.upper() + t[i + 1 :]
+            return t[:i] + ch.upper() + t[i + 1:]
     return t
 
 
@@ -330,13 +170,6 @@ def event_feed(request):
 
     queryset = queryset.order_by("timestamp", "id")[:limit]
     
-    # Prefetch audio for returned events and additional upcoming events (best-effort)
-    _prefetch_audio_for_events(list(queryset))
-    remaining = max(0, _AUDIO_CACHE_CAPACITY - len(queryset))
-    if remaining > 0:
-        upcoming = _select_upcoming_events(sim_time=sim_time, limit=remaining)
-        _prefetch_audio_for_events(list(upcoming))
-
     # Convert to list of dicts with only essential fields
     events = [
         {
@@ -347,9 +180,10 @@ def event_feed(request):
             'metadata': event.metadata if event.metadata is not None else {},
             # Python-defined audio plan (client just queues & plays waveforms)
             'audio_plan': build_audio_plan_for_dialogue_event(event),
-            'audio_ready': bool(_get_audio_cache().get(event.id)),
-            'audio_duration_s': (_get_audio_cache().get(event.id).duration_s if _get_audio_cache().get(event.id) else None),
-            'audio_url': (f"/api/event_audio/{event.id}/" if _get_audio_cache().get(event.id) else None),
+            # Audio is generated on-demand when requested, not prefetched
+            'audio_ready': True,  # Always true - we generate synchronously if not cached
+            'audio_duration_s': None,  # Client can determine from WAV headers
+            'audio_url': f"/api/event_audio/{event.id}/",
         }
         for event in queryset
     ]
@@ -372,22 +206,6 @@ def event_feed(request):
     next_event_timestamp = next_event.timestamp if next_event else None
     time_until_next = (next_event_timestamp - sim_time) if next_event_timestamp else None
     
-    # Worker/queue/cache status for debugging - explicit failure tracking
-    worker_status = {}
-    if _audio_worker is not None:
-        worker_status = _audio_worker.get_stats()
-        worker_status['exists'] = True
-    else:
-        worker_status = {
-            'exists': False,
-            'alive': False,
-            'healthy': False,
-            'tts_available': False,
-        }
-    
-    queue_status = _get_audio_queue().get_stats()
-    cache_status = _get_audio_cache().get_stats()
-    
     return JsonResponse({
         'events': events,
         'debug': {
@@ -401,9 +219,6 @@ def event_feed(request):
             'returned_count': len(events),
             'next_event_timestamp': next_event_timestamp,
             'time_until_next': time_until_next,
-            'worker': worker_status,
-            'queue': queue_status,
-            'cache': cache_status,
         },
         'latest_id': latest_id,
         'latest_cursor': latest_cursor,
@@ -455,106 +270,77 @@ def clear_events(request):
 @require_http_methods(["GET"])
 def event_audio(request, event_id: int):
     """
-    Serve audio WAV for an event.
+    Serve audio WAV for an event, generating on-demand if not cached.
+    
+    Simple architecture:
+    - Check Django cache for generated audio
+    - If miss, generate synchronously using TTS service
+    - Cache result for future requests
+    - Serve WAV bytes
     
     Returns:
-        200 with WAV bytes if audio is ready
-        404 with error details if audio not found (never generated, evicted, or generation failed)
+        200 with WAV bytes if audio generated successfully
+        404 if event not found
+        500 if TTS generation fails
     """
-    cache = _get_audio_cache()
-    queue = _get_audio_queue()
-    event_id_int = int(event_id)
+    from mysite.universe.services.tts_service import get_tts_service
     
-    entry = cache.get(event_id_int)
-    if not entry:
-        # Check if it's in queue or in-flight (being processed)
-        with queue._lock:
-            in_queue = any(j.event_id == event_id_int for j in queue._queue)
-            in_flight = event_id_int in queue._inflight
-        
-        reason = "not_found"
-        if in_flight:
-            reason = "generating"
-        elif in_queue:
-            reason = "queued"
-        else:
-            # Check cache stats to see if it was evicted
-            cache_stats = cache.get_stats()
-            if cache_stats['evictions'] > 0:
-                reason = "possibly_evicted"
-        
+    # Get event
+    try:
+        event = DialogueEventLog.objects.get(id=event_id)
+    except DialogueEventLog.DoesNotExist:
         return JsonResponse({
             "status": "error",
-            "message": f"Audio not ready for event {event_id_int}",
-            "reason": reason,
-            "in_queue": in_queue,
-            "in_flight": in_flight,
+            "message": f"Event {event_id} not found",
         }, status=404)
     
-    resp = HttpResponse(entry.wav_bytes, content_type="audio/wav")
-    resp["Cache-Control"] = "no-store"
-    return resp
-
-
-@require_http_methods(["POST"])
-def ensure_audio_worker(request):
-    """
-    Ensure the audio worker is running; explicitly reports status.
+    # Check cache first
+    cache_key = f"tts_audio:{event_id}"
+    wav_bytes = cache.get(cache_key)
     
-    Returns:
-        200 with worker status (exists, alive, healthy, tts_available)
-        500 if worker failed to start
-    """
-    import logging
-    log = logging.getLogger(__name__)
+    if wav_bytes:
+        logger.debug("TTS cache hit for event %s", event_id)
+        resp = HttpResponse(wav_bytes, content_type="audio/wav")
+        resp["Cache-Control"] = "public, max-age=3600"
+        return resp
     
-    try:
-        _ensure_worker()
-        worker = _audio_worker
-        if worker is None:
-            return JsonResponse({
-                "status": "error",
-                "message": "Worker is None after _ensure_worker()",
-            }, status=500)
-        
-        # Recover any stuck jobs (in-flight > 5 minutes)
-        queue = _get_audio_queue()
-        stuck = queue.recover_stuck_jobs(timeout_seconds=300.0)
-        if stuck:
-            log.warning("Recovered %d stuck job(s) on worker health check: %s", len(stuck), stuck)
-        
-        # Give it a moment to initialize
-        import time
-        time.sleep(0.2)
-        
-        stats = worker.get_stats() if hasattr(worker, 'get_stats') else {}
-        queue_stats = queue.get_stats()
-        status = {
-            "status": "ok",
-            "worker": {
-                "exists": True,
-                "alive": worker.is_alive(),
-                "healthy": worker.is_alive_and_healthy() if hasattr(worker, 'is_alive_and_healthy') else worker.is_alive(),
-                **stats,
-            },
-            "queue": queue_stats,
-            "recovered_stuck": stuck,
-        }
-        
-        if not worker.is_alive():
-            log.error("Worker thread died after start")
-            status["status"] = "error"
-            status["message"] = "Worker thread died immediately after start"
-            return JsonResponse(status, status=500)
-        
-        return JsonResponse(status)
-    except Exception as e:
-        log.error("Failed to ensure audio worker: %s", e, exc_info=True)
+    # Cache miss - generate synchronously
+    logger.info("TTS cache miss for event %s, generating...", event_id)
+    
+    # Get text and voice
+    text = event.text
+    if not text or not text.strip():
         return JsonResponse({
             "status": "error",
-            "message": str(e),
-            "worker": {
-                "exists": _audio_worker is not None,
-                "alive": _audio_worker.is_alive() if _audio_worker else False,
-            }
+            "message": f"Event {event_id} has no text",
+        }, status=400)
+    
+    voice_id = _resolve_voice_for_event(event)
+    
+    # Sentence-case to avoid spelled-out ALL CAPS
+    speak_text = _sentence_case(text)
+    
+    # Generate TTS
+    try:
+        tts_service = get_tts_service()
+        wav_bytes = tts_service.generate(text=speak_text, voice_id=voice_id)
+        
+        if not wav_bytes or len(wav_bytes) == 0:
+            raise ValueError("TTS service returned empty audio")
+        
+        # Cache for 1 hour
+        cache.set(cache_key, wav_bytes, timeout=3600)
+        
+        logger.info("TTS generated for event %s: voice=%s, bytes=%d", 
+                   event_id, voice_id, len(wav_bytes))
+        
+        resp = HttpResponse(wav_bytes, content_type="audio/wav")
+        resp["Cache-Control"] = "public, max-age=3600"
+        return resp
+        
+    except Exception as e:
+        logger.error("TTS generation failed for event %s: %s", event_id, e, exc_info=True)
+        return JsonResponse({
+            "status": "error",
+            "message": f"TTS generation failed: {str(e)}",
         }, status=500)

@@ -1,7 +1,15 @@
+"""
+Integration test for end-to-end audio pipeline.
+
+Tests the simplified synchronous audio generation:
+1. Create dialogue events
+2. Request audio via /api/event_audio/{id}/
+3. Audio is generated on-demand if not cached
+4. Event feed includes audio URLs
+"""
 import json
 import wave
 import io
-from pathlib import Path
 
 import pytest
 from django.test import Client
@@ -12,7 +20,6 @@ from mysite.universe.models.audio_profile import AudioProfile
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.base import Location
 from mysite.universe.models.scale import Scale
-from mysite.universe.services import audio_cache
 
 
 def _dummy_wav_bytes(payload: dict) -> bytes:
@@ -53,14 +60,13 @@ def dummy_tts(monkeypatch):
     """Patch TTSService.generate to return a tiny WAV embedding JSON of the inputs."""
     from mysite.universe.services import tts_service
 
-    def generate(text: str, voice_id: str):
+    def generate(text: str, voice_id: str, **kwargs):
         return _dummy_wav_bytes({"text": text, "voice_id": voice_id})
 
-    monkeypatch.setattr(tts_service.TTSService, "generate", staticmethod(generate))
-    # also patch the service singleton getter to return an object with generate
+    # Patch the service singleton to return a mock
     class DummySvc:
-        def generate(self, text: str, voice_id: str):
-            return generate(text, voice_id)
+        def generate(self, text: str, voice_id: str, **kwargs):
+            return generate(text, voice_id, **kwargs)
 
     monkeypatch.setattr(tts_service, "_tts_service", DummySvc())
     return generate
@@ -70,68 +76,25 @@ def dummy_tts(monkeypatch):
 def _patch_sim_time(monkeypatch):
     """Make simulation time far in the future so freshly created events are included."""
     from mysite.universe.models import simulation
-    from mysite.universe.views import events
     from mysite.universe.models.event import DialogueEventLog
-
-    # Stop any existing worker (if started elsewhere)
-    if getattr(events, "_audio_worker", None):
-        try:
-            events._audio_worker.stop()
-            events._audio_worker.join(timeout=1)
-        except Exception:
-            pass
-    events._audio_worker = None
-    # Prevent background worker thread; we'll drain manually.
-    monkeypatch.setattr(events.AudioWorker, "start", lambda self: None)
-    monkeypatch.setattr(events, "_ensure_worker", lambda: None)
 
     monkeypatch.setattr(simulation, "get_simulation_time", lambda: 4e9)
 
-    # Clear any prior events and caches for isolation
+    # Clear any prior events for isolation
     DialogueEventLog.objects.all().delete()
-    cache = events._get_audio_cache()
-    queue = events._get_audio_queue()
-    # Clear cache and queue
-    cache._entries.clear()
-    cache._order.clear()
-    queue._queue.clear()
-    queue._inflight.clear()
-
-
-def _drain_worker_once():
-    """Run one job synchronously (bypass thread scheduling)."""
-    from mysite.universe.views import events
-
-    cache = events._get_audio_cache()
-    queue = events._get_audio_queue()
-    job = queue.pop()
-    if not job:
-        return None
-    # inline generate similar to AudioWorker.run but using current get_tts_service()
-    from mysite.universe.services.tts_service import get_tts_service
-
-    svc = get_tts_service()
-    wav_bytes = svc.generate(text=job.text, voice_id=job.voice_id)
-    import wave as _wave
-
-    with _wave.open(io.BytesIO(wav_bytes), "rb") as wf:
-        frames = wf.getnframes()
-        rate = wf.getframerate() or 48000
-        duration = frames / float(rate)
-    entry = audio_cache.AudioEntry(
-        event_id=job.event_id,
-        voice_id=job.voice_id,
-        duration_s=duration,
-        wav_bytes=wav_bytes,
-        created_at=timezone.now().timestamp(),
-    )
-    cache.put(entry)
-    queue.complete(job)
-    return entry
 
 
 @pytest.mark.django_db(transaction=True)
 def test_event_to_audio_endpoint_happy_path(client, dummy_tts):
+    """
+    Test end-to-end audio generation for dialogue events.
+    
+    With synchronous generation:
+    1. Create events
+    2. Request audio endpoint
+    3. Audio is generated on-demand (first request slower, subsequent cached)
+    4. Event feed includes audio URLs
+    """
     # Prepare minimal location and actors with deterministic voices
     loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
     pilot = Pilot.create(ship=None)
@@ -144,35 +107,30 @@ def test_event_to_audio_endpoint_happy_path(client, dummy_tts):
     ev_ctrl = DialogueEventLog.objects.create(actor=controller, text="CTRL TEXT", timestamp=now_ts + 1)
     ev_sat = DialogueEventLog.objects.create(actor=sat, text="SAT TEXT", timestamp=now_ts + 2)
 
-    # Manually run worker once per job to simulate processing
-    processed = []
-    for _ in range(3):
-        entry = _drain_worker_once()
-        if entry:
-            processed.append(entry.event_id)
-    assert set(processed) == {ev_pilot.id, ev_ctrl.id, ev_sat.id}
-
-    # Each event_audio endpoint should now serve bytes
+    # Request audio for each event (should generate on-demand)
     for ev_id, expected_text in [
         (ev_pilot.id, "PILOT TEXT"),
         (ev_ctrl.id, "CTRL TEXT"),
         (ev_sat.id, "SAT TEXT"),
     ]:
         resp = client.get(f"/api/event_audio/{ev_id}/")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, f"Failed to get audio for event {ev_id}: {resp.content}"
+        
         # Decode WAV payload JSON back out
         with wave.open(io.BytesIO(resp.content), "rb") as wf:
             data = wf.readframes(wf.getnframes())
         payload = json.loads(data.decode("utf-8"))
+        
         # Audio plan sentence-cases text; allow case-insensitive match
         assert payload["text"].lower() == expected_text.lower()
         assert payload["voice_id"] == "test_voice"
 
-    # event_feed should report audio_ready and include URLs
+    # Event feed should report audio_ready and include URLs
     feed_resp = client.get("/api/events/?limit=10&after_ts=0")
     assert feed_resp.status_code == 200, feed_resp.content
     feed = feed_resp.json()
     assert "events" in feed
+    
     ready = {e["id"]: e for e in feed["events"]}
     assert ready[ev_pilot.id]["audio_ready"] is True
     assert ready[ev_ctrl.id]["audio_ready"] is True
@@ -181,3 +139,35 @@ def test_event_to_audio_endpoint_happy_path(client, dummy_tts):
     assert ready[ev_ctrl.id]["audio_url"]
     assert ready[ev_sat.id]["audio_url"]
 
+
+@pytest.mark.django_db(transaction=True)
+def test_audio_caching(client, dummy_tts):
+    """
+    Test that audio is cached after first generation.
+    
+    Second request for same event should be fast (served from cache).
+    """
+    from django.core.cache import cache
+    
+    # Clear cache
+    cache.clear()
+    
+    loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
+    pilot = Pilot.create(ship=None)
+    now_ts = timezone.now().timestamp()
+    ev = DialogueEventLog.objects.create(actor=pilot, text="CACHED TEXT", timestamp=now_ts)
+    
+    # First request - generates and caches
+    resp1 = client.get(f"/api/event_audio/{ev.id}/")
+    assert resp1.status_code == 200
+    
+    # Verify it's in cache
+    cache_key = f"tts_audio:{ev.id}"
+    cached = cache.get(cache_key)
+    assert cached is not None
+    assert len(cached) > 0
+    
+    # Second request - should serve from cache (dummy_tts won't be called again)
+    resp2 = client.get(f"/api/event_audio/{ev.id}/")
+    assert resp2.status_code == 200
+    assert resp2.content == resp1.content

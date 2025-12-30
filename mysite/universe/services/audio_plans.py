@@ -136,10 +136,13 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
         if room_tone_params.get("enabled", True):
             wav_file = room_tone_params.get("wav_file")
             if wav_file:
+                # Convert filename to static URL path
+                # e.g., "small_engine_noise.wav" -> "/static/universe/audio/roomtone/small_engine_noise.wav"
+                wav_url = f"/static/universe/audio/roomtone/{wav_file}"
                 plan.append({
                     "trigger": "event_during",
                     "type": "room_tone",
-                    "wav_file": wav_file,
+                    "wav_url": wav_url,
                     "params": room_tone_params,
                 })
         if static_params.get("intensity", 0) > 0:

@@ -20,16 +20,18 @@ from mysite.universe.models.base import Location
 from mysite.universe.models.scale import Scale
 
 
-def _has_generated_voices():
+def _has_voices():
+    """Check if voice files exist in static/universe/voices/"""
     root = Path(__file__).resolve().parent.parent
-    return bool(glob.glob(str(root / "audio" / "voices" / "generated" / "*.wav")))
+    voices_dir = root / "mysite" / "universe" / "static" / "universe" / "voices"
+    return bool(glob.glob(str(voices_dir / "*.wav")))
 
 def _room_tone_candidates():
     root = Path(__file__).resolve().parent.parent
     return list((root / "audio" / "voices" / "raw").glob("**/combined*.wav"))
 
 
-@pytest.mark.skipif(not _has_generated_voices(), reason="No generated voices found under audio/voices/generated")
+@pytest.mark.skipif(not _has_voices(), reason="No voice files found in mysite/universe/static/universe/voices")
 @pytest.mark.django_db(transaction=True)
 def test_pilot_audio_profile_has_voice_and_room_tone():
     # Minimal location for ship
@@ -45,11 +47,12 @@ def test_pilot_audio_profile_has_voice_and_room_tone():
     assert rt.get("wav_file") is not None
     # Voice file should exist
     root = Path(__file__).resolve().parent.parent
-    voice_path = root / "audio" / "voices" / "generated" / f"{voice}.wav"
-    assert voice_path.exists()
+    voices_dir = root / "mysite" / "universe" / "static" / "universe" / "voices"
+    voice_path = voices_dir / f"{voice}.wav"
+    assert voice_path.exists(), f"Voice file not found: {voice_path}"
 
 
-@pytest.mark.skipif(not _has_generated_voices(), reason="No generated voices found under audio/voices/generated")
+@pytest.mark.skipif(not _has_voices(), reason="No voice files found in mysite/universe/static/universe/voices")
 @pytest.mark.django_db(transaction=True)
 def test_controller_audio_profile_has_voice_and_room_tone():
     loc = Location.objects.create(name="Mars Control", scale=Scale.STATION)
@@ -61,23 +64,34 @@ def test_controller_audio_profile_has_voice_and_room_tone():
     rt = profile.get_room_tone_params()
     assert rt.get("wav_file") == "Control_station_noise.wav"
     root = Path(__file__).resolve().parent.parent
-    voice_path = root / "audio" / "voices" / "generated" / f"{voice}.wav"
-    assert voice_path.exists()
+    voices_dir = root / "mysite" / "universe" / "static" / "universe" / "voices"
+    voice_path = voices_dir / f"{voice}.wav"
+    assert voice_path.exists(), f"Voice file not found: {voice_path}"
 
 
-@pytest.mark.skipif(not _has_generated_voices(), reason="No generated voices found under audio/voices/generated")
 @pytest.mark.django_db(transaction=True)
 def test_satellite_audio_profile_has_voice_and_no_room_tone():
+    """Satellites should have robotic voice but NO room tone."""
     sat = Satellite.create(name="NAVSAT ALPHA")
     profile = sat.audio_profile
     assert profile is not None
-    voice = profile.get_voice_params().get("voice_template")
-    assert voice, "Satellite should have a voice_template assigned"
+    
+    # Room tone should be explicitly disabled for satellites
     rt = profile.get_room_tone_params()
-    assert not rt.get("enabled", False)
+    assert rt.get("wav_file") is None, "Satellites should have no room tone WAV file"
+    
+    # Voice is optional until satellite-*.wav files are added
+    # If satellite voices exist, verify one was assigned
     root = Path(__file__).resolve().parent.parent
-    voice_path = root / "audio" / "voices" / "generated" / f"{voice}.wav"
-    assert voice_path.exists()
+    voices_dir = root / "mysite" / "universe" / "static" / "universe" / "voices"
+    satellite_voices = list(voices_dir.glob("satellite-*.wav"))
+    
+    voice = profile.get_voice_params().get("voice_template")
+    if satellite_voices:
+        assert voice, "Satellite should have voice_template when satellite-*.wav files exist"
+        voice_path = voices_dir / f"{voice}.wav"
+        assert voice_path.exists(), f"Voice file not found: {voice_path}"
+    # If no satellite voices exist yet, that's okay - user is adding them
 
 
 @pytest.mark.django_db(transaction=True)

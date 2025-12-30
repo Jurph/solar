@@ -31,10 +31,8 @@ urlpatterns = [
     path("api/simulation/status/", views.get_simulation_status, name="simulation_status"),
     # API endpoint to skip to next event:
     path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
-    # API endpoint to fetch generated event audio (in-memory)
+    # API endpoint to fetch generated event audio (synchronous on-demand)
     path("api/event_audio/<int:event_id>/", views.event_audio, name="event_audio"),
-    # Ensure audio worker is running (triggered by client when enabling audio)
-    path("api/ensure_audio_worker/", views.ensure_audio_worker, name="ensure_audio_worker"),
     # Diagnostics: tail recent logs and adjust log level
     path("api/logs/", views.logs_view, name="logs_view"),
     # API endpoint for audio clip presets (WAV):
