@@ -13,6 +13,7 @@ tailored audio clips.
 from __future__ import annotations
 
 from typing import Any
+import re
 
 from mysite.universe.models.actor import Actor 
 from mysite.universe.models.audio_profile import AudioProfile
@@ -89,62 +90,45 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     room_tone_params = profile.get_room_tone_params()
     static_params = profile.get_static_params()
     
+    # Shared quindars for all actors
+    plan.append({
+        "trigger": "event_start",
+        "preset": "quindar_start",
+        "params": {
+            "frequency_hz": quindar_params.get("start_freq_hz", 2525.0),
+            "gain": quindar_params.get("gain", 0.9),
+        }
+    })
+
     if is_satellite:
-        # Satellites: modem noise encoding the technical data
-        # The human-readable announcement is displayed, and read out loud by a robotic voice, and then the technical data is encoded as modem noise
-        # Check metadata for modem_data, fallback to event.text for backward compatibility
+        # Satellites: TTS voice plus modem tail
+        # modem_data: payload; default to event.text
         modem_data = event.metadata.get("modem_data") if event.metadata else event.text
-        
-        plan.append({
-            "trigger": "event_during",
-            "preset": "modem_noise_example",  # Will be replaced with text-specific preset
-            "params": {
-                "text": modem_data,  # Technical data to encode as modem noise
-                "gain": 0.8,
-                "carrier_frequency_hz": 1800.0,
-                "carrier_gain": 0.15,
-            }
-        })
+        # Room tone disabled for satellites
     else:
-        # Pilots/Controllers: Quindar tones + room tone + static
-        
-        # Quindar start tone (customized from profile)
-        plan.append({
-            "trigger": "event_start",
-            "preset": "quindar_start",
-            "params": {
-                "frequency_hz": quindar_params.get("start_freq_hz", 2525.0),
-                "gain": quindar_params.get("gain", 0.9),
-            }
-        })
-        
-        # Room tone during event (if enabled)
-        # TODO: Room tone synthesis not yet implemented - this is a placeholder
-        # When implemented, this will generate engine_rumble + reverb based on profile params
+        # Pilots/Controllers: room tone + static
         if room_tone_params.get("enabled", True):
             plan.append({
                 "trigger": "event_during",
-                "preset": "room_tone_placeholder",  # TODO: Replace with actual room tone synthesis
+                "preset": room_tone_params.get("preset", "room_tone_placeholder"),
                 "params": room_tone_params,
             })
-        
-        # Static/radio noise (if configured)
         if static_params.get("intensity", 0) > 0:
             plan.append({
                 "trigger": "event_during",
-                "preset": "static_medium",  # TODO: Generate from static_params dynamically
+                "preset": "static_medium",  # TODO: derive preset dynamically
                 "params": static_params,
             })
-        
-        # Quindar end tone (customized from profile)
-        plan.append({
-            "trigger": "event_end",
-            "preset": "quindar_end",
-            "params": {
-                "frequency_hz": quindar_params.get("end_freq_hz", 2475.0),
-                "gain": quindar_params.get("gain", 0.9),
-            }
-        })
+
+    # Quindar end tone (customized from profile)
+    plan.append({
+        "trigger": "event_end",
+        "preset": "quindar_end",
+        "params": {
+            "frequency_hz": quindar_params.get("end_freq_hz", 2475.0),
+            "gain": quindar_params.get("gain", 0.9),
+        }
+    })
     
     # Add TTS action if voice template exists
     voice_params = profile.get_voice_params()
@@ -160,10 +144,11 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
         # Satellites don't get TTS (they use modem noise)
     
     if voice_template:
+        tts_text = _sentence_case(event.text or "")
         plan.append({
             "trigger": "event_during",
             "action": "tts",
-            "text": event.text,
+            "text": tts_text,
             "voice_id": voice_template,
             "params": {
                 "pitch_shift_cents": voice_params.get("pitch_shift_cents", 0),
@@ -172,7 +157,38 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
                 "exaggeration": 0.5,  # Chatterbox default
             }
         })
+        if is_satellite:
+            plan.append({
+                "trigger": "event_end",
+                "preset": "modem_noise_example",
+                "params": {
+                    "text": modem_data,
+                    "gain": 0.8,
+                    "baud_rate": 300,
+                    "carrier_frequency_hz": 1800.0,
+                    "carrier_gain": 0.15,
+                    "mark_frequency_hz": 1200.0,
+                    "space_frequency_hz": 2200.0,
+                },
+            })
     
     return plan
+
+
+def _sentence_case(text: str) -> str:
+    """
+    Basic sentence case: if all-caps, lower then capitalize first alpha.
+    """
+    if not text:
+        return text
+    t = text.strip()
+    if not t:
+        return text
+    if t.isupper():
+        t = t.lower()
+    for i, ch in enumerate(t):
+        if ch.isalpha():
+            return t[:i] + ch.upper() + t[i + 1 :]
+    return t
 
 

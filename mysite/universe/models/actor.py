@@ -133,6 +133,35 @@ Pay close attention to the examples and counterexamples provided. """
         surname = dictionary.get_random('SURNAME')
         return f"{given} {surname}"
 
+    @classmethod
+    def assign_audio_profile(cls, actor: 'Pilot'):
+        from mysite.universe.models.audio_profile import AudioProfile
+        import random
+        import glob
+        from pathlib import Path
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        generated_dir = base_dir / "audio" / "voices" / "generated"
+        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+        if not candidates:
+            return
+        voice_path = random.choice(candidates)
+        voice_template = Path(voice_path).stem
+
+        profile = getattr(actor, "audio_profile", None) or AudioProfile.create_default_for_actor(actor)
+        profile.set_voice_template(voice_template)
+
+        # Room tone based on ship size
+        ship_size = 'medium'
+        if hasattr(actor, 'ship') and actor.ship and actor.ship.size:
+            ship_size = actor.ship.size.lower()
+        if ship_size == 's' or 'small' in ship_size:
+            rt = "room_tone_small"
+        elif ship_size == 'l' or 'large' in ship_size or 'freighter' in ship_size:
+            rt = "room_tone_large"
+        else:
+            rt = "room_tone_medium"
+        profile.set_room_tone_preset(rt)
+
 class Controller(Actor):
     """A space traffic controller at a specific location."""
     
@@ -195,8 +224,27 @@ CRITICAL SAFETY RULES:
         # Create and save the controller
         controller = cls(name=name, location=location)
         controller.save()
+        cls.assign_audio_profile(controller)
         
         return controller
+
+    @classmethod
+    def assign_audio_profile(cls, actor: 'Controller'):
+        from mysite.universe.models.audio_profile import AudioProfile
+        import random
+        import glob
+        from pathlib import Path
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        generated_dir = base_dir / "audio" / "voices" / "generated"
+        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+        if not candidates:
+            return
+        voice_path = random.choice(candidates)
+        voice_template = Path(voice_path).stem
+
+        profile = getattr(actor, "audio_profile", None) or AudioProfile.create_default_for_actor(actor)
+        profile.set_voice_template(voice_template)
+        profile.set_room_tone_preset("room_tone_controller")
 
     @classmethod
     def generate_name(cls, location: Location) -> str:
@@ -265,8 +313,28 @@ class Satellite(Actor):
             
         satellite = cls(name=name)
         satellite.save()
+        cls.assign_audio_profile(satellite)
         
         return satellite
+
+    @classmethod
+    def assign_audio_profile(cls, actor: 'Satellite'):
+        from mysite.universe.models.audio_profile import AudioProfile
+        import random
+        import glob
+        from pathlib import Path
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        generated_dir = base_dir / "audio" / "voices" / "generated"
+        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+        if not candidates:
+            return
+        voice_path = random.choice(candidates)
+        voice_template = Path(voice_path).stem
+
+        profile = getattr(actor, "audio_profile", None) or AudioProfile.create_default_for_actor(actor)
+        profile.set_voice_template(voice_template)
+        # No room tone for satellites
+        profile.set_room_tone_preset(None)
 
     @classmethod
     def generate_name(cls) -> str:
