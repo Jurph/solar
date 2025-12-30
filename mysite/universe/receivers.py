@@ -11,6 +11,7 @@ from django.db.models.signals import post_save
 
 from mysite.universe.signals import dialogue_event_processed
 from mysite.universe.models.event import DialogueEventLog
+from mysite.universe.models.actor import Pilot, Controller, Satellite
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +108,12 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
         # Create and save the log entry with natural language text only
         # Note: TTS enqueue happens via post_save signal (enqueue_tts_on_log_save)
         # to avoid double-enqueueing
-        metadata = event.metadata if hasattr(event, 'metadata') else {}
         # CRITICAL: Always store actor_id in metadata - never use name lookups
         # This is required for reliable actor resolution
+        metadata = dict(event.metadata) if hasattr(event, 'metadata') and event.metadata else {}
         if hasattr(event, 'actor') and event.actor is not None:
             if hasattr(event.actor, 'id'):
-                metadata = {**metadata, 'actor_id': event.actor.id}
+                metadata['actor_id'] = event.actor.id
             else:
                 logger.error("Event actor has no 'id' attribute: %s", type(event.actor))
         else:
@@ -164,3 +165,37 @@ def enqueue_tts_on_log_save(sender, instance: DialogueEventLog, created, **kwarg
             
     except Exception as e:
         logger.error("Failed to enqueue TTS prefetch for log %s: %s", instance.id, e, exc_info=True)
+
+
+@receiver(post_save, sender=Pilot)
+@receiver(post_save, sender=Controller)
+@receiver(post_save, sender=Satellite)
+def ensure_actor_audio_profile(sender, instance, created, **kwargs):
+    """
+    Ensure actors have audio profiles assigned after save.
+    
+    This catches any actors created via .objects.create() that bypass .create() methods.
+    Idempotent - only assigns if profile is missing or incomplete.
+    """
+    # Only assign on creation to avoid unnecessary work on updates
+    if not created:
+        return
+    
+    # Check if profile exists
+    try:
+        profile = instance.audio_profile
+        # Check if profile is complete (has voice_template)
+        vp = profile.get_voice_params() or {}
+        if vp.get("voice_template"):
+            return  # Profile exists and is complete
+    except instance.audio_profile.RelatedObjectDoesNotExist:
+        pass  # Profile missing, will assign below
+    
+    # Assign profile based on actor type
+    # This is idempotent - won't overwrite existing voice_template
+    if isinstance(instance, Pilot):
+        Pilot.assign_audio_profile(instance)
+    elif isinstance(instance, Controller):
+        Controller.assign_audio_profile(instance)
+    elif isinstance(instance, Satellite):
+        Satellite.assign_audio_profile(instance)
