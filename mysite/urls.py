@@ -33,6 +33,10 @@ urlpatterns = [
     path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
     # API endpoint to fetch generated event audio (in-memory)
     path("api/event_audio/<int:event_id>/", views.event_audio, name="event_audio"),
+    # Ensure audio worker is running (triggered by client when enabling audio)
+    path("api/ensure_audio_worker/", views.ensure_audio_worker, name="ensure_audio_worker"),
+    # Diagnostics: tail recent logs and adjust log level
+    path("api/logs/", views.logs_view, name="logs_view"),
     # API endpoint for audio clip presets (WAV):
     path("api/audio/preset/<str:preset>/", views.audio_preset, name="audio_preset"),
     # Dev tool: Audio lab (standalone UI + render endpoint)

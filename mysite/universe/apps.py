@@ -12,22 +12,31 @@ class UniverseConfig(AppConfig):
         # slowing management commands like makemigrations/collectstatic.
         import os
         import sys
+        import logging
+        from mysite.universe.services.log_buffer import get_log_handler
 
-        # Only run warmup/worker if explicitly enabled.
-        if os.getenv("AUDIO_WARMUP", "0") != "1":
-            return
+        # Attach in-memory log handler for live diagnostics (always).
+        handler = get_log_handler()
+        root = logging.getLogger()
+        if handler not in root.handlers:
+            root.addHandler(handler)
+        root.setLevel(logging.INFO)
 
-        # Skip during management commands that shouldn't incur model load.
+        # Skip heavy warmup during management commands.
         skip_cmds = {"makemigrations", "migrate", "collectstatic", "test", "shell"}
         if len(sys.argv) >= 2 and sys.argv[1] in skip_cmds:
             return
 
+        # Ensure worker always; warmup is opt-in.
         try:
             from mysite.universe.views import events as events_views
-            from mysite.universe.services.tts_service import warm_tts_service
-
             events_views._ensure_worker()
-            warm_tts_service()
         except Exception:
-            # Best-effort only; do not break startup.
             pass
+
+        if os.getenv("AUDIO_WARMUP", "0") == "1":
+            try:
+                from mysite.universe.services.tts_service import warm_tts_service
+                warm_tts_service()
+            except Exception:
+                pass

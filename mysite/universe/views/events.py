@@ -67,6 +67,11 @@ def _prefetch_audio_for_events(events):
     _ensure_worker()
     cache = _get_audio_cache()
     queue = _get_audio_queue()
+
+    from mysite.universe.models.actor import Pilot, Controller, Satellite, Actor as BaseActor
+    import logging
+    log = logging.getLogger(__name__)
+
     for ev in events:
         if cache.get(ev.id):
             continue
@@ -74,8 +79,27 @@ def _prefetch_audio_for_events(events):
         if not text.strip():
             continue
         meta = getattr(ev, "metadata", None) or {}
-        voice_id = meta.get("voice_id") or "pilot_default"
-        queue.enqueue(AudioJob(event_id=ev.id, text=text, voice_id=voice_id))
+
+        # Resolve voice from metadata or actor profile
+        voice_id = meta.get("voice_id")
+        if not voice_id:
+            actor = (
+                Pilot.objects.filter(name=ev.actor_name).order_by("-id").first()
+                or Controller.objects.filter(name=ev.actor_name).order_by("-id").first()
+                or Satellite.objects.filter(name=ev.actor_name).order_by("-id").first()
+                or BaseActor.objects.filter(name=ev.actor_name).order_by("-id").first()
+            )
+            if actor and getattr(actor, "audio_profile", None):
+                vp = actor.audio_profile.get_voice_params() or {}
+                voice_id = vp.get("voice_template")
+        if not voice_id:
+            # Fallback defaults
+            voice_id = "pilot_default"
+
+        # Sentence-case the text to avoid spelled-out ALL CAPS
+        speak_text = _sentence_case(text)
+        queue.enqueue(AudioJob(event_id=ev.id, text=speak_text, voice_id=voice_id))
+        log.info("Prefetch enqueue event_id=%s voice=%s", ev.id, voice_id)
 
 
 def _select_upcoming_events(sim_time, limit: int = 12):
@@ -85,6 +109,20 @@ def _select_upcoming_events(sim_time, limit: int = 12):
     horizon = sim_time + _AUDIO_PREFETCH_HORIZON_SECONDS
     qs = DialogueEventLog.objects.filter(timestamp__gt=sim_time, timestamp__lte=horizon).order_by("timestamp", "id")
     return qs[:min(limit, _AUDIO_PREFETCH_MAX_EVENTS)]
+
+
+def _sentence_case(text: str) -> str:
+    if not text:
+        return text
+    t = text.strip()
+    if not t:
+        return text
+    if t.isupper():
+        t = t.lower()
+    for i, ch in enumerate(t):
+        if ch.isalpha():
+            return t[:i] + ch.upper() + t[i + 1 :]
+    return t
 
 
 def event_feed(request):
@@ -269,3 +307,15 @@ def event_audio(request, event_id: int):
     resp = HttpResponse(entry.wav_bytes, content_type="audio/wav")
     resp["Cache-Control"] = "no-store"
     return resp
+
+
+@require_http_methods(["POST"])
+def ensure_audio_worker(request):
+    """
+    Ensure the audio worker is running; best-effort to start it if not.
+    """
+    try:
+        _ensure_worker()
+        return JsonResponse({"status": "ok"})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
