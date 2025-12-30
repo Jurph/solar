@@ -128,6 +128,31 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = []
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+# Quiet the Django runserver request logs (they spam stdout during polling).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+        "null": {
+            "class": "logging.NullHandler",
+        },
+    },
+    "loggers": {
+        # Suppress per-request runserver logs; errors still surface via default loggers.
+        "django.server": {
+            "handlers": ["null"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type

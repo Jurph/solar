@@ -23,6 +23,27 @@ launch_server() {
     echo "Activating virtual environment..."
     source venv/bin/activate
 
+    echo "Checking PyTorch CUDA availability..."
+    python - <<'EOF'
+import torch
+has_torch = True
+try:
+    import torch  # noqa: F401
+except Exception:
+    has_torch = False
+
+if not has_torch:
+    print("torch not installed (skipping CUDA check)")
+else:
+    print(f"torch version: {torch.__version__}")
+    print(f"cuda available: {torch.cuda.is_available()}")
+    print(f"cuda device count: {torch.cuda.device_count()}")
+    if torch.cuda.is_available():
+        print(f"device 0: {torch.cuda.get_device_name(0)}")
+    else:
+        print("no cuda devices detected")
+EOF
+
     # Install Django if not already installed
     python -c "import django" 2>/dev/null
     if [ $? -ne 0 ]; then
