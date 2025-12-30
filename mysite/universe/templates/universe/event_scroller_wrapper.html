@@ -15,8 +15,11 @@
             <span class="status-label">Scale:</span>
             <span id="timeScaleDisplay" class="status-value">1x</span>
             <span class="status-divider">|</span>
-            <span class="status-label">Queue:</span>
+            <span class="status-label">Event Queue:</span>
             <span id="pendingEventsDisplay" class="status-value pending-count">0 pending</span>
+            <span class="status-divider">|</span>
+            <span class="status-label">TTS Queue:</span>
+            <span id="ttsQueueDisplay" class="status-value tts-count">0 pending</span>
             <span class="status-divider">|</span>
             <span class="status-label">Next in:</span>
             <span id="nextEventDisplay" class="status-value next-event-time">--</span>
@@ -81,6 +84,8 @@
         let lastFetchedSimTime = null; // Sim time at last fetch
         let nextEventTimestamp = null; // Timestamp of next pending event
         let pendingEventCount = 0; // Number of pending events
+        let ttsQueuePending = 0; // Number of events waiting for TTS generation
+        let ttsQueueCached = 0; // Number of events with TTS already cached
         let waitingAudio = new Map(); // event_id -> {event: Event, addedAt: number} awaiting audio_ready
         // NO TIMEOUT: If audio is enabled, we wait indefinitely for TTS. If TTS is stuck, we debug it.
         
@@ -95,6 +100,7 @@
         const simTimeDisplay = document.getElementById('simTimeDisplay');
         const timeScaleDisplay = document.getElementById('timeScaleDisplay');
         const pendingEventsDisplay = document.getElementById('pendingEventsDisplay');
+        const ttsQueueDisplay = document.getElementById('ttsQueueDisplay');
         const nextEventDisplay = document.getElementById('nextEventDisplay');
         const scaleBtns = document.querySelectorAll('.scale-btn');
         const audioEnableButton = document.getElementById('audioEnableButton');
@@ -501,6 +507,11 @@
                 if (data.debug) {
                     pendingEventCount = data.debug.pending_events || 0;
                     nextEventTimestamp = data.debug.next_event_timestamp;
+                    // TTS queue status
+                    if (data.debug.audio) {
+                        ttsQueueCached = data.debug.audio.cached || 0;
+                        ttsQueuePending = data.debug.audio.pending || 0;
+                    }
                     // Update current sim time from the authoritative source
                     if (data.simulation_time) {
                         lastFetchedSimTime = data.simulation_time;
@@ -622,6 +633,18 @@
             // Update pending events display
             pendingEventsDisplay.textContent = `${pendingEventCount} pending`;
             pendingEventsDisplay.classList.toggle('has-pending', pendingEventCount > 0);
+            
+            // Update TTS queue display
+            if (ttsQueuePending > 0) {
+                ttsQueueDisplay.textContent = `${ttsQueuePending} pending`;
+                ttsQueueDisplay.classList.add('has-pending');
+            } else if (ttsQueueCached > 0) {
+                ttsQueueDisplay.textContent = `${ttsQueueCached} cached`;
+                ttsQueueDisplay.classList.remove('has-pending');
+            } else {
+                ttsQueueDisplay.textContent = 'idle';
+                ttsQueueDisplay.classList.remove('has-pending');
+            }
             
             // Update time until next event (interpolated)
             if (nextEventTimestamp !== null) {

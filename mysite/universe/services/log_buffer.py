@@ -11,14 +11,24 @@ class InMemoryLogHandler(logging.Handler):
         self._lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord) -> None:
-        # Filter out noisy DEBUG logs from numba and other low-level libraries
+        # Filter out noisy DEBUG logs from low-level libraries
         if record.levelno == logging.DEBUG:
             # Skip numba byteflow/interpreter DEBUG spam
             if record.name.startswith("numba."):
                 return
-            # Skip other verbose DEBUG logs if needed
+            # Skip urllib3 connection pool spam
+            if record.name.startswith("urllib3."):
+                return
+            # Skip httpx SSL/certificate spam
+            if record.name.startswith("httpx"):
+                return
+            # Skip transformers if needed
             # if record.name.startswith("transformers."):
             #     return
+        
+        # Filter out favicon 404s (not useful)
+        if "favicon.ico" in record.getMessage():
+            return
         
         msg = self.format(record)
         entry = {
