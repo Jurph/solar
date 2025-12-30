@@ -18,7 +18,9 @@ def _has_generated_voices():
 @pytest.mark.skipif(not _has_generated_voices(), reason="No generated voices found under audio/voices/generated")
 @pytest.mark.django_db(transaction=True)
 def test_pilot_audio_profile_has_voice_and_room_tone():
-    ship = Ship.create()
+    # Minimal location for ship
+    loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
+    ship = Ship.objects.create(name="TestShip", current_location=loc, size=Ship.Size.MEDIUM)
     pilot = Pilot.create(ship=ship)
     profile = pilot.audio_profile
     assert profile is not None
