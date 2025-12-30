@@ -140,9 +140,9 @@ def test_event_to_audio_endpoint_happy_path(client, dummy_tts):
 
     # Create three events (one per actor type)
     now_ts = timezone.now().timestamp()
-    ev_pilot = DialogueEventLog.objects.create(actor_name=pilot.name, text="PILOT TEXT", timestamp=now_ts)
-    ev_ctrl = DialogueEventLog.objects.create(actor_name=controller.name, text="CTRL TEXT", timestamp=now_ts + 1)
-    ev_sat = DialogueEventLog.objects.create(actor_name=sat.name, text="SAT TEXT", timestamp=now_ts + 2)
+    ev_pilot = DialogueEventLog.objects.create(actor_name=pilot.name, text="PILOT TEXT", timestamp=now_ts, metadata={"actor_id": pilot.id})
+    ev_ctrl = DialogueEventLog.objects.create(actor_name=controller.name, text="CTRL TEXT", timestamp=now_ts + 1, metadata={"actor_id": controller.id})
+    ev_sat = DialogueEventLog.objects.create(actor_name=sat.name, text="SAT TEXT", timestamp=now_ts + 2, metadata={"actor_id": sat.id})
 
     # Manually run worker once per job to simulate processing
     processed = []

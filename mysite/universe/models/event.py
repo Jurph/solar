@@ -67,6 +67,16 @@ class DialogueEvent(Event):
     event_type: str = "dialogue"
     metadata: Optional[Dict] = None
 
+    def __post_init__(self):
+        """
+        Validate that dialogue events always carry an actor with an id.
+        This prevents name-based fallbacks later in the pipeline.
+        """
+        if self.actor is None:
+            raise ValueError("DialogueEvent requires an actor")
+        if not hasattr(self.actor, "id"):
+            raise ValueError("DialogueEvent.actor must have an 'id' attribute")
+
 
 @dataclass(frozen=True, kw_only=True)
 class NavigationEvent(Event):
@@ -107,6 +117,17 @@ class DialogueEventLog(models.Model):
     
     class Meta:
         ordering = ['timestamp']
+
+    def save(self, *args, **kwargs):
+        """
+        Enforce that metadata contains actor_id.
+        This prevents name-based lookups later in the pipeline.
+        """
+        if self.metadata is None:
+            raise ValueError("DialogueEventLog.metadata must include actor_id (metadata is None)")
+        if 'actor_id' not in self.metadata:
+            raise ValueError("DialogueEventLog.metadata must include actor_id")
+        super().save(*args, **kwargs)
         indexes = [
             models.Index(fields=['timestamp']),
         ]

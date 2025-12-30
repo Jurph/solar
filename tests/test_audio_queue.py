@@ -4,6 +4,7 @@ from django.test import RequestFactory
 from django.db import transaction
 from django.utils import timezone
 import pytest
+from mysite.universe.models.actor import Actor
 
 
 def test_queue_dedup_and_capacity():
@@ -86,8 +87,10 @@ def test_prefetch_skips_cached(monkeypatch):
 
     # Create two events; one already cached
     with transaction.atomic():
-        ev1 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor_name="A", text="hello", metadata={})
-        ev2 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor_name="B", text="world", metadata={})
+        actor_a = Actor.create(name="A")
+        actor_b = Actor.create(name="B")
+        ev1 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor_name=actor_a.name, text="hello", metadata={"actor_id": actor_a.id})
+        ev2 = DialogueEventLog.objects.create(timestamp=timezone.now().timestamp(), actor_name=actor_b.name, text="world", metadata={"actor_id": actor_b.id})
 
     fake_cache.put(AudioEntry(event_id=ev1.id, voice_id="v1", duration_s=1.0, wav_bytes=b"x", created_at=time.time()))
 

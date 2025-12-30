@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from mysite.universe.views import events as events_views
 from mysite.universe.models.event import DialogueEventLog
+from mysite.universe.models.actor import Actor
 
 
 @pytest.mark.django_db(transaction=True)
@@ -12,11 +13,14 @@ def test_select_upcoming_respects_horizon(monkeypatch):
     monkeypatch.setattr(events_views, "_AUDIO_PREFETCH_MAX_EVENTS", 10)
 
     now = timezone.now().timestamp()
+    actor_a = Actor.create(name="A")
+    actor_b = Actor.create(name="B")
+    actor_c = Actor.create(name="C")
     # inside horizon
-    ev1 = DialogueEventLog.objects.create(timestamp=now + 10, actor_name="A", text="t1", metadata={})
-    ev2 = DialogueEventLog.objects.create(timestamp=now + 30, actor_name="B", text="t2", metadata={})
+    ev1 = DialogueEventLog.objects.create(timestamp=now + 10, actor_name=actor_a.name, text="t1", metadata={"actor_id": actor_a.id})
+    ev2 = DialogueEventLog.objects.create(timestamp=now + 30, actor_name=actor_b.name, text="t2", metadata={"actor_id": actor_b.id})
     # outside horizon
-    ev3 = DialogueEventLog.objects.create(timestamp=now + 120, actor_name="C", text="t3", metadata={})
+    ev3 = DialogueEventLog.objects.create(timestamp=now + 120, actor_name=actor_c.name, text="t3", metadata={"actor_id": actor_c.id})
 
     res = list(events_views._select_upcoming_events(sim_time=now, limit=10))
     ids = [e.id for e in res]

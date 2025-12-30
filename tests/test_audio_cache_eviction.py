@@ -52,7 +52,8 @@ def test_evicted_event_returns_404():
     ev = DialogueEventLog.objects.create(
         actor_name=pilot.name,
         text="Test",
-        timestamp=timezone.now().timestamp()
+        timestamp=timezone.now().timestamp(),
+        metadata={"actor_id": pilot.id},
     )
     
     cache = events_views._get_audio_cache()
@@ -102,7 +103,8 @@ def test_event_feed_reports_false_for_evicted_audio():
     ev = DialogueEventLog.objects.create(
         actor_name=pilot.name,
         text="Test",
-        timestamp=get_simulation_time() + 1.0  # Future event
+        timestamp=get_simulation_time() + 1.0,  # Future event
+        metadata={"actor_id": pilot.id},
     )
     
     cache = events_views._get_audio_cache()

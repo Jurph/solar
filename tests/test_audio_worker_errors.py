@@ -101,7 +101,8 @@ def test_event_with_failed_tts_never_gets_audio_ready():
         ev = DialogueEventLog.objects.create(
             actor_name=pilot.name,
             text="Test dialogue",
-            timestamp=timezone.now().timestamp()
+            timestamp=timezone.now().timestamp(),
+            metadata={"actor_id": pilot.id},
         )
         
         # Enqueue (this will fail silently)
@@ -152,7 +153,8 @@ def test_actor_without_profile_does_not_crash():
     ev = DialogueEventLog.objects.create(
         actor_name=pilot.name,
         text="Test",
-        timestamp=timezone.now().timestamp()
+    timestamp=timezone.now().timestamp(),
+    metadata={"actor_id": pilot.id},
     )
     
     # This should not raise RelatedObjectDoesNotExist

@@ -8,10 +8,11 @@ import logging
 
 from django.dispatch import receiver
 from django.db.models.signals import post_save
+from django.core.exceptions import ObjectDoesNotExist
 
 from mysite.universe.signals import dialogue_event_processed
 from mysite.universe.models.event import DialogueEventLog
-from mysite.universe.models.actor import Pilot, Controller, Satellite
+from mysite.universe.models.actor import Actor, Pilot, Controller, Satellite
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,7 @@ def save_dialogue_event_to_db(sender, event, **kwargs):
         else:
             logger.error("Event has no actor or actor is None - cannot store actor_id in metadata")
         
-        log_entry = DialogueEventLog.objects.create(
+        DialogueEventLog.objects.create(
             timestamp=event.timestamp,
             actor_name=actor_name,
             text=display_text,
@@ -167,6 +168,7 @@ def enqueue_tts_on_log_save(sender, instance: DialogueEventLog, created, **kwarg
         logger.error("Failed to enqueue TTS prefetch for log %s: %s", instance.id, e, exc_info=True)
 
 
+@receiver(post_save, sender=Actor)
 @receiver(post_save, sender=Pilot)
 @receiver(post_save, sender=Controller)
 @receiver(post_save, sender=Satellite)
@@ -180,7 +182,7 @@ def ensure_actor_audio_profile(sender, instance, created, **kwargs):
     # Only assign on creation to avoid unnecessary work on updates
     if not created:
         return
-    
+
     # Check if profile exists
     try:
         profile = instance.audio_profile
@@ -188,9 +190,9 @@ def ensure_actor_audio_profile(sender, instance, created, **kwargs):
         vp = profile.get_voice_params() or {}
         if vp.get("voice_template"):
             return  # Profile exists and is complete
-    except instance.audio_profile.RelatedObjectDoesNotExist:
+    except ObjectDoesNotExist:
         pass  # Profile missing, will assign below
-    
+
     # Assign profile based on actor type
     # This is idempotent - won't overwrite existing voice_template
     if isinstance(instance, Pilot):
@@ -199,3 +201,5 @@ def ensure_actor_audio_profile(sender, instance, created, **kwargs):
         Controller.assign_audio_profile(instance)
     elif isinstance(instance, Satellite):
         Satellite.assign_audio_profile(instance)
+    else:
+        Actor.assign_audio_profile(instance)
