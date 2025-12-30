@@ -23,6 +23,7 @@ from mysite.universe.views.events import (
     event_scroller_wrapper,
     clear_events,
     event_audio,
+    ensure_audio_worker,
 )
 
 # Simulation time control
@@ -44,6 +45,7 @@ from mysite.universe.views.audio import (
     audio_lab,
     audio_lab_render,
 )
+from mysite.universe.views.logs import logs_view
 
 # Backwards compatibility alias for consolidated clear function
 # (clear_all_events was identical to clear_events)
@@ -59,6 +61,7 @@ __all__ = [
     'event_scroller_wrapper',
     'clear_events',
     'event_audio',
+    'ensure_audio_worker',
     'clear_all_events',  # Alias for backwards compatibility
     # Simulation
     'set_time_scale',
@@ -71,4 +74,5 @@ __all__ = [
     'audio_preset',
     'audio_lab',
     'audio_lab_render',
+    'logs_view',
 ]

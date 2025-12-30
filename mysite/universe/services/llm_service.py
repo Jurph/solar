@@ -137,25 +137,10 @@ The JSON must match this exact schema:
             prompt += user_msg
 
         try:
-            if not self.quiet_mode:
-                print("\n" + "="*80)
-                print("=== PROMPT ===")
-                print("="*80)
-                print("=== SYSTEM MESSAGE ===")
-                print(system_msg)
-                print("\n=== USER MESSAGE ===")
-                print(user_msg)
-                print("="*80)
-                print("=== END PROMPT ===\n")
-            
-            # Also log the ACTUAL prompt being sent
+            # Quiet STDOUT by default; log to shared in-memory/buffer handler.
             import logging
-            logger = logging.getLogger('llm_debug')
-            logger.setLevel(logging.DEBUG)
-            if not logger.handlers:
-                handler = logging.FileHandler('llm_debug.log', mode='a', encoding='utf-8')
-                handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-                logger.addHandler(handler)
+            logger = logging.getLogger(__name__)
+            logger.setLevel(logging.INFO)
             logger.debug(f"=== PROMPT SENT TO LLM API ===")
             logger.debug(f"SYSTEM MESSAGE:\n{system_msg}")
             logger.debug(f"USER MESSAGE:\n{user_msg}")
@@ -212,13 +197,7 @@ The JSON must match this exact schema:
                     )
                 response = completion.choices[0].text.strip()
             
-            # Always log prompts and responses for debugging (even in quiet mode, log to file)
-            if not self.quiet_mode:
-                print(f"\n=== LLM RESPONSE ===")
-                print(response)
-                print("=== END RESPONSE ===\n")
-            
-            # Also log to a file for later analysis
+            # Log to a file for later analysis; no STDOUT
             logger.debug(f"=== LLM CALL ===")
             logger.debug(f"SYSTEM: {system_msg}")
             logger.debug(f"USER: {user_msg}")

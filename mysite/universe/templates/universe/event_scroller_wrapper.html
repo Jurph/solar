@@ -81,6 +81,7 @@
         let lastFetchedSimTime = null; // Sim time at last fetch
         let nextEventTimestamp = null; // Timestamp of next pending event
         let pendingEventCount = 0; // Number of pending events
+        let waitingAudio = new Map(); // event_id -> event awaiting audio_ready
         
         // DOM elements
         const eventLog = document.getElementById('eventLog');
@@ -160,6 +161,13 @@
                 if (!audioPlayer.isEnabled()) {
                     await audioPlayer.enable();
                     window.localStorage.setItem(AUDIO_STORAGE_KEYS.enabledHint, "1");
+                }
+
+                // Ensure server-side audio worker is running
+                try {
+                    await fetch("{% url 'ensure_audio_worker' %}", { method: "POST" });
+                } catch (e) {
+                    console.warn("Failed to ensure audio worker:", e);
                 }
 
                 const nowMuted = !audioPlayer.isMuted();
@@ -358,18 +366,29 @@
                 catchUpComplete = true;
             }
 
-            // Quindar "start of transmission" tone
-            // Avoid beeping during catch-up (historical fast scroll) to prevent audio spam.
-            enqueueEventAudio(event, useFastMode);
-            enqueueAudioForTrigger(event, "event_start", useFastMode);
+            // If audio is enabled and audio_url exists but not ready, defer
+            if (audioPlayer.isEnabled() && !audioPlayer.isMuted() && event.audio_url && !event.audio_ready) {
+                // Put it back at the front and retry later
+                eventQueue.unshift(event);
+                isTyping = false;
+                setTimeout(processNextEvent, 200);
+                return;
+            }
 
-            // "During transmission" audio (e.g., modem tones for satellites, room tone/static).
-            // This is the key hook for NavSat modem-noise playback.
-            enqueueAudioForTrigger(event, "event_during", useFastMode);
+            // If we have server-mixed audio, use it and skip legacy presets to avoid double-beeps
+            if (event.audio_url && event.audio_ready) {
+                enqueueEventAudio(event, useFastMode);
+            } else {
+                // Legacy path: Quindars + preset plan
+                enqueueAudioForTrigger(event, "event_start", useFastMode);
+                enqueueAudioForTrigger(event, "event_during", useFastMode);
+            }
             
             typeEventLine(event, () => {
-                // Quindar "end of transmission" tone (still a generic sine_beep)
-                enqueueAudioForTrigger(event, "event_end", useFastMode);
+                if (!(event.audio_url && event.audio_ready)) {
+                    // Legacy end tone only if no server audio
+                    enqueueAudioForTrigger(event, "event_end", useFastMode);
+                }
                 // This event is done, process the next one
                 isTyping = false;
                 // In fast mode, add a tiny delay between lines for visual effect
@@ -401,8 +420,18 @@
             // Mark these events as displayed
             newEvents.forEach(e => displayedEventIds.add(e.id));
             
-            // Add to the queue
-            eventQueue.push(...newEvents);
+            // Add to queue or waiting list depending on audio readiness
+            for (const ev of newEvents) {
+                if (audioPlayer.isEnabled() && !audioPlayer.isMuted() && ev.audio_url) {
+                    if (!ev.audio_ready) {
+                        waitingAudio.set(ev.id, ev);
+                        continue;
+                    } else {
+                        waitingAudio.delete(ev.id);
+                    }
+                }
+                eventQueue.push(ev);
+            }
             // Start processing if not already typing
             processNextEvent();
         }
@@ -463,6 +492,18 @@
                 console.error('Error fetching events:', error);
             } finally {
                 isFetching = false;
+                // Promote waiting events that are now ready
+                if (waitingAudio.size > 0 && audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
+                    const readyIds = [];
+                    for (const [id, ev] of waitingAudio.entries()) {
+                        if (ev.audio_ready) {
+                            eventQueue.push(ev);
+                            readyIds.push(id);
+                        }
+                    }
+                    readyIds.forEach((id) => waitingAudio.delete(id));
+                    processNextEvent();
+                }
             }
         }
         

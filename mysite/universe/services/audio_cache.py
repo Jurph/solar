@@ -86,8 +86,14 @@ class AudioWorker(threading.Thread):
         self.queue = queue
         self.sample_rate = sample_rate
         self._stop = threading.Event()
+        import os
+        # Defensive env to dodge protobuf descriptor issues
+        os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+        os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 
     def run(self):
+        import logging
+        log = logging.getLogger(__name__)
         svc = get_tts_service()
         while not self._stop.is_set():
             job = self.queue.pop()
@@ -95,6 +101,7 @@ class AudioWorker(threading.Thread):
                 time.sleep(0.1)
                 continue
             try:
+                log.info("TTS generate start event_id=%s voice=%s", job.event_id, job.voice_id)
                 wav_bytes = svc.generate(text=job.text, voice_id=job.voice_id)
                 import wave
                 import io
@@ -112,6 +119,7 @@ class AudioWorker(threading.Thread):
                     created_at=time.time(),
                 )
                 self.cache.put(entry)
+                log.info("TTS generate done event_id=%s duration=%.2fs bytes=%d", job.event_id, duration, len(wav_bytes))
             finally:
                 self.queue.complete(job)
 
