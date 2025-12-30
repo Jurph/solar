@@ -20,16 +20,13 @@ class ShipAgent:
             self.ship, 
             departure=self.ship.current_location
         )
-        self.ship.status = 'DEPT'
         self.ship.save()
         
         travel_time = self.calculate_travel_time(destination)
-        self.ship.status = 'TRAN'
         self.ship.save()
         
         yield self.env.timeout(travel_time)
         
         with transaction.atomic():
             self.ship.current_location = destination
-            self.ship.status = 'APRCH'
             self.ship.save()

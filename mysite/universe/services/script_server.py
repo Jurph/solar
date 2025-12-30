@@ -427,14 +427,14 @@ class ScriptService:
                 return nav_event.controller
             elif hasattr(nav_event.controller, 'name'):
                 # It's a Location (station), look up the Controller actor
-                # Controllers should be created at universe initialization time via ActorService.deploy_controllers()
+                # Controllers are created on-demand; ActorService.deploy_controllers() can pre-populate common stations
                 controller = Controller.objects.filter(location=nav_event.controller).first()
                 if not controller:
                     controller = Controller.objects.filter(name=nav_event.controller.name).first()
                 if not controller:
                     raise ValueError(
                         f"No controller found for location '{nav_event.controller.name}'. "
-                        "Controllers should be deployed at universe initialization via ActorService.deploy_controllers()."
+                        "Controllers are created on-demand during mission generation."
                     )
                 return controller
         
@@ -478,7 +478,7 @@ class ScriptService:
             return effective_controller
         
         # If effective_controller is a Location (station), look up the Controller actor
-        # Controllers should be created at universe initialization time via ActorService.deploy_controllers()
+        # Controllers are created on-demand; ActorService.deploy_controllers() can pre-populate common stations
         if hasattr(effective_controller, 'name'):
             controller = Controller.objects.filter(location=effective_controller).first()
             if not controller:
@@ -486,7 +486,7 @@ class ScriptService:
             if not controller:
                 raise ValueError(
                     f"No controller found for location '{effective_controller.name}'. "
-                    "Controllers should be deployed at universe initialization via ActorService.deploy_controllers()."
+                    "Controllers are created on-demand during mission generation."
                 )
             return controller
         
@@ -498,7 +498,7 @@ class ScriptService:
         if not controller:
             raise ValueError(
                 f"No controller found for location '{target_location.name}'. "
-                "Controllers should be deployed at universe initialization via ActorService.deploy_controllers()."
+                "Controllers are created on-demand during mission generation."
             )
         return controller
     

@@ -55,7 +55,7 @@ def effective_controller(service, location: Location) -> Union[Controller, Locat
         # Remote/uncontrolled space - return the location itself
         return location.get_concrete_instance()
 
-    # Controllers should be created at universe initialization via ActorService.deploy_controllers()
+    # Controllers are created on-demand; ActorService.deploy_controllers() can pre-populate common stations
     controller = Controller.objects.filter(location=controlling_location).first()
     if not controller:
         controller = Controller.objects.filter(name=controlling_location.name).first()

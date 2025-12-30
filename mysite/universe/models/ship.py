@@ -30,18 +30,6 @@ class Ship(models.Model):
         null=True,
         help_text='Current cargo being transported'
     )
-    
-    status = models.CharField(
-        max_length=5,
-        choices=[
-            ('DOCK', 'Docked'),
-            ('TRAN', 'In Transit'),
-            ('APRCH', 'Approaching'),
-            ('HOLD', 'Holding Pattern'),
-            ('DEPT', 'Departing')
-        ],
-        default='DOCK'
-    )
 
     # Expose the list of name templates as a class variable.
     NAME_TEMPLATES = [
@@ -88,7 +76,7 @@ class Ship(models.Model):
             cargo: Cargo to be transported (generated if not provided)
             
         Returns:
-            The created and saved Ship instance with a valid name, cargo, and status.
+            The created and saved Ship instance with a valid name and cargo.
         """
         if name is None:
             name = cls.generate_name()
@@ -100,15 +88,14 @@ class Ship(models.Model):
         if cargo is None:
             from ..services.cargo_server import CargoService
             cargo_service = CargoService()
-            temp_ship = cls(name=name, current_location=location, size=size, status='DOCK')
+            temp_ship = cls(name=name, current_location=location, size=size)
             cargo = cargo_service.generate_cargo(temp_ship)
         
         ship = cls(
             name=name,
             current_location=location,
             size=size,
-            cargo=cargo,
-            status='DOCK'
+            cargo=cargo
         )
         ship.save()
         return ship

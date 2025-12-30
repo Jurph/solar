@@ -58,7 +58,7 @@ class TestScriptServiceNavBroadcast(TestCase):
 
     def test_generate_nav_broadcast_chain_adds_gratitude_when_probability_hits(self):
         # Ship + pilot to serve as gratitude source
-        ship = Ship.objects.create(name="Test Ship", current_location=self.station, size="M", cargo="X", status="DOCK")
+        ship = Ship.objects.create(name="Test Ship", current_location=self.station, size="M", cargo="X")
         pilot = Pilot.objects.create(name="Test Pilot", ship=ship)
 
         fake_broadcast_particle = SimpleNamespace(
@@ -103,7 +103,7 @@ class TestScriptServiceNavBroadcast(TestCase):
         assert gratitude.metadata["pilot_name"] == pilot.name
 
     def test_generate_nav_broadcast_chain_gratitude_failure_does_not_block_broadcast(self):
-        ship = Ship.objects.create(name="Test Ship", current_location=self.station, size="M", cargo="X", status="DOCK")
+        ship = Ship.objects.create(name="Test Ship", current_location=self.station, size="M", cargo="X")
         Pilot.objects.create(name="Test Pilot", ship=ship)
 
         fake_broadcast_particle = SimpleNamespace(
@@ -142,7 +142,7 @@ class TestScriptServiceNavigationChains(TestCase):
         self.planet = Planet.objects.create(name="Earth2", orbits=star, planet_type="TE", orbital_distance_au=1.0)
         self.station = Station.objects.create(name="Earth2 Orbital Control", orbits=self.planet)
 
-        self.ship = Ship.objects.create(name="Ship", current_location=self.station, size="M", cargo="X", status="DOCK")
+        self.ship = Ship.objects.create(name="Ship", current_location=self.station, size="M", cargo="X")
         self.pilot = Pilot.objects.create(name="Pilot", ship=self.ship)
         self.controller = Controller.objects.create(name="Earth2 Control", location=self.station)
 
@@ -284,7 +284,7 @@ class TestScriptServiceSingletonAndParsing(TestCase):
         star = Star.objects.create(name="Sol3", orbits=system, star_type="G")
         self.planet = Planet.objects.create(name="Earth3", orbits=star, planet_type="TE", orbital_distance_au=1.0)
         self.station = Station.objects.create(name="Earth3 Orbital Control", orbits=self.planet)
-        self.ship = Ship.objects.create(name="Ship3", current_location=self.station, size="M", cargo="X", status="DOCK")
+        self.ship = Ship.objects.create(name="Ship3", current_location=self.station, size="M", cargo="X")
         self.pilot = Pilot.objects.create(name="Pilot3", ship=self.ship)
         self.controller = Controller.objects.create(name="Earth3 Control", location=self.station)
 
@@ -316,7 +316,7 @@ class TestScriptServiceSingletonAndParsing(TestCase):
         assert s4 is not s1
 
     def test_parse_navigation_event_raises_without_pilot(self):
-        ship = Ship.objects.create(name="NoPilot", current_location=self.station, size="M", cargo="X", status="DOCK")
+        ship = Ship.objects.create(name="NoPilot", current_location=self.station, size="M", cargo="X")
         service = ScriptService(Mock())
         with self.assertRaises(ValueError):
             service.parse_navigation_event(self.nav_event, ship)
@@ -364,7 +364,7 @@ class TestScriptServiceCommsCheck(TestCase):
         planet = Planet.objects.create(name="Earth4", orbits=star, planet_type="TE", orbital_distance_au=1.0)
         station = Station.objects.create(name="Earth4 Orbital Control", orbits=planet)
 
-        self.ship = Ship.objects.create(name="Ship4", current_location=station, size="M", cargo="X", status="DOCK")
+        self.ship = Ship.objects.create(name="Ship4", current_location=station, size="M", cargo="X")
         self.pilot = Pilot.objects.create(name="Pilot4", ship=self.ship)
         self.satellite = Satellite.objects.create(name="Earth4 Navsat")
         self.service = ScriptService(Mock(temperature=0.25))
