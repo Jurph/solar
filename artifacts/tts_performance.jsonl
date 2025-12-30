@@ -1,0 +1,12 @@
+{"case": "short_canonical", "text_len": 58, "duration_s": 3.52, "wall_s": 66.49264750001021, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "short_atc", "text_len": 22, "duration_s": 2.08, "wall_s": 4.460119500057772, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "long_atc", "text_len": 165, "duration_s": 10.92, "wall_s": 17.331192899961025, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "long_canonical", "text_len": 346, "duration_s": 21.28, "wall_s": 30.327272100141272, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "short_canonical", "text_len": 58, "duration_s": 3.2, "wall_s": 62.31708890013397, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "short_atc", "text_len": 22, "duration_s": 2.28, "wall_s": 4.203246700111777, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "long_atc", "text_len": 165, "duration_s": 11.08, "wall_s": 15.493470400106162, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "long_canonical", "text_len": 346, "duration_s": 20.04, "wall_s": 26.266764300176874, "device": "cuda", "protobuf_version": "6.33.2"}
+{"case": "short_canonical", "text_len": 58, "duration_s": 2.88, "wall_s": 122.98762429994531, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "short_atc", "text_len": 22, "duration_s": 2.24, "wall_s": 4.315450800117105, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "long_atc", "text_len": 165, "duration_s": 11.32, "wall_s": 16.79978490015492, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "long_canonical", "text_len": 346, "duration_s": 21.04, "wall_s": 31.041993000078946, "device": "cuda", "protobuf_version": "4.25.8"}
