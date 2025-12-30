@@ -131,13 +131,13 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 ### Five - Vox Populi 
 - Text-to-speech scaffolding (Chatterbox service, voice template discovery, dev audio_lab endpoint) ✓
 - Voice registration to generate ~30 or so unique male and female voices 
-- Are SOTA voices good enough? 
+- Are SOTA voices good enough? (Chatterbox inference is slower than realtime - Dec 2025)
 - Simple sound generation ✓
 - Beeps, garbles, other fun trimmings ✓
 - Could theoretically _live stream_ this output for fun 
 
 ### Six - Fiat Luxury 
-- Identify physics process for realistic solar system creation 
+- Identify physics process for realistic solar system creation ✓
 - Try something else procedural: ship classes and designs maybe? 
 - Add a shipping economy so traffic feels more realistic 
 
@@ -208,17 +208,23 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ---
 
-#### Feature: Audio Generation UI 
+#### Feature: Voice Integration 
 
-**Big Picture:** A web service that can directly stimulate audio, to allow for experimentation without having to go through mission generation  
+**Big Picture:** When a line from the script comes into the feed, the Actor should read it with a Chatterbox-generated voice. 
 
-**Pieces:** 
-- Volume slider top center
-- Text input box in the center 
-- Below the text box, left side, "Play with TTS" button (NOP for now, either grayed out or does nothing)
-- Below the text box, right side, "Play as Modem Noise" button 
-- Below both buttons, an "add static" panel controlling the pitch and rumble of static 
-- Left panel: voice settings (dropdown for picking voice file, speed, pitch)
-- Right panel: modem settings (baud, pitch fields, all the variables)  
-- These variables all build an API call into the code that tells the code to play sound 
+**Details**: 
+- Every Actor gets assigned a voice from the voiceprints we have on file. FOR NOW, these can be randomly assigned, but each actor needs to be tied to a voiceprint file. Actors may exceed the number of available voiceprints so some selective reuse is allowable. Long term, we'll fix this. 
+- The voice travels with the Actor. Once the Actor gets a voice they always speak in that voice. 
+- For Pilots, their Ship determines what room tone we use; for Controllers, they use the controller room tone. 
+- Take the text, generate an audio file, pair it with an equal amount of room tone, and blend. Tack on Quindars before & after. 
+- Play the voice file at the same instant the text scrolls into the chat  
+- Eventually this is going to drive event duration - we need a pilot's request to be fully spoken aloud before the Controller can respond 
+- There are DRAGONS here, with all the sequencing risks we could encounter 
+
+**Proposed approach:** 
+- Plan the route and events with at least a 1-minute lead time 
+- Pass the first event to the audio renderer to find out how long it will be 
+- When the event and audio are ready, and the response to the event and THAT audio are ready, drop the first event-and-audio into the chat 
+- Basically you never drop an event onto the queue until you have its text and its audio ready 
+- This is very risky! You could really mess a lot of stuff up. Just remember that the physics-based stuff isn't essential to get perfect, so we can tolerate some delay. 
 

@@ -13,6 +13,9 @@ REM Activate virtual environment
 echo Activating virtual environment...
 call venv\Scripts\activate
 
+echo Checking PyTorch CUDA availability...
+python -c "import sys, importlib.util; spec = importlib.util.find_spec('torch'); if not spec: print('torch not installed (skipping CUDA check)'); sys.exit(0); import torch; print(f'torch version: {torch.__version__}'); print(f'cuda available: {torch.cuda.is_available()}'); print(f'cuda device count: {torch.cuda.device_count()}'); print(f'device 0: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no cuda devices detected'}')" 2>NUL
+
 REM Install Django if not already installed
 python -c "import django" 2>NUL
 if errorlevel 1 (

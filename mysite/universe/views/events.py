@@ -98,16 +98,6 @@ def event_feed(request):
 
     queryset = queryset.order_by("timestamp", "id")[:limit]
     
-    # Debug: Log what we're querying
-    count_before_limit = DialogueEventLog.objects.filter(timestamp__lte=sim_time).count()
-    count_with_id_filter = count_before_limit
-    
-    if count_with_id_filter > 0:
-        logger.debug(
-            f"event_feed: sim_time={sim_time:.1f}, after_id={after_id}, "
-            f"due_events={count_before_limit}, filtered={count_with_id_filter}"
-        )
-    
     # Convert to list of dicts with only essential fields
     events = [
         {

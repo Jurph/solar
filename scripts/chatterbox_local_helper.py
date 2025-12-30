@@ -1,19 +1,14 @@
 """
-Test-drive Chatterbox-Turbo locally using the downloaded weights.
+Manual helper to test-drive Chatterbox-Turbo locally using downloaded weights.
 
 Usage:
     SET DJANGO_SETTINGS_MODULE=mysite.settings
     SET CHATTERBOX_LOCAL_PATH=C:\\Users\\Jurph\\Documents\\Python Scripts\\solar\\models\\chatterbox-turbo
-    python scripts/test_chatterbox_local.py
-    
+    python scripts/chatterbox_local_helper.py
+
     Or explicitly use venv Python:
-    .\venv\Scripts\python.exe scripts\test_chatterbox_local.py
+    .\venv\Scripts\python.exe scripts\chatterbox_local_helper.py
 """
-
-import pytest
-
-# Manual helper; skip during pytest collection to avoid import-time side effects.
-pytest.skip("manual chatterbox check; skip in pytest", allow_module_level=True)
 
 from pathlib import Path
 import sys
@@ -34,11 +29,11 @@ current_path = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(current_path))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
 
-import django
+import django  # noqa: E402
 django.setup()
 
 # Now we can import Django-dependent code
-from mysite.universe.services.tts_service import get_tts_service
+from mysite.universe.services.tts_service import get_tts_service  # noqa: E402
 
 
 def main() -> int:
@@ -83,4 +78,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
