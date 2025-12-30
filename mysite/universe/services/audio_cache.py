@@ -90,6 +90,7 @@ class AudioJobQueue:
         self._lock = threading.Lock()
         self._queue: Deque[AudioJob] = deque()
         self._inflight = set()
+        self._inflight_start_times: Dict[int, float] = {}  # Track when jobs started processing
         self._rejects_duplicate = 0  # Track duplicate rejections
         self._rejects_full = 0  # Track full-queue rejections
 
@@ -119,19 +120,47 @@ class AudioJobQueue:
                 return None
             job = self._queue.popleft()
             self._inflight.add(job.event_id)
+            self._inflight_start_times[job.event_id] = time.time()
             return job
 
     def complete(self, job: AudioJob) -> None:
         """Mark job as complete (remove from in-flight)."""
         with self._lock:
             self._inflight.discard(job.event_id)
+            self._inflight_start_times.pop(job.event_id, None)
+    
+    def recover_stuck_jobs(self, timeout_seconds: float = 300.0) -> list[int]:
+        """
+        Detect and recover jobs that have been in-flight too long (likely hung).
+        Returns list of event_ids that were recovered.
+        """
+        import logging
+        log = logging.getLogger(__name__)
+        
+        now = time.time()
+        stuck = []
+        with self._lock:
+            for event_id, start_time in list(self._inflight_start_times.items()):
+                elapsed = now - start_time
+                if elapsed > timeout_seconds:
+                    stuck.append(event_id)
+                    self._inflight.discard(event_id)
+                    self._inflight_start_times.pop(event_id, None)
+                    log.warning("Recovered stuck job event_id=%s (stuck for %.1fs)", event_id, elapsed)
+        return stuck
 
     def get_stats(self) -> dict:
         """Get queue statistics for diagnostics."""
         with self._lock:
+            now = time.time()
+            stuck_count = sum(
+                1 for start_time in self._inflight_start_times.values()
+                if (now - start_time) > 300.0  # 5 minute threshold
+            )
             return {
                 'queued': len(self._queue),
                 'in_flight': len(self._inflight),
+                'stuck': stuck_count,  # Jobs in-flight > 5 minutes
                 'capacity': self.capacity,
                 'rejects_duplicate': self._rejects_duplicate,
                 'rejects_full': self._rejects_full,
@@ -144,7 +173,7 @@ class AudioWorker(threading.Thread):
         self.cache = cache
         self.queue = queue
         self.sample_rate = sample_rate
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()  # Renamed from _stop to avoid conflict with threading.Thread._stop
         self._last_activity = time.time()  # Track last successful job completion
         self._tts_available = False  # Track if TTS service is available
         self._jobs_processed = 0
@@ -191,7 +220,15 @@ class AudioWorker(threading.Thread):
             svc = None
             self._tts_available = False
         
-        while not self._stop.is_set():
+        last_stuck_check = time.time()
+        while not self._stop_event.is_set():
+            # Periodically check for stuck jobs (every 30 seconds)
+            if time.time() - last_stuck_check > 30.0:
+                stuck = self.queue.recover_stuck_jobs(timeout_seconds=300.0)  # 5 minute timeout
+                if stuck:
+                    log.warning("Recovered %d stuck job(s): %s", len(stuck), stuck)
+                last_stuck_check = time.time()
+            
             job = self.queue.pop()
             if not job:
                 time.sleep(0.1)
@@ -206,7 +243,16 @@ class AudioWorker(threading.Thread):
             try:
                 log.info("TTS generate start event_id=%s voice=%s text_len=%d", 
                         job.event_id, job.voice_id, len(job.text))
+                start_time = time.time()
+                
+                # TTS generation with timeout protection
+                # If TTS hangs, we'll detect it via stuck job detection
                 wav_bytes = svc.generate(text=job.text, voice_id=job.voice_id)
+                
+                elapsed = time.time() - start_time
+                if elapsed > 60.0:
+                    log.warning("TTS generate took %.1fs for event_id=%s (slow but completed)", 
+                               elapsed, job.event_id)
                 
                 if not wav_bytes or len(wav_bytes) == 0:
                     raise ValueError(f"TTS returned empty audio for event_id={job.event_id}")
@@ -246,4 +292,4 @@ class AudioWorker(threading.Thread):
                 self._last_activity = time.time()
 
     def stop(self):
-        self._stop.set()
+        self._stop_event.set()

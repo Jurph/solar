@@ -49,44 +49,34 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
     actor = None
     is_satellite = False
     
-    # Prefer actor_id from metadata to avoid name collisions
+    # CRITICAL: Always use actor_id from metadata - never use name lookups
+    # Actors are uniquely identified by ID, not name
     metadata = getattr(event, "metadata", None) or {}
     actor_id = metadata.get("actor_id")
-    if actor_id:
-        try:
-            actor = Actor.objects.get(id=actor_id)
-            if isinstance(actor, Satellite):
-                is_satellite = True
-        except Actor.DoesNotExist:
-            log.warning("Event %s references non-existent actor_id=%s", event.id, actor_id)
     
-    # Fallback to name lookup if no actor_id
-    if not actor:
-        # Names are not unique; always use filter().first() to avoid MultipleObjectsReturned.
-        # Prefer concrete subclasses in a stable order so audio behavior is deterministic.
-
-        # Try Satellite first (for nav broadcasts)
-        actor = Satellite.objects.filter(name=event.actor_name).order_by("-id").first()
-        if actor is not None:
+    if not actor_id:
+        log.error("Event %s missing actor_id in metadata (name='%s') - cannot build audio plan. "
+                 "Event should have actor_id stored in metadata.", event.id, event.actor_name)
+        # Return minimal plan with just Quindars - no TTS, no room tone
+        return [
+            {"action": "quindar_start"},
+            {"action": "quindar_end"},
+        ]
+    
+    try:
+        actor = Actor.objects.get(id=actor_id)
+        if isinstance(actor, Satellite):
             is_satellite = True
-        
-        # Try Pilot if not found
-        if actor is None:
-            actor = Pilot.objects.filter(name=event.actor_name).order_by("-id").first()
-        
-        # Try Controller if not found
-        if actor is None:
-            actor = Controller.objects.filter(name=event.actor_name).order_by("-id").first()
-        
-        # Fallback to base Actor model
-        if actor is None:
-            actors = list(Actor.objects.filter(name=event.actor_name).order_by("-id"))
-            if len(actors) > 1:
-                log.warning("Multiple actors found with name '%s' (count=%d), using most recent (id=%s) for event %s",
-                           event.actor_name, len(actors), actors[0].id, event.id)
-            actor = actors[0] if actors else None
-            
-            if actor is None:
+    except Actor.DoesNotExist:
+        log.error("Event %s references non-existent actor_id=%s (name='%s') - cannot build audio plan", 
+                 event.id, actor_id, event.actor_name)
+        # Return minimal plan with just Quindars - no TTS, no room tone
+        return [
+            {"action": "quindar_start"},
+            {"action": "quindar_end"},
+        ]
+    
+    if actor is None:
                 # Fallback: use default presets if actor not found
                 return [
                     {"trigger": "event_start", "preset": "quindar_start"},
@@ -94,13 +84,34 @@ def build_audio_plan_for_dialogue_event(event: DialogueEventLog) -> list[dict[st
                 ]
     
     # Get or create AudioProfile for this actor
-    profile, _ = AudioProfile.objects.get_or_create(
-        actor=actor,
-        defaults={}
-    )
-    # If profile was just created, initialize with defaults
-    if not profile.actor:
-        profile = AudioProfile.create_default_for_actor(actor)
+    # If missing or incomplete, assign it on-demand
+    try:
+        profile = actor.audio_profile
+        # Check if profile is incomplete (no voice_template)
+        vp = profile.get_voice_params() or {}
+        if not vp.get("voice_template"):
+            # Profile exists but incomplete - assign it
+            from mysite.universe.models.actor import Pilot, Controller, Satellite
+            if isinstance(actor, Pilot):
+                Pilot.assign_audio_profile(actor)
+            elif isinstance(actor, Controller):
+                Controller.assign_audio_profile(actor)
+            elif isinstance(actor, Satellite):
+                Satellite.assign_audio_profile(actor)
+            profile = actor.audio_profile  # Reload after assignment
+    except AudioProfile.DoesNotExist:
+        # Profile missing - assign it on-demand
+        from mysite.universe.models.actor import Pilot, Controller, Satellite
+        if isinstance(actor, Pilot):
+            Pilot.assign_audio_profile(actor)
+        elif isinstance(actor, Controller):
+            Controller.assign_audio_profile(actor)
+        elif isinstance(actor, Satellite):
+            Satellite.assign_audio_profile(actor)
+        else:
+            # Fallback for base Actor - create default profile
+            profile = AudioProfile.create_default_for_actor(actor)
+        profile = actor.audio_profile  # Reload after assignment
     
     plan: list[dict[str, Any]] = []
     

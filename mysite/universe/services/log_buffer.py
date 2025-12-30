@@ -11,6 +11,15 @@ class InMemoryLogHandler(logging.Handler):
         self._lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord) -> None:
+        # Filter out noisy DEBUG logs from numba and other low-level libraries
+        if record.levelno == logging.DEBUG:
+            # Skip numba byteflow/interpreter DEBUG spam
+            if record.name.startswith("numba."):
+                return
+            # Skip other verbose DEBUG logs if needed
+            # if record.name.startswith("transformers."):
+            #     return
+        
         msg = self.format(record)
         entry = {
             "level": record.levelname,

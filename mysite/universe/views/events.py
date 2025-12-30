@@ -65,7 +65,13 @@ def _ensure_worker():
             try:
                 was_alive = _audio_worker.is_alive()
                 _audio_worker.stop()
-                _audio_worker.join(timeout=2.0)
+                # Wait for thread to finish, but don't use join() which conflicts with _stop
+                # Instead, poll is_alive() with timeout
+                import time
+                timeout = 2.0
+                start = time.time()
+                while _audio_worker.is_alive() and (time.time() - start) < timeout:
+                    time.sleep(0.1)
                 if was_alive:
                     log.warning("Audio worker was alive but unhealthy, restarting")
                 else:
@@ -100,7 +106,7 @@ def _prefetch_audio_for_events(events):
     cache = _get_audio_cache()
     queue = _get_audio_queue()
 
-    from mysite.universe.models.actor import Pilot, Controller, Satellite, Actor as BaseActor
+    from mysite.universe.models.actor import Actor as BaseActor, Pilot, Controller, Satellite
     import logging
     log = logging.getLogger(__name__)
 
@@ -131,49 +137,59 @@ def _prefetch_audio_for_events(events):
         meta = getattr(ev, "metadata", None) or {}
 
         # Resolve voice from metadata or actor profile
+        # CRITICAL: Always use actor_id from metadata - never use name lookup
         voice_id = meta.get("voice_id")
         actor = None
         actor_lookup_method = None
         
         if not voice_id:
-            # Prefer actor_id from metadata to avoid name collisions
+            # MUST use actor_id from metadata - name lookups are unreliable
             actor_id = meta.get("actor_id")
-            if actor_id:
-                try:
-                    actor = BaseActor.objects.get(id=actor_id)
-                    actor_lookup_method = "actor_id"
-                except BaseActor.DoesNotExist:
-                    log.warning("Event %s references non-existent actor_id=%s", ev.id, actor_id)
+            if not actor_id:
+                # No actor_id in metadata - this is an error, not a fallback case
+                stats['skipped_no_actor'] += 1
+                log.error("Event %s missing actor_id in metadata (name='%s') - cannot resolve voice. "
+                         "Event should have actor_id stored in metadata.", ev.id, ev.actor_name)
+                continue  # Skip this event - cannot generate audio without actor
             
-            # Fallback to name lookup if no actor_id
-            if not actor:
-                actors = list(Pilot.objects.filter(name=ev.actor_name).order_by("-id"))
-                actors.extend(Controller.objects.filter(name=ev.actor_name).order_by("-id"))
-                actors.extend(Satellite.objects.filter(name=ev.actor_name).order_by("-id"))
-                actors.extend(BaseActor.objects.filter(name=ev.actor_name).order_by("-id"))
-                
-                if len(actors) > 1:
-                    log.warning("Multiple actors found with name '%s' (count=%d), using most recent (id=%s) for event %s",
-                               ev.actor_name, len(actors), actors[0].id, ev.id)
-                actor = actors[0] if actors else None
-                if actor:
-                    actor_lookup_method = "name"
+            try:
+                actor = BaseActor.objects.get(id=actor_id)
+                actor_lookup_method = "actor_id"
+            except BaseActor.DoesNotExist:
+                stats['skipped_no_actor'] += 1
+                log.error("Event %s references non-existent actor_id=%s (name='%s')", 
+                         ev.id, actor_id, ev.actor_name)
+                continue  # Skip this event - actor doesn't exist
             
-            if not actor:
-                # Actor not found - will use fallback voice, but log the issue
-                log.warning("Event %s actor not found (name='%s', actor_id=%s), will use fallback voice", 
-                           ev.id, ev.actor_name, meta.get("actor_id"))
-                voice_id = None
-            else:
-                # Actor found - try to get voice from profile
-                try:
-                    profile = actor.audio_profile
-                    vp = profile.get_voice_params() or {}
-                    voice_id = vp.get("voice_template")
-                except BaseActor.audio_profile.RelatedObjectDoesNotExist:
-                    log.warning("Event %s actor (id=%s, name='%s', lookup=%s) has no audio_profile", 
-                               ev.id, actor.id, actor.name, actor_lookup_method)
-                    voice_id = None
+            # Actor found - try to get voice from profile
+            # If profile missing or incomplete, assign it on-demand
+            try:
+                profile = actor.audio_profile
+            except BaseActor.audio_profile.RelatedObjectDoesNotExist:
+                # Profile missing - assign it on-demand
+                log.info("Event %s actor (id=%s, name='%s') missing audio_profile, assigning on-demand", 
+                        ev.id, actor.id, actor.name)
+                # Call the appropriate assign_audio_profile method based on actor type
+                if isinstance(actor, Pilot):
+                    Pilot.assign_audio_profile(actor)
+                elif isinstance(actor, Controller):
+                    Controller.assign_audio_profile(actor)
+                elif isinstance(actor, Satellite):
+                    Satellite.assign_audio_profile(actor)
+                else:
+                    # Fallback for base Actor - create default profile
+                    from mysite.universe.models.audio_profile import AudioProfile
+                    profile = AudioProfile.create_default_for_actor(actor)
+                profile = actor.audio_profile  # Reload after assignment
+            
+            # Get voice_template from profile
+            vp = profile.get_voice_params() or {}
+            voice_id = vp.get("voice_template")
+            
+            # If voice_template still not set, try assigning again (may be no voices available)
+            if not voice_id:
+                log.warning("Event %s actor (id=%s, name='%s') has no voice_template after assignment", 
+                           ev.id, actor.id, actor.name)
         
         if not voice_id:
             # Fallback defaults - but log that we're using fallback
@@ -508,11 +524,18 @@ def ensure_audio_worker(request):
                 "message": "Worker is None after _ensure_worker()",
             }, status=500)
         
+        # Recover any stuck jobs (in-flight > 5 minutes)
+        queue = _get_audio_queue()
+        stuck = queue.recover_stuck_jobs(timeout_seconds=300.0)
+        if stuck:
+            log.warning("Recovered %d stuck job(s) on worker health check: %s", len(stuck), stuck)
+        
         # Give it a moment to initialize
         import time
         time.sleep(0.2)
         
         stats = worker.get_stats() if hasattr(worker, 'get_stats') else {}
+        queue_stats = queue.get_stats()
         status = {
             "status": "ok",
             "worker": {
@@ -520,7 +543,9 @@ def ensure_audio_worker(request):
                 "alive": worker.is_alive(),
                 "healthy": worker.is_alive_and_healthy() if hasattr(worker, 'is_alive_and_healthy') else worker.is_alive(),
                 **stats,
-            }
+            },
+            "queue": queue_stats,
+            "recovered_stuck": stuck,
         }
         
         if not worker.is_alive():

@@ -149,13 +149,17 @@ Pay close attention to the examples and counterexamples provided. """
         except ObjectDoesNotExist:
             profile = None
         profile = profile or AudioProfile.create_default_for_actor(actor)
-        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-        if candidates:
-            voice_path = random.choice(candidates)
-            voice_template = Path(voice_path).stem
-            profile.set_voice_template(voice_template)
+        
+        # Only assign voice_template if not already set (idempotent)
+        vp = profile.get_voice_params() or {}
+        if not vp.get("voice_template"):
+            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+            if candidates:
+                voice_path = random.choice(candidates)
+                voice_template = Path(voice_path).stem
+                profile.set_voice_template(voice_template)
 
-        # Room tone based on ship size
+        # Room tone based on ship size (always update - ship size may change)
         ship_size = 'medium'
         if hasattr(actor, 'ship') and actor.ship and actor.ship.size:
             ship_size = actor.ship.size.lower()
@@ -248,11 +252,16 @@ CRITICAL SAFETY RULES:
         except ObjectDoesNotExist:
             profile = None
         profile = profile or AudioProfile.create_default_for_actor(actor)
-        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-        if candidates:
-            voice_path = random.choice(candidates)
-            voice_template = Path(voice_path).stem
-            profile.set_voice_template(voice_template)
+        
+        # Only assign voice_template if not already set (idempotent)
+        vp = profile.get_voice_params() or {}
+        if not vp.get("voice_template"):
+            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+            if candidates:
+                voice_path = random.choice(candidates)
+                voice_template = Path(voice_path).stem
+                profile.set_voice_template(voice_template)
+        
         profile.set_room_tone_preset("room_tone_controller")
 
     @classmethod
@@ -341,11 +350,15 @@ class Satellite(Actor):
         except ObjectDoesNotExist:
             profile = None
         profile = profile or AudioProfile.create_default_for_actor(actor)
-        candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-        if candidates:
-            voice_path = random.choice(candidates)
-            voice_template = Path(voice_path).stem
-            profile.set_voice_template(voice_template)
+        
+        # Only assign voice_template if not already set (idempotent)
+        vp = profile.get_voice_params() or {}
+        if not vp.get("voice_template"):
+            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
+            if candidates:
+                voice_path = random.choice(candidates)
+                voice_template = Path(voice_path).stem
+                profile.set_voice_template(voice_template)
         # No room tone for satellites
         profile.set_room_tone_preset(None)
 
