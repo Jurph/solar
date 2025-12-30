@@ -123,6 +123,13 @@
             return url;
         }
 
+        function enqueueEventAudio(event, useFastMode) {
+            if (useFastMode) return;
+            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return;
+            if (!event || !event.audio_url || !event.audio_ready) return;
+            audioPlayer.enqueueWavUrl(event.audio_url);
+        }
+
         // Restore volume preference (safe: doesn't start audio)
         const storedVolume = window.localStorage.getItem(AUDIO_STORAGE_KEYS.volume);
         if (storedVolume !== null) {
@@ -353,6 +360,7 @@
 
             // Quindar "start of transmission" tone
             // Avoid beeping during catch-up (historical fast scroll) to prevent audio spam.
+            enqueueEventAudio(event, useFastMode);
             enqueueAudioForTrigger(event, "event_start", useFastMode);
 
             // "During transmission" audio (e.g., modem tones for satellites, room tone/static).
