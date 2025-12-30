@@ -134,16 +134,11 @@
             try {
                 const resp = await fetch(event.audio_url, { method: "HEAD" });
                 if (resp.status === 404) {
-                    console.warn(`Audio for event ${event.id} was evicted (404), returning false to prevent text display`);
+                    console.warn(`Audio for event ${event.id} returned 404 - will retry on next request`);
                     // Clear audio flags - caller will move to waitingAudio
                     event.audio_ready = false;
                     event.audio_url = null;
-                    // Trigger re-prefetch to regenerate audio
-                    try {
-                        await fetch("{% url 'ensure_audio_worker' %}", { method: "POST" });
-                    } catch (e) {
-                        console.warn("Failed to ensure worker for retry:", e);
-                    }
+                    // Audio will be generated on-demand when next requested
                     return false; // Audio missing - do NOT display text
                 }
             } catch (e) {
@@ -188,12 +183,7 @@
                     window.localStorage.setItem(AUDIO_STORAGE_KEYS.enabledHint, "1");
                 }
 
-                // Ensure server-side audio worker is running
-                try {
-                    await fetch("{% url 'ensure_audio_worker' %}", { method: "POST" });
-                } catch (e) {
-                    console.warn("Failed to ensure audio worker:", e);
-                }
+                // Audio is generated on-demand - no worker to start
 
                 const nowMuted = !audioPlayer.isMuted();
                 audioPlayer.setMuted(nowMuted);
@@ -223,10 +213,14 @@
 
             for (const action of event.audio_plan) {
                 if (!action || action.trigger !== trigger) continue;
+                
                 if (action.preset) {
-                    // Pass params from the audio plan action (e.g., text for modem noise)
+                    // Procedurally generated audio (quindar, modem noise, static)
                     const url = audioPresetUrl(action.preset, action.params);
                     audioPlayer.enqueueWavUrl(url);
+                } else if (action.wav_url) {
+                    // Pre-generated WAV file (room tone, etc.)
+                    audioPlayer.enqueueWavUrl(action.wav_url);
                 }
             }
         }

@@ -180,9 +180,9 @@ Pay close attention to the examples and counterexamples provided. """
         import glob
         from pathlib import Path
         from django.core.exceptions import ObjectDoesNotExist
-        # project root (e.g., .../solar)
+        # Voice files are in mysite/universe/static/universe/voices/
         base_dir = Path(__file__).resolve().parents[3]
-        generated_dir = base_dir / "audio" / "voices" / "generated"
+        voices_dir = base_dir / "mysite" / "universe" / "static" / "universe" / "voices"
 
         try:
             profile = actor.audio_profile
@@ -193,9 +193,12 @@ Pay close attention to the examples and counterexamples provided. """
         # Only assign voice_template if not already set (idempotent)
         vp = profile.get_voice_params() or {}
         if not vp.get("voice_template"):
-            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-            if candidates:
-                voice_path = random.choice(candidates)
+            # Look for pilot voices (pilot-*.wav) and generic actor voices (actor-*.wav)
+            pilot_specific = sorted(glob.glob(str(voices_dir / "pilot-*.wav")))
+            actor_generic = sorted(glob.glob(str(voices_dir / "actor-*.wav")))
+            pilot_candidates = pilot_specific + actor_generic
+            if pilot_candidates:
+                voice_path = random.choice(pilot_candidates)
                 voice_template = Path(voice_path).stem
                 profile.set_voice_template(voice_template)
 
@@ -287,8 +290,9 @@ CRITICAL SAFETY RULES:
         import glob
         from pathlib import Path
         from django.core.exceptions import ObjectDoesNotExist
+        # Voice files are in mysite/universe/static/universe/voices/
         base_dir = Path(__file__).resolve().parents[3]
-        generated_dir = base_dir / "audio" / "voices" / "generated"
+        voices_dir = base_dir / "mysite" / "universe" / "static" / "universe" / "voices"
 
         try:
             profile = actor.audio_profile
@@ -299,9 +303,12 @@ CRITICAL SAFETY RULES:
         # Only assign voice_template if not already set (idempotent)
         vp = profile.get_voice_params() or {}
         if not vp.get("voice_template"):
-            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-            if candidates:
-                voice_path = random.choice(candidates)
+            # Look for controller voices (controller-*.wav) and generic actor voices (actor-*.wav)
+            controller_specific = sorted(glob.glob(str(voices_dir / "controller-*.wav")))
+            actor_generic = sorted(glob.glob(str(voices_dir / "actor-*.wav")))
+            controller_candidates = controller_specific + actor_generic
+            if controller_candidates:
+                voice_path = random.choice(controller_candidates)
                 voice_template = Path(voice_path).stem
                 profile.set_voice_template(voice_template)
         
@@ -385,8 +392,9 @@ class Satellite(Actor):
         import glob
         from pathlib import Path
         from django.core.exceptions import ObjectDoesNotExist
+        # Voice files are in mysite/universe/static/universe/voices/
         base_dir = Path(__file__).resolve().parents[3]
-        generated_dir = base_dir / "audio" / "voices" / "generated"
+        voices_dir = base_dir / "mysite" / "universe" / "static" / "universe" / "voices"
 
         try:
             profile = actor.audio_profile
@@ -398,9 +406,10 @@ class Satellite(Actor):
         # Only assign voice_template if not already set (idempotent)
         vp = profile.get_voice_params() or {}
         if not vp.get("voice_template"):
-            candidates = sorted(glob.glob(str(generated_dir / "*.wav")))
-            if candidates:
-                voice_path = random.choice(candidates)
+            # Look for satellite-specific robotic voices (satellite-*.wav)
+            satellite_candidates = sorted(glob.glob(str(voices_dir / "satellite-*.wav")))
+            if satellite_candidates:
+                voice_path = random.choice(satellite_candidates)
                 voice_template = Path(voice_path).stem
                 profile.set_voice_template(voice_template)
         
