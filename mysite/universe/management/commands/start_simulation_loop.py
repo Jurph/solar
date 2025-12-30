@@ -78,25 +78,25 @@ class Command(BaseCommand):
     def load_test_events(self, queue):
         """Load some dummy events for testing."""
         from mysite.universe.models.event import DialogueEvent
-        from mysite.universe.models.actor import Actor
+        from mysite.universe.models.actor import Pilot, Controller
+        from mysite.universe.models.base import Location
+        from mysite.universe.models.scale import Scale
+
+        # Use proper .create() methods to ensure audio profiles are assigned
+        try:
+            pilot = Pilot.objects.get(name="Test Pilot")
+        except Pilot.DoesNotExist:
+            pilot = Pilot.create(name="Test Pilot")
 
         try:
-            pilot = Actor.objects.get(name="Test Pilot")
-        except Actor.DoesNotExist:
-            pilot = Actor.objects.create(
-                name="Test Pilot",
-                role="pilot",
-                personality="professional"
+            controller = Controller.objects.get(name="Test Controller")
+        except Controller.DoesNotExist:
+            # Controller needs a location
+            loc, _ = Location.objects.get_or_create(
+                name="Test Control Station",
+                defaults={'scale': Scale.STATION}
             )
-
-        try:
-            controller = Actor.objects.get(name="Test Controller")
-        except Actor.DoesNotExist:
-            controller = Actor.objects.create(
-                name="Test Controller",
-                role="controller",
-                personality="helpful"
-            )
+            controller = Controller.create(name="Test Controller", location=loc)
 
         events = [
             DialogueEvent(

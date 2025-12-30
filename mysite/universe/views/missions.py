@@ -190,11 +190,21 @@ def spawn_mission(request):
                             if target_system is not None:
                                 event.metadata["navsat_star_system_name"] = target_system.name
                                 event.metadata["navsat_star_system_id"] = target_system.id
+                        # CRITICAL: Store actor_id in metadata - never use name lookups
+                        metadata = dict(event.metadata) if event.metadata else {}
+                        if hasattr(event, 'actor') and event.actor is not None:
+                            if hasattr(event.actor, 'id'):
+                                metadata['actor_id'] = event.actor.id
+                            else:
+                                logger.error("Nav broadcast event actor has no 'id' attribute: %s", type(event.actor))
+                        else:
+                            logger.error("Nav broadcast event has no actor or actor is None")
+                        
                         DialogueEventLog.objects.create(
                             timestamp=event.timestamp,
                             actor_name=event.actor.name,
                             text=event.text,
-                            metadata=event.metadata if event.metadata else {},
+                            metadata=metadata,
                         )
                         events_saved += 1
 
@@ -255,10 +265,22 @@ def spawn_mission(request):
                 last_relative_timestamp = 0.0
                 for event in dialogue_events_iter:
                     scheduled_time = base_sim_time + event.timestamp
+                    
+                    # CRITICAL: Store actor_id in metadata - never use name lookups
+                    metadata = dict(event.metadata) if event.metadata else {}
+                    if hasattr(event, 'actor') and event.actor is not None:
+                        if hasattr(event.actor, 'id'):
+                            metadata['actor_id'] = event.actor.id
+                        else:
+                            logger.error("Cargo mission event actor has no 'id' attribute: %s", type(event.actor))
+                    else:
+                        logger.error("Cargo mission event has no actor or actor is None")
+                    
                     DialogueEventLog.objects.create(
                         timestamp=scheduled_time,
                         actor_name=event.actor.name,
-                        text=event.text
+                        text=event.text,
+                        metadata=metadata,
                     )
                     events_saved += 1
                     last_relative_timestamp = event.timestamp
