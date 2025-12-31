@@ -101,3 +101,10 @@
 {"case": "voice_switch", "voice_id": "pilot-M-002_canonical_all", "text_len": 30, "duration_s": 1.76, "wall_s": 3.8873002000618726, "device": "cuda", "protobuf_version": "3.20.3"}
 {"case": "voice_switch", "voice_id": "pilot-F-001_canonical_all", "text_len": 30, "duration_s": 1.96, "wall_s": 4.689283200073987, "device": "cuda", "protobuf_version": "3.20.3"}
 {"case": "voice_switch", "voice_id": "controller-M-001_canonical_all", "text_len": 30, "duration_s": 1.88, "wall_s": 3.4400452999398112, "device": "cuda", "protobuf_version": "3.20.3"}
+{"case": "short_canonical", "text_len": 58, "duration_s": 3.0, "wall_s": 107.3133507000748, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "short_atc", "text_len": 22, "duration_s": 2.24, "wall_s": 4.085183599963784, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "long_atc", "text_len": 165, "duration_s": 11.4, "wall_s": 18.743662500055507, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "long_canonical", "text_len": 346, "duration_s": 19.04, "wall_s": 33.03751050005667, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "voice_switch", "voice_id": "pilot-M-002_canonical_all", "text_len": 30, "duration_s": 1.64, "wall_s": 3.2927427999675274, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "voice_switch", "voice_id": "pilot-F-001_canonical_all", "text_len": 30, "duration_s": 2.0, "wall_s": 3.616112600080669, "device": "cuda", "protobuf_version": "4.25.8"}
+{"case": "voice_switch", "voice_id": "controller-M-001_canonical_all", "text_len": 30, "duration_s": 1.96, "wall_s": 3.6317310999147594, "device": "cuda", "protobuf_version": "4.25.8"}
