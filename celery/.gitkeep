@@ -1,3 +1,0 @@
-# Celery filesystem broker data directory
-# This is used when CELERY_BROKER_URL='filesystem://'
-

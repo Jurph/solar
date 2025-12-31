@@ -1,9 +1,6 @@
 # Core dependencies
 Django>=5.1,<6
 networkx>=3.4
-python-dotenv>=1.0.0
-simpy>=4.1
-PyYAML>=6.0
 pydantic>=2.12
 
 # Code quality tools
@@ -26,6 +23,4 @@ torch>=2.0.0
 torchaudio>=2.0.0
 numpy>=1.23
 
-# Async task processing
-celery>=5.3.0
-redis>=5.0.0  # Optional: for Celery broker, can use filesystem for dev
+# Audio worker uses Django management commands (no Celery needed)
