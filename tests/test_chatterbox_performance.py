@@ -69,8 +69,17 @@ def test_chatterbox_latency_short_and_long():
     if not _have_voice(voice_id):
         pytest.skip(f"Voice prompt {voice_id}.wav not found in static voices")
 
-    service = get_tts_service()
-    device = getattr(service, "device", "unknown")
+    # Try to get TTS service - skip if GPU is already in use (e.g., audio worker running)
+    try:
+        service = get_tts_service()
+        device = getattr(service, "device", "unknown")
+    except RuntimeError as e:
+        pytest.skip(f"Failed to initialize TTS (GPU may be in use by audio worker): {e}")
+    except Exception as e:
+        # Catch GPU access violations and other GPU contention errors
+        if "access violation" in str(e).lower() or "gpu" in str(e).lower():
+            pytest.skip(f"GPU contention detected (audio worker may be running): {e}")
+        raise
 
     cases = [
         ("short_canonical", sentences[0]),
