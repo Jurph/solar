@@ -10,7 +10,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 ## Features on my road-map: 
 
 - Project infrastructure 
-    - "Installer" scripts that make deploying straight from Git reliable 
+    - "Installer" scripts that make deploying straight from Git reliable ✓
     - Unit Tests that Always Pass (doo-dah, doo-dah) ✓
     - Maybe some kind of CI/CD setup 
     - Figure out how to interact with Django and the sqlite DB for testing ✓
@@ -21,13 +21,13 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Add objects like "Colony" or "Spaceport" for surface landings 
     - Planetary science and classification
         - Define taxonomy of planet types (terrestrial, gas giant, etc.) ✓
-        - Geological composition and features 
-        - Atmospheric conditions
+        - Geological composition and features ✓
+        - Atmospheric conditions 
         - Resource distributions
     - Procedurally generated via physics rules later 
         - Add orbital parameters to celestial bodies
             - Mean orbital distance (AU) for basic sorting ✓
-            - Full Keplerian elements (eccentricity, inclination)
+            - Full Keplerian elements (eccentricity, inclination) 
             - Orbital period calculations ✓
         - Automatic sorting of bodies by orbital distance ✓
         - Lagrange point calculations ✓
@@ -80,15 +80,15 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
     - Meant to sound like air traffic control ✓
     - Scripted or procedural at first ✓
     - Uses GPT-style generative dialogue eventually ✓
-    - Text-to-voice? Pilot personalities? 
-    - Realistic static, Apollo-style BEEPs, Quindar tones, modem noises 
+    - Text-to-voice? Pilot personalities? ✓
+    - Realistic static, Apollo-style BEEPs, Quindar tones, modem noises ✓
 
 - Characters
     - Procedurally generated pilots and dispatchers 
     - Generate a character name, personality sketch, "sloppiness" concept 
     - Use this to build a prompt for a tiny local LLM ✓
     - LLM uses the scripted lines as a guide but reads them "in character", responding to the previous message ✓
-    - Ideally each character also gets a fixed voice model configuration that sticks with them 
+    - Ideally each character also gets a fixed voice model configuration that sticks with them ✓
 
 - Playing the game 
     - What game? This is literally an enormous complex procedural generation engine to create realistic shipping traffic so I can have a relaxing futuristic background. This will be v1.0 **playable** when I can listen to ships talking to one another like a long relaxing radio drama, with no idea what will happen next.  
@@ -130,11 +130,11 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 
 ### Five - Vox Populi 
 - Text-to-speech scaffolding (Chatterbox service, voice template discovery, dev audio_lab endpoint) ✓
-- Voice registration to generate ~30 or so unique male and female voices 
-- Are SOTA voices good enough? (Chatterbox inference is slower than realtime - Dec 2025)
+- Voice registration to generate ~30 or so unique male and female voices ✓
+- Are SOTA voices good enough? (Chatterbox inference is slower than realtime - Dec 2025) ✓
 - Simple sound generation ✓
 - Beeps, garbles, other fun trimmings ✓
-- Could theoretically _live stream_ this output for fun 
+- Could theoretically _live stream_ this output for fun (demonstrated via Discord, Dec 2025) ✓ 
 
 ### Six - Fiat Luxury 
 - Identify physics process for realistic solar system creation ✓

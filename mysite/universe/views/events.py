@@ -439,7 +439,7 @@ def event_audio(request, event_id: int):
                         start_seconds=0.0,
                         duration_seconds=quindar_start_duration,
                         frequency_hz=params.get("frequency_hz", 2525.0),
-                        gain=params.get("gain", 0.7)
+                        gain=params.get("gain", 0.35)
                     ))
                     tts_start_time = quindar_start_duration + quindar_gap
                     logger.info("Event %s: Added quindar_start at t=0.0", event_id)
@@ -492,7 +492,7 @@ def event_audio(request, event_id: int):
                         start_seconds=quindar_end_time,
                         duration_seconds=quindar_start_duration,
                         frequency_hz=params.get("frequency_hz", 2475.0),
-                        gain=params.get("gain", 0.7)
+                        gain=params.get("gain", 0.35)
                     ))
                     logger.info("Event %s: Added quindar_end at t=%.2f", event_id, quindar_end_time)
                 elif action.get("preset") == "modem_noise_example":
