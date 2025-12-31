@@ -169,21 +169,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # -----------------------------------------------------------------------------
 
 # Use filesystem broker for development (no Redis required)
-# For production, set CELERY_BROKER_URL to Redis
-CELERY_BROKER_URL = 'filesystem://'
-CELERY_BROKER_TRANSPORT_OPTIONS = {
-    'data_folder_in': str(BASE_DIR / 'celery' / 'data'),
-    'data_folder_out': str(BASE_DIR / 'celery' / 'data'),
-}
-CELERY_RESULT_BACKEND = 'cache'
-CELERY_CACHE_BACKEND = 'default'
-
-# Task settings
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE
-
-# TTS-specific settings
-CELERY_TTS_TASK_TIMEOUT = 300  # 5 minutes max for TTS generation
 
