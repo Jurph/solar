@@ -4,29 +4,39 @@
 
 ## 🔴 Dead Code Status
 
-| File | Status | Action |
-|------|--------|--------|
-| `text_server.py` | **Already deleted** | ✅ Done |
-| `shipping.py` | **Already deleted** | ✅ Done |
-| `broadcast_event.py` | **Already deleted** | ✅ Done |
-| `traffic_control.py` | **Still used** by `run_simulation.py` | Keep |
-| `voice_server.py` | Empty file (1 blank line) | **DELETE** |
+All identified dead code has been removed:
 
-**Note:** Coverage report is stale (Dec 30). Run `pytest --cov` to refresh.
+| File | Status |
+|------|--------|
+| `text_server.py` | ✅ Deleted |
+| `shipping.py` | ✅ Deleted |
+| `broadcast_event.py` | ✅ Deleted |
+| `voice_server.py` | ✅ Deleted |
+| `traffic_control.py` | ✅ Deleted |
+| `simulation/*` | ✅ Deleted (entire old architecture) |
+| `simulation_queue.py` | ✅ Deleted |
+| `generate_celestials.py` | ✅ Deleted |
+
+**Codebase is now clean of dead code.**
 
 ---
 
-## 🟡 Future/Stub Features (0% coverage, not wired up yet)
+## 🟡 Dead Code Removed (Dec 31, 2025)
 
-| File | Statements | Notes |
-|------|------------|-------|
-| `simulation/agents/ship_agent.py` | 22 | Agent system not active |
-| `simulation/agents/station_agent.py` | 21 | Agent system not active |
-| `simulation/engine.py` | 14 | Agent engine not active |
-| `simulation_queue.py` | 26 | Queue system not active |
-| `generate_celestials.py` | 156 | Procedural generation, separate feature |
+The following were confirmed dead and deleted:
 
-**Recommendation:** Keep, but don't test until these features are wired up.
+| File | Lines | Reason |
+|------|-------|--------|
+| `simulation/agents/ship_agent.py` | 32 | Old architecture, never imported |
+| `simulation/agents/station_agent.py` | 30 | Old architecture, never imported |
+| `simulation/engine.py` | 21 | Old architecture, never imported |
+| `simulation/events/*.py` | ~100 | Old architecture, never imported |
+| `simulation_queue.py` | 67 | Superseded by SimulationQueue in start_simulation_loop.py |
+| `generate_celestials.py` | 544 | Never imported |
+| `traffic_control.py` | 26 | Only used by dead run_simulation.py |
+| `run_simulation.py` | 29 | Dead management command |
+
+**Total: ~840 lines removed, 386 tests still passing.**
 
 ---
 
@@ -61,10 +71,7 @@ These are **actively used** in the working audio pipeline:
 ## Recommended Actions
 
 ### 1. Clean Up Dead Code
-```
-- mysite/universe/services/voice_server.py (DELETE - empty file)
-```
-*(text_server.py, shipping.py, broadcast_event.py already deleted)*
+✅ **DONE** - All dead code removed (Dec 31, 2025)
 
 ### 2. Add Tests for Critical Audio Path
 The audio pipeline we just fixed needs better test coverage:
