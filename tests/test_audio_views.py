@@ -84,8 +84,8 @@ class TestEventAudioEndpoint(TestCase):
             "HEAD request should return 200 when audio_file exists")
         self.assertEqual(response['Content-Type'], 'audio/wav')
     
-    def test_head_returns_404_when_audio_not_ready(self):
-        """HEAD request should return 404 when audio hasn't been generated yet."""
+    def test_head_returns_202_when_audio_not_ready(self):
+        """HEAD request should return 202 when audio hasn't been generated yet."""
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
             actor=self.actor,
@@ -96,9 +96,9 @@ class TestEventAudioEndpoint(TestCase):
         # No audio generated yet
         response = self.client.head(f'/api/event_audio/{event.id}/')
         
-        # Should return 404 (audio not available)
-        self.assertEqual(response.status_code, 404,
-            "HEAD request should return 404 when audio not ready")
+        # Should return 202 (audio pending generation by worker)
+        self.assertEqual(response.status_code, 202,
+            "HEAD request should return 202 when audio not ready")
     
     def test_get_returns_202_when_audio_pending(self):
         """GET request should return 202 when audio is being generated."""
