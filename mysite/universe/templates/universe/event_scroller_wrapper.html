@@ -599,6 +599,9 @@
                 if (waitingAudio.size > 0) {
                     const now = Date.now();
                     
+                    // DEBUG: Log waitingAudio state
+                    console.log(`[PROMOTE] Checking ${waitingAudio.size} events in waitingAudio`);
+                    
                     // Find the event with the earliest timestamp
                     let nextEvent = null;
                     let nextWaitData = null;
@@ -606,6 +609,9 @@
                     for (const [id, waitingData] of waitingAudio.entries()) {
                         const ev = waitingData.event;
                         const waitTime = now - waitingData.addedAt;
+                        
+                        // DEBUG: Log each event's status
+                        console.log(`[PROMOTE] Event ${id}: audio_ready=${ev.audio_ready}, audio_url=${!!ev.audio_url}, timestamp=${ev.timestamp?.toFixed(1)}`);
                         
                         if (!nextEvent || ev.timestamp < nextEvent.timestamp) {
                             nextEvent = ev;
@@ -618,13 +624,18 @@
                         }
                     }
                     
+                    // DEBUG: Log promotion decision
+                    console.log(`[PROMOTE] Next event candidate: id=${nextEvent?.id}, audio_ready=${nextEvent?.audio_ready}, audio_url=${!!nextEvent?.audio_url}`);
+                    
                     // Only promote if the NEXT (earliest) event has audio ready
                     if (nextEvent && nextEvent.audio_ready && nextEvent.audio_url) {
                         const waitTime = now - nextWaitData.addedAt;
-                        console.log(`[WAITING] Next event ${nextEvent.id} (timestamp=${nextEvent.timestamp.toFixed(1)}) audio ready after ${waitTime}ms, promoting to eventQueue`);
+                        console.log(`[PROMOTE] SUCCESS: Promoting event ${nextEvent.id} (timestamp=${nextEvent.timestamp.toFixed(1)}) after ${waitTime}ms`);
                         eventQueue.push(nextEvent);
                         waitingAudio.delete(nextEvent.id);
                         processNextEvent();
+                    } else {
+                        console.log(`[PROMOTE] BLOCKED: Not promoting (audio_ready=${nextEvent?.audio_ready})`);
                     }
                 }
             }

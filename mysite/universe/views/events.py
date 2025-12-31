@@ -173,10 +173,10 @@ def event_feed(request):
     logger.info(f"event_feed: Fetching events with sim_time={sim_time:.2f}, after_ts={after_ts}, limit={limit}")
     logger.info(f"event_feed: Queryset returned {queryset.count()} events")
     
-    # Check which events have cached TTS audio
+    # Check which events have cached mixed audio
     cached_event_ids = set()
     for event in queryset:
-        cache_key = f"tts_audio:{event.id}"
+        cache_key = f"mixed_audio:{event.id}"
         if cache.get(cache_key):
             cached_event_ids.add(event.id)
     
@@ -398,11 +398,12 @@ def event_audio(request, event_id: int):
             raise ValueError("TTS service returned empty audio")
         
         # Write TTS to temp file for mixing
-        tts_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        tts_temp_file.write(tts_wav_bytes)
-        tts_temp_file.flush()
-        tts_temp_path = tts_temp_file.name
-        tts_temp_file.close()
+        # Use context manager to ensure file is properly closed
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tts_temp_file:
+            tts_temp_file.write(tts_wav_bytes)
+            tts_temp_file.flush()
+            tts_temp_path = tts_temp_file.name
+            # File is automatically closed when exiting context
         
         logger.info("TTS generated for event %s: %d bytes, temp path: %s", 
                    event_id, len(tts_wav_bytes), tts_temp_path)
@@ -425,19 +426,20 @@ def event_audio(request, event_id: int):
         quindar_gap = 0.05
         tts_start_time = 0.0
         
-        # Parse audio_plan to build components
-        audio_plan = event.audio_plan or []
+        # Generate audio_plan (not stored on model, computed on-demand)
+        audio_plan = build_audio_plan_for_dialogue_event(event)
         logger.info("Event %s: audio_plan has %d actions", event_id, len(audio_plan))
         
-        # 1. Add "event_before" actions (quindar start)
+        # 1. Add "event_start" actions (quindar start)
         for action in audio_plan:
-            if action.get("trigger") == "event_before":
+            if action.get("trigger") == "event_start":
                 if action.get("preset") == "quindar_start":
+                    params = action.get("params", {})
                     components.append(SineBeep(
                         start_seconds=0.0,
                         duration_seconds=quindar_start_duration,
-                        frequency_hz=2525.0,
-                        gain=0.7
+                        frequency_hz=params.get("frequency_hz", 2525.0),
+                        gain=params.get("gain", 0.7)
                     ))
                     tts_start_time = quindar_start_duration + quindar_gap
                     logger.info("Event %s: Added quindar_start at t=0.0", event_id)
@@ -447,9 +449,7 @@ def event_audio(request, event_id: int):
             if action.get("trigger") == "event_during":
                 wav_url = action.get("wav_url")
                 if wav_url:
-                    # Room tone - loop for TTS duration, starting when TTS starts
                     from django.contrib.staticfiles import finders
-                    # Extract filename from URL (e.g., /static/.../small_engine_noise.wav -> universe/audio/roomtone/small_engine_noise.wav)
                     wav_filename = os.path.basename(wav_url)
                     static_path = f"universe/audio/roomtone/{wav_filename}"
                     room_tone_path = finders.find(static_path)
@@ -457,7 +457,7 @@ def event_audio(request, event_id: int):
                         components.append(LoopedAudioFragment(
                             start_seconds=tts_start_time,
                             path=room_tone_path,
-                            gain=0.3,  # Mix room tone quietly under voice
+                            gain=0.3,
                             loop_duration_seconds=tts_duration
                         ))
                         logger.info("Event %s: Added room tone %s at t=%.2f, duration=%.2f", 
@@ -466,40 +466,47 @@ def event_audio(request, event_id: int):
                         logger.warning("Event %s: Room tone file not found: %s", event_id, static_path)
         
         # 3. Add TTS voice
+        # Ensure path is absolute and normalized (Windows path handling)
+        tts_temp_path = os.path.abspath(os.path.normpath(tts_temp_path))
+        if not os.path.exists(tts_temp_path):
+            logger.error("Event %s: TTS temp file does not exist: %s", event_id, tts_temp_path)
+            raise ValueError(f"TTS temp file not found: {tts_temp_path}")
+        
         components.append(WavFileClip(
             start_seconds=tts_start_time,
             path=tts_temp_path,
             gain=2.0  # Amplify voice so it's clear over room tone
         ))
-        logger.info("Event %s: Added TTS at t=%.2f", event_id, tts_start_time)
+        logger.info("Event %s: Added TTS at t=%.2f, path=%s", event_id, tts_start_time, tts_temp_path)
         
-        # 4. Add "event_after" actions (quindar end, modem noise)
+        # 4. Add "event_end" actions (quindar end, modem noise)
         tts_end_time = tts_start_time + tts_duration
         quindar_end_time = tts_end_time + quindar_gap
         modem_start_time = quindar_end_time + quindar_start_duration + quindar_gap
         
         for action in audio_plan:
-            if action.get("trigger") == "event_after":
+            if action.get("trigger") == "event_end":
                 if action.get("preset") == "quindar_end":
+                    params = action.get("params", {})
                     components.append(SineBeep(
                         start_seconds=quindar_end_time,
                         duration_seconds=quindar_start_duration,
-                        frequency_hz=2475.0,
-                        gain=0.7
+                        frequency_hz=params.get("frequency_hz", 2475.0),
+                        gain=params.get("gain", 0.7)
                     ))
                     logger.info("Event %s: Added quindar_end at t=%.2f", event_id, quindar_end_time)
                 elif action.get("preset") == "modem_noise_example":
-                    # Modem noise for satellites - plays after quindar end
-                    modem_text = action.get("params", {}).get("text", "DATA")
+                    params = action.get("params", {})
+                    modem_text = params.get("text", "DATA")
                     components.append(ModemNoise(
                         start_seconds=modem_start_time,
                         text=modem_text,
-                        gain=0.8,
-                        baud_rate=300,
-                        mark_frequency_hz=1200.0,
-                        space_frequency_hz=2200.0,
-                        carrier_frequency_hz=1800.0,
-                        carrier_gain=0.15,
+                        gain=params.get("gain", 0.8),
+                        baud_rate=params.get("baud_rate", 300),
+                        mark_frequency_hz=params.get("mark_frequency_hz", 1200.0),
+                        space_frequency_hz=params.get("space_frequency_hz", 2200.0),
+                        carrier_frequency_hz=params.get("carrier_frequency_hz", 1800.0),
+                        carrier_gain=params.get("carrier_gain", 0.15),
                     ))
                     logger.info("Event %s: Added modem noise at t=%.2f encoding '%s'", 
                                event_id, modem_start_time, modem_text[:20])
@@ -524,14 +531,21 @@ def event_audio(request, event_id: int):
         logger.error("Audio generation/mixing failed for event %s: %s", 
                     event_id, e, exc_info=True)
         # Clean up temp file on error
-        if tts_temp_file and hasattr(tts_temp_file, 'name') and os.path.exists(tts_temp_file.name):
-            try:
-                os.unlink(tts_temp_file.name)
-            except Exception:
-                pass
+        try:
+            if 'tts_temp_path' in locals() and tts_temp_path and os.path.exists(tts_temp_path):
+                os.unlink(tts_temp_path)
+        except Exception:
+            pass
+        # Get error details safely
+        try:
+            voice_id_str = voice_id
+            text_preview = speak_text[:50] if speak_text else text[:50] if text else "unknown"
+        except NameError:
+            voice_id_str = "unknown"
+            text_preview = "unknown"
         return JsonResponse({
             "status": "error",
             "message": f"Audio generation failed: {str(e)}",
-            "voice_id": voice_id,
-            "text_preview": speak_text[:50],
+            "voice_id": voice_id_str,
+            "text_preview": text_preview,
         }, status=500)

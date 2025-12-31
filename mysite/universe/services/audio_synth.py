@@ -546,7 +546,12 @@ def _mix_wav_file_clip(mix: list[float], clip: WavFileClip, sr: int) -> None:
     if not clip.path:
         return
 
-    src_sr, samples = _read_wav_mono_float(clip.path)
+    try:
+        src_sr, samples = _read_wav_mono_float(clip.path)
+    except (ValueError, FileNotFoundError, OSError) as e:
+        # Re-raise with context - TTS file read failures must not be silent
+        raise ValueError(f"Failed to read WAV file for mixing: {clip.path}: {e}") from e
+
     samples = _resample_linear(samples, src_sr, sr)
     gain = max(0.0, float(clip.gain))
     start_i = int(max(0.0, float(clip.start_seconds)) * sr)
