@@ -90,7 +90,7 @@ class ChatterboxTTSService(TTSService):
                 from chatterbox.tts_turbo import ChatterboxTurboTTS
 
                 logger.info("Starting model load (this may take 30-60 seconds)...")
-                
+
                 # Prefer local path if provided (no network)
                 local_path = os.getenv("CHATTERBOX_LOCAL_PATH")
                 if not local_path:
@@ -322,7 +322,7 @@ def get_tts_service() -> TTSService:
         if _tts_service is None:
             logger.info("Creating singleton TTS service instance")
             _tts_service = ChatterboxTTSService()
-        return _tts_service
+    return _tts_service
 
 
 def warm_tts_service(voice_id: str = "pilot_default", text: str = "check"):

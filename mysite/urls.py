@@ -40,5 +40,5 @@ urlpatterns = [
     # Dev tool: Audio lab (standalone UI + render endpoint)
     path("audio-lab/", views.audio_lab, name="audio_lab"),
     path("api/audio/lab/render/", views.audio_lab_render, name="audio_lab_render"),
-] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT) + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

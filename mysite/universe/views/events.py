@@ -36,7 +36,7 @@ def _resolve_voice_for_event(event: DialogueEventLog) -> str:
         Voice ID string (e.g., "pilot-M-002_canonical_all")
     """
     meta = getattr(event, "metadata", None) or {}
-    
+
     # Check metadata first
     voice_id = meta.get("voice_id")
     if voice_id:
@@ -181,7 +181,7 @@ def event_feed(request):
             cached_event_ids.add(event.id)
     
     logger.info(f"event_feed: {len(cached_event_ids)} events have cached audio, {queryset.count() - len(cached_event_ids)} need TTS")
-    
+
     # Convert to list of dicts with only essential fields
     events = [
         {
@@ -192,8 +192,11 @@ def event_feed(request):
             'metadata': event.metadata if event.metadata is not None else {},
             # Python-defined audio plan (client just queues & plays waveforms)
             'audio_plan': build_audio_plan_for_dialogue_event(event),
-            # Audio is generated on-demand - check if already cached
-            'audio_ready': event.id in cached_event_ids,
+            # Audio is ready if pre-rendered OR cached
+            'audio_ready': (
+                bool(event.audio_file)  # Django FileField is truthy if file exists
+                or event.id in cached_event_ids
+            ),
             'audio_duration_s': None,  # Client can determine from WAV headers
             'audio_url': f"/api/event_audio/{event.id}/",
         }
@@ -297,28 +300,22 @@ def event_audio(request, event_id: int):
     Serve fully-mixed audio WAV for an event (quindars + TTS + room tone).
     
     Architecture:
-    - Check Django cache for final mixed audio
-    - If miss, generate synchronously:
-      1. Generate TTS WAV
-      2. Get audio_plan from event (quindars, room tone, modem noise)
-      3. Mix all components into single WAV
-      4. Cache and serve
+    - Check for pre-rendered file (from audio_worker)
+    - Check Django cache for final mixed audio  
+    - If miss, return 202 Accepted (worker will generate)
+    
+    The web server ONLY serves pre-rendered audio. All TTS generation
+    happens in the background audio_worker to avoid blocking the web server.
     
     Supports HEAD requests to check cache status without generating.
     
     Returns:
         200 with mixed WAV bytes (GET) or headers only (HEAD) if audio available
-        404 if event not found or audio not cached (HEAD only)
-        500 if generation/mixing fails
+        202 if audio not yet generated (worker will process)
+        404 if event not found
     """
-    from mysite.universe.services.tts_service import get_tts_service
-    from mysite.universe.services.audio_synth import (
-        SineBeep, WavFileClip, LoopedAudioFragment, ModemNoise, render_wav_bytes
-    )
-    import tempfile
-    import wave
-    import os
     
+    print(f"[EVENT_AUDIO] {request.method} request for event {event_id}")  # Force to stdout
     logger.info(f"event_audio: {request.method} request for event {event_id}")
     
     # Get event
@@ -336,8 +333,23 @@ def event_audio(request, event_id: int):
     cache_key = f"mixed_audio:{event_id}"
     mixed_wav_bytes = cache.get(cache_key)
     
-    # HEAD requests: only check cache, don't generate
+    # HEAD requests: only check cache and pre-rendered files, don't generate
     if request.method == "HEAD":
+        # Check for pre-rendered file first
+        if event.audio_file:
+            try:
+                # Verify file exists and get size
+                with event.audio_file.open('rb') as f:
+                    file_size = len(f.read())
+                logger.debug(f"event_audio: HEAD request - pre-rendered file found for event {event_id}")
+                resp = HttpResponse(content_type="audio/wav")
+                resp["Cache-Control"] = "public, max-age=3600"
+                resp["Content-Length"] = file_size
+                return resp
+            except FileNotFoundError:
+                logger.warning(f"event_audio: HEAD request - pre-rendered file missing for event {event_id}")
+                # Fall through to cache check
+        # Check cache
         if mixed_wav_bytes:
             logger.debug(f"event_audio: HEAD request - cache hit for event {event_id}")
             resp = HttpResponse(content_type="audio/wav")
@@ -345,207 +357,40 @@ def event_audio(request, event_id: int):
             resp["Content-Length"] = len(mixed_wav_bytes)
             return resp
         else:
-            logger.debug(f"event_audio: HEAD request - cache miss for event {event_id}, returning 404")
-            return HttpResponse(status=404)
+            # Audio not ready - return 202 (same as GET)
+            logger.debug(f"event_audio: HEAD request - audio not ready for event {event_id}, returning 202")
+            print(f"[EVENT_AUDIO] HEAD event {event_id} - returning 202")
+            return JsonResponse({
+                "status": "pending",
+                "message": "Audio not yet generated."
+            }, status=202)
     
+    # Check for pre-rendered file (from audio worker)
+    if event.audio_file:
+        logger.info(f"event_audio: Serving pre-rendered audio for event {event_id}")
+        try:
+            # Use Django's storage backend to read the file
+            with event.audio_file.open('rb') as f:
+                pre_rendered_wav = f.read()
+            resp = HttpResponse(pre_rendered_wav, content_type="audio/wav")
+            resp["Cache-Control"] = "public, max-age=3600"
+            return resp
+        except FileNotFoundError:
+            logger.warning(f"event_audio: Pre-rendered file missing for event {event_id}")
+            # Fall through to cache check
+    
+    # Check cache
     if mixed_wav_bytes:
         logger.debug("Mixed audio cache hit for event %s", event_id)
         resp = HttpResponse(mixed_wav_bytes, content_type="audio/wav")
         resp["Cache-Control"] = "public, max-age=3600"
         return resp
-    
-    # Cache miss - generate and mix synchronously
-    logger.info("Mixed audio cache miss for event %s, generating...", event_id)
-    
-    # Get text and voice
-    text = event.text
-    if not text or not text.strip():
-        logger.warning("Event %s has no text for TTS", event_id)
-        return JsonResponse({
-            "status": "error",
-            "message": f"Event {event_id} has no text",
-        }, status=400)
-    
-    logger.info("Event %s text: %s", event_id, text[:100])
-    
-    # Resolve voice
-    try:
-        voice_id = _resolve_voice_for_event(event)
-        logger.info("Event %s resolved voice: %s", event_id, voice_id)
-    except Exception as e:
-        logger.error("Failed to resolve voice for event %s: %s", event_id, e, exc_info=True)
-        return JsonResponse({
-            "status": "error",
-            "message": f"Voice resolution failed: {str(e)}",
-        }, status=500)
-    
-    # Sentence-case to avoid spelled-out ALL CAPS
-    speak_text = _sentence_case(text)
-    logger.info("Event %s speak_text: %s", event_id, speak_text[:100])
-    
-    # Generate TTS
-    tts_temp_file = None
-    try:
-        logger.info("Event %s: Getting TTS service...", event_id)
-        tts_service = get_tts_service()
-        logger.info("Event %s: Generating TTS (text=%d chars, voice=%s)", 
-                   event_id, len(speak_text), voice_id)
-        
-        tts_wav_bytes = tts_service.generate(text=speak_text, voice_id=voice_id)
-        
-        if not tts_wav_bytes or len(tts_wav_bytes) == 0:
-            logger.error("Event %s: TTS service returned empty audio", event_id)
-            raise ValueError("TTS service returned empty audio")
-        
-        # Write TTS to temp file for mixing
-        # Use context manager to ensure file is properly closed
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tts_temp_file:
-            tts_temp_file.write(tts_wav_bytes)
-            tts_temp_file.flush()
-            tts_temp_path = tts_temp_file.name
-            # File is automatically closed when exiting context
-        
-        logger.info("TTS generated for event %s: %d bytes, temp path: %s", 
-                   event_id, len(tts_wav_bytes), tts_temp_path)
-        
-        # Get TTS duration for room tone truncation
-        tts_duration = 0.5  # fallback
-        try:
-            with wave.open(tts_temp_path, "rb") as wf:
-                sr = wf.getframerate() or 0
-                frames = wf.getnframes() or 0
-            if sr > 0 and frames > 0:
-                tts_duration = frames / float(sr)
-            logger.info("Event %s: TTS duration = %.2f seconds", event_id, tts_duration)
-        except Exception as e:
-            logger.warning("Failed to read TTS duration for event %s: %s", event_id, e)
-        
-        # Build mixed audio from audio_plan
-        components = []
-        quindar_start_duration = 0.25
-        quindar_gap = 0.05
-        tts_start_time = 0.0
-        
-        # Generate audio_plan (not stored on model, computed on-demand)
-        audio_plan = build_audio_plan_for_dialogue_event(event)
-        logger.info("Event %s: audio_plan has %d actions", event_id, len(audio_plan))
-        
-        # 1. Add "event_start" actions (quindar start)
-        for action in audio_plan:
-            if action.get("trigger") == "event_start":
-                if action.get("preset") == "quindar_start":
-                    params = action.get("params", {})
-                    components.append(SineBeep(
-                        start_seconds=0.0,
-                        duration_seconds=quindar_start_duration,
-                        frequency_hz=params.get("frequency_hz", 2525.0),
-                        gain=params.get("gain", 0.35)
-                    ))
-                    tts_start_time = quindar_start_duration + quindar_gap
-                    logger.info("Event %s: Added quindar_start at t=0.0", event_id)
-        
-        # 2. Add "event_during" actions (room tone - mixed with TTS)
-        for action in audio_plan:
-            if action.get("trigger") == "event_during":
-                wav_url = action.get("wav_url")
-                if wav_url:
-                    from django.contrib.staticfiles import finders
-                    wav_filename = os.path.basename(wav_url)
-                    static_path = f"universe/audio/roomtone/{wav_filename}"
-                    room_tone_path = finders.find(static_path)
-                    if room_tone_path:
-                        components.append(LoopedAudioFragment(
-                            start_seconds=tts_start_time,
-                            path=room_tone_path,
-                            gain=0.3,
-                            loop_duration_seconds=tts_duration
-                        ))
-                        logger.info("Event %s: Added room tone %s at t=%.2f, duration=%.2f", 
-                                   event_id, wav_filename, tts_start_time, tts_duration)
-                    else:
-                        logger.warning("Event %s: Room tone file not found: %s", event_id, static_path)
-        
-        # 3. Add TTS voice
-        # Ensure path is absolute and normalized (Windows path handling)
-        tts_temp_path = os.path.abspath(os.path.normpath(tts_temp_path))
-        if not os.path.exists(tts_temp_path):
-            logger.error("Event %s: TTS temp file does not exist: %s", event_id, tts_temp_path)
-            raise ValueError(f"TTS temp file not found: {tts_temp_path}")
-        
-        components.append(WavFileClip(
-            start_seconds=tts_start_time,
-            path=tts_temp_path,
-            gain=2.0  # Amplify voice so it's clear over room tone
-        ))
-        logger.info("Event %s: Added TTS at t=%.2f, path=%s", event_id, tts_start_time, tts_temp_path)
-        
-        # 4. Add "event_end" actions (quindar end, modem noise)
-        tts_end_time = tts_start_time + tts_duration
-        quindar_end_time = tts_end_time + quindar_gap
-        modem_start_time = quindar_end_time + quindar_start_duration + quindar_gap
-        
-        for action in audio_plan:
-            if action.get("trigger") == "event_end":
-                if action.get("preset") == "quindar_end":
-                    params = action.get("params", {})
-                    components.append(SineBeep(
-                        start_seconds=quindar_end_time,
-                        duration_seconds=quindar_start_duration,
-                        frequency_hz=params.get("frequency_hz", 2475.0),
-                        gain=params.get("gain", 0.35)
-                    ))
-                    logger.info("Event %s: Added quindar_end at t=%.2f", event_id, quindar_end_time)
-                elif action.get("preset") == "modem_noise_example":
-                    params = action.get("params", {})
-                    modem_text = params.get("text", "DATA")
-                    components.append(ModemNoise(
-                        start_seconds=modem_start_time,
-                        text=modem_text,
-                        gain=params.get("gain", 0.8),
-                        baud_rate=params.get("baud_rate", 300),
-                        mark_frequency_hz=params.get("mark_frequency_hz", 1200.0),
-                        space_frequency_hz=params.get("space_frequency_hz", 2200.0),
-                        carrier_frequency_hz=params.get("carrier_frequency_hz", 1800.0),
-                        carrier_gain=params.get("carrier_gain", 0.15),
-                    ))
-                    logger.info("Event %s: Added modem noise at t=%.2f encoding '%s'", 
-                               event_id, modem_start_time, modem_text[:20])
-        
-        # Mix all components into single WAV
-        logger.info("Event %s: Mixing %d audio components...", event_id, len(components))
-        mixed_wav_bytes = render_wav_bytes(components)
-        logger.info("Event %s: Mixed audio generated: %d bytes", event_id, len(mixed_wav_bytes))
-        
-        # Cache for 1 hour
-        cache.set(cache_key, mixed_wav_bytes, timeout=3600)
-        
-        # Clean up temp file
-        if tts_temp_path and os.path.exists(tts_temp_path):
-            os.unlink(tts_temp_path)
-        
-        resp = HttpResponse(mixed_wav_bytes, content_type="audio/wav")
-        resp["Cache-Control"] = "public, max-age=3600"
-        return resp
-        
-    except Exception as e:
-        logger.error("Audio generation/mixing failed for event %s: %s", 
-                    event_id, e, exc_info=True)
-        # Clean up temp file on error
-        try:
-            if 'tts_temp_path' in locals() and tts_temp_path and os.path.exists(tts_temp_path):
-                os.unlink(tts_temp_path)
-        except Exception:
-            pass
-        # Get error details safely
-        try:
-            voice_id_str = voice_id
-            text_preview = speak_text[:50] if speak_text else text[:50] if text else "unknown"
-        except NameError:
-            voice_id_str = "unknown"
-            text_preview = "unknown"
-        return JsonResponse({
-            "status": "error",
-            "message": f"Audio generation failed: {str(e)}",
-            "voice_id": voice_id_str,
-            "text_preview": text_preview,
-        }, status=500)
+
+    # Cache miss - audio not ready yet
+    # The audio_worker should handle generation; web server only serves pre-rendered files
+    print(f"[EVENT_AUDIO] Event {event_id} audio not ready - returning 202")  # Force to stdout
+    logger.info("Event %s audio not ready (no pre-rendered file, not in cache). Worker should generate.", event_id)
+    return JsonResponse({
+        "status": "pending",
+        "message": "Audio not yet generated. Background worker will process this event."
+    }, status=202)
