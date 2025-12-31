@@ -87,6 +87,8 @@
         let ttsQueuePending = 0; // Number of events waiting for TTS generation
         let ttsQueueCached = 0; // Number of events with TTS already cached
         let waitingAudio = new Map(); // event_id -> {event: Event, addedAt: number} awaiting audio_ready
+        let lastAudioCheck = new Map(); // event_id -> timestamp of last HEAD request
+        let inflightAudioChecks = new Set(); // event IDs currently being checked
         // NO TIMEOUT: If audio is enabled, we wait indefinitely for TTS. If TTS is stuck, we debug it.
         
         // DOM elements
@@ -132,7 +134,7 @@
         }
 
         async function enqueueEventAudio(event, useFastMode) {
-            console.log(`[AUDIO] enqueueEventAudio called: event=${event.id}, useFastMode=${useFastMode}, audio_ready=${event.audio_ready}, audio_url=${event.audio_url}`);
+            console.log(`[AUDIO] enqueueEventAudio called: event=${event.id}, useFastMode=${useFastMode}, audio_ready=${event.audio_ready}`);
             
             if (useFastMode) {
                 console.log(`[AUDIO] Fast mode - allowing text without audio`);
@@ -149,31 +151,18 @@
                 return false; // No audio URL - fail
             }
             
-            // Note: audio_ready just means "cached" - we try anyway and let server generate on-demand
-            console.log(`[AUDIO] Checking audio availability via HEAD ${event.audio_url}...`);
-            
-            // Try to fetch audio; if 404, audio was evicted - return false to prevent text display
-            try {
-                const resp = await fetch(event.audio_url, { method: "HEAD" });
-                console.log(`[AUDIO] HEAD response: ${resp.status}`);
-                if (resp.status === 404) {
-                    console.warn(`[AUDIO] Audio for event ${event.id} returned 404 - will retry on next request`);
-                    // Clear audio flags - caller will move to waitingAudio
-                    event.audio_ready = false;
-                    event.audio_url = null;
-                    // Audio will be generated on-demand when next requested
-                    return false; // Audio missing - do NOT display text
-                }
-            } catch (e) {
-                console.warn(`[AUDIO] Failed to check audio for event ${event.id}:`, e);
-                // Network error - still try to enqueue, but log the issue
-                // If it fails, the audio player will handle it
-            }
-            
+            // By the time we reach here, audio_ready should be true (checked by caller)
+            // Just enqueue the audio URL directly without redundant HEAD check
             console.log(`[AUDIO] Enqueueing WAV URL: ${event.audio_url}`);
-            audioPlayer.enqueueWavUrl(event.audio_url);
-            console.log(`[AUDIO] Audio enqueued successfully for event ${event.id}`);
-            return true; // Audio enqueued successfully
+            
+            try {
+                audioPlayer.enqueueWavUrl(event.audio_url);
+                console.log(`[AUDIO] Audio enqueued successfully for event ${event.id}`);
+                return true;
+            } catch (e) {
+                console.error(`[AUDIO] Failed to enqueue audio for event ${event.id}:`, e);
+                return false;
+            }
         }
 
         // Restore volume preference (safe: doesn't start audio)
@@ -183,12 +172,11 @@
         }
         audioPlayer.setVolume(parseFloat(audioVolumeInput.value));
 
-        // Start muted by default. If user previously enabled audio, show it as "muted (saved)".
+        // Audio starts disabled (browser autoplay policy requires user interaction)
+        // Button reflects actual state: user must click to enable
         const savedEnabled = window.localStorage.getItem(AUDIO_STORAGE_KEYS.enabledHint) === "1";
-        const savedMuted = window.localStorage.getItem(AUDIO_STORAGE_KEYS.muted) !== "0";
-        audioPlayer.setMuted(savedMuted);
-        audioEnableButton.textContent = savedEnabled
-            ? (savedMuted ? "Audio: Muted (saved)" : "Audio: Live")
+        audioEnableButton.textContent = savedEnabled 
+            ? "Audio: Click to Enable" 
             : "Audio: Muted";
 
         audioVolumeInput.addEventListener("input", () => {
@@ -200,29 +188,32 @@
         audioEnableButton.addEventListener("click", async () => {
             audioEnableButton.disabled = true;
             try {
-                // One-click "play/unmute" approach:
-                // - First click creates the audio element (enables playback path)
-                // - Then toggles muted/live
+                // Enable audio on first click (satisfies browser autoplay policy)
                 if (!audioPlayer.isEnabled()) {
                     await audioPlayer.enable();
+                    audioPlayer.setMuted(false); // Enable AND unmute on first click
                     window.localStorage.setItem(AUDIO_STORAGE_KEYS.enabledHint, "1");
-                }
-
-                // Audio is generated on-demand - no worker to start
-
-                const nowMuted = !audioPlayer.isMuted();
-                audioPlayer.setMuted(nowMuted);
-                window.localStorage.setItem(AUDIO_STORAGE_KEYS.muted, nowMuted ? "1" : "0");
-                audioEnableButton.textContent = nowMuted ? "Audio: Muted" : "Audio: Live";
-
-                // On unmute, play a short confirmation tone to satisfy autoplay policies.
-                if (!nowMuted) {
+                    window.localStorage.setItem(AUDIO_STORAGE_KEYS.muted, "0");
+                    audioEnableButton.textContent = "Audio: Live";
+                    
+                    // Play confirmation tone to verify audio is working
                     audioPlayer.enqueueWavUrl(audioPresetUrl("quindar_start"));
+                } else {
+                    // Subsequent clicks toggle mute/unmute
+                    const nowMuted = !audioPlayer.isMuted();
+                    audioPlayer.setMuted(nowMuted);
+                    window.localStorage.setItem(AUDIO_STORAGE_KEYS.muted, nowMuted ? "1" : "0");
+                    audioEnableButton.textContent = nowMuted ? "Audio: Muted" : "Audio: Live";
+                    
+                    // Play confirmation tone when unmuting
+                    if (!nowMuted) {
+                        audioPlayer.enqueueWavUrl(audioPresetUrl("quindar_start"));
+                    }
                 }
             } catch (error) {
                 console.error("Failed to enable audio:", error);
                 alert(`Failed to enable audio: ${error?.message || error}`);
-                audioEnableButton.textContent = "Audio: Muted";
+                audioEnableButton.textContent = "Audio: Error";
             } finally {
                 audioEnableButton.disabled = false;
             }
@@ -484,23 +475,8 @@
                         waitingAudio.set(ev.id, {event: ev, addedAt: Date.now()});
                         console.log(`[APPEND] Event ${ev.id} held in waitingAudio (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
                         
-                        // Proactively trigger TTS generation if we have an audio_url
-                        if (ev.audio_url && !ev.audio_ready) {
-                            console.log(`[APPEND] Proactively triggering TTS generation for event ${ev.id}`);
-                            fetch(ev.audio_url, { method: "GET" })
-                                .then(resp => {
-                                    if (resp.ok) {
-                                        console.log(`[APPEND] TTS generated successfully for event ${ev.id}, marking audio_ready=true`);
-                                        // Update the event object to reflect that audio is now ready
-                                        ev.audio_ready = true;
-                                    } else {
-                                        console.warn(`[APPEND] TTS generation failed for event ${ev.id}: ${resp.status}`);
-                                    }
-                                })
-                                .catch(err => {
-                                    console.error(`[APPEND] TTS generation request failed for event ${ev.id}:`, err);
-                                });
-                        }
+                        // Don't spam HEAD requests on append - let polling handle it
+                        // The fetchEvents() finally block will check audio readiness periodically
                         
                         continue; // Do NOT add to eventQueue - wait for TTS
                     } else {
@@ -594,14 +570,14 @@
                 console.error('Error fetching events:', error);
             } finally {
                 isFetching = false;
-                // Promote waiting events that are now ready (NO TIMEOUT - we wait for TTS)
-                // CRITICAL: Only promote the NEXT event (earliest timestamp) to maintain order
+                // Check if waiting events are now ready
+                // CRITICAL: Process in queue order - check ONLY the next (earliest) event
                 if (waitingAudio.size > 0) {
                     const now = Date.now();
                     
-                    // Find the event with the earliest timestamp
+                    // Find the event with the earliest timestamp (front of queue)
                     let nextEvent = null;
-                    let nextWaitData = null;
+                    let nextEventId = null;
                     
                     for (const [id, waitingData] of waitingAudio.entries()) {
                         const ev = waitingData.event;
@@ -609,7 +585,7 @@
                         
                         if (!nextEvent || ev.timestamp < nextEvent.timestamp) {
                             nextEvent = ev;
-                            nextWaitData = waitingData;
+                            nextEventId = id;
                         }
                         
                         // Log if waiting a long time
@@ -618,13 +594,62 @@
                         }
                     }
                     
-                    // Only promote if the NEXT (earliest) event has audio ready
-                    if (nextEvent && nextEvent.audio_ready && nextEvent.audio_url) {
-                        const waitTime = now - nextWaitData.addedAt;
-                        console.log(`[WAITING] Promoting event ${nextEvent.id} after ${Math.floor(waitTime/1000)}s`);
-                        eventQueue.push(nextEvent);
-                        waitingAudio.delete(nextEvent.id);
-                        processNextEvent();
+                    // For the NEXT event in queue, check if audio is ready
+                    if (nextEvent && nextEvent.audio_url && !nextEvent.audio_ready) {
+                        // Rate limit: Don't check same event more than once every 2 seconds
+                        const lastCheck = lastAudioCheck.get(nextEventId) || 0;
+                        const timeSinceCheck = now - lastCheck;
+                        
+                        // Prevent duplicate concurrent requests
+                        if (inflightAudioChecks.has(nextEventId)) {
+                            return; // Already checking this event
+                        }
+                        
+                        if (timeSinceCheck >= 2000) {
+                            // Make HEAD request to check if worker has generated audio
+                            lastAudioCheck.set(nextEventId, now);
+                            inflightAudioChecks.add(nextEventId);
+                            
+                            fetch(nextEvent.audio_url, { method: 'HEAD' })
+                                .then(resp => {
+                                    if (resp.status === 200) {
+                                        // Audio is ready! (Explicit 200 check, not resp.ok which includes 202)
+                                        const waitData = waitingAudio.get(nextEventId);
+                                        if (waitData) {
+                                            const waitTime = now - waitData.addedAt;
+                                            console.log(`[WAITING] Audio ready for event ${nextEventId} after ${Math.floor(waitTime/1000)}s, promoting to queue`);
+                                            nextEvent.audio_ready = true;
+                                            eventQueue.push(nextEvent);
+                                            waitingAudio.delete(nextEventId);
+                                            processNextEvent();
+                                        }
+                                    } else if (resp.status === 202) {
+                                        // Worker is actively generating - keep waiting
+                                        console.log(`[WAITING] Event ${nextEventId} audio being generated (HEAD returned 202)`);
+                                    } else if (resp.status === 404) {
+                                        // Shouldn't happen with new code, but handle it
+                                        console.warn(`[WAITING] Event ${nextEventId} returned 404 (unexpected)`);
+                                    } else {
+                                        console.warn(`[WAITING] Event ${nextEventId} returned unexpected status ${resp.status}`);
+                                    }
+                                })
+                                .catch(err => {
+                                    console.error(`[WAITING] Failed to check audio for event ${nextEventId}:`, err);
+                                })
+                                .finally(() => {
+                                    inflightAudioChecks.delete(nextEventId);
+                                });
+                        }
+                    } else if (nextEvent && nextEvent.audio_ready && nextEvent.audio_url) {
+                        // Already marked ready (from previous check or fresh fetch)
+                        const waitData = waitingAudio.get(nextEventId);
+                        if (waitData) {
+                            const waitTime = now - waitData.addedAt;
+                            console.log(`[WAITING] Promoting event ${nextEventId} (already ready)`);
+                            eventQueue.push(nextEvent);
+                            waitingAudio.delete(nextEventId);
+                            processNextEvent();
+                        }
                     }
                 }
             }

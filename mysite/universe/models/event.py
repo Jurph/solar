@@ -123,6 +123,23 @@ class DialogueEventLog(models.Model):
     metadata = models.JSONField(default=dict, blank=True, help_text="Additional event metadata (e.g., modem_data for nav broadcasts)")
     created_at = models.DateTimeField(auto_now_add=True, help_text="Database insertion time")
     
+    # TTS pre-generation fields
+    audio_file = models.FileField(
+        upload_to='rendered_audio/',
+        null=True,
+        blank=True,
+        help_text="Pre-rendered mixed audio file (managed by Django storage)"
+    )
+    audio_rendered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the audio was pre-rendered by the background worker"
+    )
+    audio_generating = models.BooleanField(
+        default=False,
+        help_text="True if audio is currently being generated (prevents concurrent generation)"
+    )
+    
     class Meta:
         ordering = ['timestamp']
         indexes = [
