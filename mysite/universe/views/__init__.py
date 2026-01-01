@@ -30,6 +30,7 @@ from mysite.universe.views.simulation import (
     set_time_scale,
     skip_to_next_event,
     get_simulation_status,
+    health_check,
 )
 
 # Mission spawning
@@ -65,6 +66,7 @@ __all__ = [
     'set_time_scale',
     'skip_to_next_event',
     'get_simulation_status',
+    'health_check',
     # Missions
     'spawn_mission',
     'run_demo',

@@ -275,17 +275,37 @@ def clear_events(request):
     """
     API endpoint to clear all dialogue events from the database.
     
+    Also deletes associated audio files from media/rendered_audio/.
     Useful for starting fresh without restarting the server.
     Resets the event queue to empty state.
     
     Returns:
         JSON with status and count of cleared events
     """
+    import os
+    
     try:
+        # Get all events before deleting to clean up audio files
+        events_with_audio = DialogueEventLog.objects.exclude(audio_file='').exclude(audio_file__isnull=True)
+        audio_files_deleted = 0
+        
+        for event in events_with_audio:
+            try:
+                if event.audio_file and os.path.exists(event.audio_file.path):
+                    event.audio_file.delete(save=False)
+                    audio_files_deleted += 1
+            except Exception as e:
+                logger.warning(f'Failed to delete audio file for event {event.id}: {e}')
+        
+        # Delete all events from database
         count, _ = DialogueEventLog.objects.all().delete()
+        
+        # Clear Django cache
+        cache.clear()
+        
         return JsonResponse({
             'status': 'success',
-            'message': f'Cleared {count} dialogue events from the database.'
+            'message': f'Cleared {count} dialogue events and {audio_files_deleted} audio files from the database.'
         })
     except Exception as e:
         return JsonResponse({

@@ -139,3 +139,78 @@ def get_simulation_status(request):
         'anchor_wall_clock': state.anchor_wall_clock,
     })
 
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def health_check(request):
+    """
+    API endpoint to check health of critical services.
+    
+    Uses OpenAI-compatible endpoints for maximum compatibility with
+    different LLM providers (Ollama, LM Studio, OpenAI, etc.).
+    
+    Returns:
+        JSON with health status for each service
+    """
+    import requests
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.db.models import Q
+    
+    health = {}
+    
+    # Check LLM server using OpenAI-compatible /v1/models endpoint
+    # This works with: Ollama, LM Studio, OpenAI API, and other compatible servers
+    try:
+        resp = requests.get('http://localhost:11434/v1/models', timeout=2)
+        if resp.status_code == 200:
+            health['llm'] = {
+                'status': 'ok',
+                'message': 'LLM server responding'
+            }
+        else:
+            health['llm'] = {
+                'status': 'error',
+                'message': f'LLM server returned {resp.status_code}'
+            }
+    except requests.exceptions.ConnectionError:
+        health['llm'] = {
+            'status': 'error',
+            'message': 'Cannot connect to LLM server (http://localhost:11434)'
+        }
+    except Exception as e:
+        health['llm'] = {
+            'status': 'error',
+            'message': f'LLM check failed: {str(e)}'
+        }
+    
+    # Check audio worker activity
+    # Look for recent audio generation (within last 2 minutes)
+    recent_audio = DialogueEventLog.objects.filter(
+        audio_rendered_at__gte=timezone.now() - timedelta(minutes=2)
+    ).count()
+    
+    # Check if there are events needing audio
+    pending_audio = DialogueEventLog.objects.filter(
+        Q(audio_file='') | Q(audio_file__isnull=True),
+        audio_generating=False,
+        timestamp__lte=get_simulation_time() + 3600  # Within 1 hour lookahead
+    ).count()
+    
+    if recent_audio > 0:
+        health['audio_worker'] = {
+            'status': 'ok',
+            'message': f'Generated {recent_audio} clips in last 2 minutes'
+        }
+    elif pending_audio == 0:
+        health['audio_worker'] = {
+            'status': 'idle',
+            'message': 'No events pending audio generation'
+        }
+    else:
+        health['audio_worker'] = {
+            'status': 'warning',
+            'message': f'{pending_audio} events need audio but no recent generation'
+        }
+    
+    return JsonResponse(health)
