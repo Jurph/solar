@@ -44,8 +44,9 @@ solar/
             │   ├── ship.py       # Ship model
             │   ├── station.py    # Station & BerthAssignment
             │   ├── actor.py      # Actor, Pilot, Controller, Satellite
-            │   ├── event.py      # DialogueEventLog
-            │   ├── broadcast_event.py  # BroadcastEvent
+            │   ├── event.py      # Event, DialogueEvent, NavigationEvent, DialogueEventLog
+            │   ├── audio_profile.py # AudioProfile for actor voice configuration
+            │   ├── simulation.py # SimulationState for time management
             │   └── scale.py      # Scale enumeration
             │
             ├── services/         # Business logic & integrations
@@ -53,26 +54,20 @@ solar/
             │   ├── route_server.py      # Route calculation
             │   ├── script_server.py     # Navigation to dialogue conversion
             │   ├── cargo_server.py      # Cargo assignment
-            │   ├── traffic_control.py   # Simulation agent management
             │   ├── dialogue_server.py   # Dialogue event scheduling
-            │   ├── llm_service.py       # LLM integration
-            │   ├── text_server.py       # Text processing
-            │   ├── voice_server.py      # Voice/TTS integration
-            │   ├── actor_server.py     # Actor deployment & management
+            │   ├── llm_service.py       # LLM integration (Ollama/OpenAI)
+            │   ├── tts_service.py       # TTS integration (Chatterbox)
+            │   ├── audio_plans.py       # Audio mixing plans per actor type
+            │   ├── audio_synth.py       # Audio synthesis (quindars, room tone, modem noise)
+            │   ├── actor_server.py      # Actor deployment & management
+            │   ├── location_service.py  # Distance calculations & hierarchy queries
+            │   ├── maneuver_physics.py  # Physics-based maneuver calculations
+            │   ├── controller_physics.py # Physics parameters for controller responses
+            │   ├── log_buffer.py        # Circular log buffer for monitoring
             │   └── dialogue/            # Dialogue system
             │       ├── base.py          # Base dialogue classes
             │       ├── factory.py       # Dialogue factory
-            │       └── particles.py    # Dialogue particles (requests, responses)
-            │
-            ├── simulation/       # Simulation engine & agents
-            │   ├── engine.py    # Event-based simulation loop
-            │   ├── agents/      # Autonomous agents
-            │   │   ├── ship_agent.py
-            │   │   └── station_agent.py
-            │   └── events/      # Simulation event types
-            │       ├── docking.py
-            │       ├── maintenance.py
-            │       └── movement.py
+            │       └── particles.py     # Dialogue particles (requests, responses, readbacks)
             │
             ├── views/           # Django views (decomposed by domain concern)
             │   ├── __init__.py  # Re-exports view callables for backward-compatible imports
@@ -108,28 +103,19 @@ solar/
             │   └── dialogue_schema.py
             │
             ├── import_xml.py   # XML import utility
-            ├── export_xml.py  # XML export utility
+            ├── export_xml.py   # XML export utility
             ├── procedural_generation.py  # Procedural universe generation
-            ├── generate_celestials.py    # Celestial body generation
-            ├── shipping.py     # Shipping/cargo logic
             ├── signals.py      # Django signal handlers
-            ├── receivers.py    # Signal receivers
-            ├── simulation_queue.py  # Simulation event queue
+            ├── receivers.py    # Signal receivers (DialogueEvent → DialogueEventLog)
             │
             └── management/     # Django management commands
                 └── commands/
-                    ├── import_universe.py      # Import from XML
-                    ├── export_universe.py      # Export to XML
-                    ├── generate_ships.py       # Generate ships procedurally
-                    ├── generate_actors.py      # Generate actors
-                    ├── generate_journey.py     # Generate journeys
-                    ├── random_journey.py       # Random mission generation
-                    ├── llm_journey.py          # LLM-driven journey
-                    ├── run_simulation.py      # Run simulation
-                    ├── start_simulation_loop.py  # Start simulation loop
+                    ├── import_universe.py       # Import from XML
+                    ├── export_universe.py       # Export to XML
+                    ├── start_simulation_loop.py # Start simulation loop
+                    ├── audio_worker.py          # Background TTS pre-generation worker
                     ├── character_dialogue_demo.py  # Dialogue demo
-                    ├── check_superuser.py      # Admin utilities
-                    └── comms_check.py         # Communication check
+                    └── [other utilities]
 ```
 
 ## Core Components
@@ -144,42 +130,48 @@ solar/
 - **physics.py:** `Atmosphere` model (separate table, linked via ContentType to Planet/Moon)
 - **display.py:** Display formatting utilities (format_number, format_distance_km, etc.)
 - **navigation.py:** Navigation graph, route planning, and orbital mechanics utilities.
-- **ship.py:** Dynamic ship model with procedural naming and status management.
+- **ship.py:** Dynamic ship model with procedural naming and cargo management.
 - **station.py:** `Station` model and `BerthAssignment` for docking capacity.
-- **actor.py:** `Actor` base class, `Pilot`, `Controller`, `Satellite` with personality traits.
-- **event.py:** `DialogueEventLog` for time-stamped dialogue events.
-- **broadcast_event.py:** `BroadcastEvent` for system-wide communications.
+- **actor.py:** `Actor` base class with subclasses `Pilot`, `Controller`, `Satellite`
+- **audio_profile.py:** `AudioProfile` model for actor voice/audio configuration (quindars, room tone, etc.)
+- **event.py:** 
+  - Dataclasses: `Event`, `DialogueEvent`, `NavigationEvent`
+  - Model: `DialogueEventLog` for persisting dialogue events with audio file tracking
+- **simulation.py:** `SimulationState` singleton for time-scaling simulation clock
 - **scale.py:** `Scale` enumeration for location scales (GALAXY, STARSYSTEM, STAR, PLANET, MOON, STATION).
 
 ### Services
 
-- **dictionary.py:** Provides word lists for procedural content generation.
 - **route_server.py:** Public façade for route planning (RouteService).
-  - Implementation lives in `services/route/` (plan/controllers/durations/missions/formatting) to avoid a single large blob.
-- **script_server.py:** Converts navigation events into dialogue scripts.
-- **cargo_server.py:** Determines and assigns cargo to ships.
-- **traffic_control.py:** Oversees simulation agents and real-time ship movement.
-- **dialogue_server.py:** Manages dialogue event scheduling and processing.
-- **llm_service.py:** LLM integration for structured output and dialogue generation.
-- **text_server.py:** Text processing and formatting utilities.
-- **voice_server.py:** Voice/TTS integration for audio output.
-- **actor_server.py:** Actor deployment and management (Controllers, Pilots).
+  - Implementation in `services/route/` (plan, controllers, durations, missions, formatting)
+- **script_server.py:** Converts `NavigationEvent`s into `DialogueEvent` chains
+- **cargo_server.py:** Procedural cargo assignment for ships
+- **dialogue_server.py:** Dialogue chain generation and event scheduling
+- **llm_service.py:** LLM integration (Ollama/OpenAI) for dialogue generation
+- **tts_service.py:** TTS integration (Chatterbox-Turbo) with caching
+- **audio_plans.py:** Generates audio mixing plans per actor type (quindars, room tone, modem noise)
+- **audio_synth.py:** Audio synthesis engine - renders quindars, modem noise, mixes components
+- **actor_server.py:** Actor procedural generation and management
+- **location_service.py:** Distance calculations and location hierarchy queries
+- **maneuver_physics.py:** Physics-based maneuver timing and orbital mechanics
+- **controller_physics.py:** Generates realistic parameters for controller responses
+- **log_buffer.py:** Circular log buffer for runtime monitoring
+- **dictionary.py:** Word lists for procedural content generation
 - **dialogue/:** Dialogue system components
-  - **base.py:** Base dialogue classes and interfaces
-  - **factory.py:** Dialogue factory for creating dialogue instances
-  - **particles.py:** Dialogue particles (requests, responses, etc.)
+  - **base.py:** `DialogueParticle` base class and prompt building
+  - **factory.py:** Particle factory (maps maneuver types to dialogue particles)
+  - **particles.py:** Concrete particles (LaunchRequest, RadioResponse, RadioReadback, etc.)
 
-### Simulation Engine
+### Audio Pipeline
 
-- **engine.py:** Drives the event-based simulation loop.
-- **agents/:** Autonomous agents that execute simulation behavior
-  - **ship_agent.py:** Ship movement and behavior agent
-  - **station_agent.py:** Station operations agent
-- **events/:** Simulation event types
-  - **docking.py:** Docking/undocking events
-  - **maintenance.py:** Maintenance and anomaly events
-  - **movement.py:** Ship movement events
-- **simulation_queue.py:** Event queue management for simulation timing.
+- **audio_worker.py:** Management command - background worker for TTS pre-generation
+  - Actor-based batching (processes one actor's lines at a time)
+  - 60-second grace period for events at/near current time
+  - Stale lock cleanup on startup (crash recovery)
+  - Cleanup of old audio files (>10 min past)
+  - Warmup test validates TTS/file I/O on startup
+- **Web server:** Serves pre-rendered audio files only (no on-demand TTS generation)
+- **Frontend:** Rate-limited HEAD checks (2s per event) to detect when audio is ready
 
 ### Views & User Interface
 
@@ -188,15 +180,19 @@ The views are split into multiple modules under `mysite/universe/views/` for cla
 - **views/universe.py:** universe browsing + object details
   - **universe_view:** hierarchical universe browser
   - **object_details:** API endpoint for baseball-card JSON (delegates to `views/serializers.py`)
-- **views/events.py:** event scroller + event feed
+- **views/events.py:** event scroller + event feed + audio serving
   - **event_feed:** JSON API for polling dialogue events (time-gated by SimulationState)
+  - **event_audio:** Serves pre-rendered audio (returns 202 if pending)
   - **event_scroller / event_scroller_wrapper:** terminal-style UI
   - **clear_events:** deletes DialogueEventLog rows
 - **views/simulation.py:** simulation time control/status APIs
   - **set_time_scale, skip_to_next_event, get_simulation_status**
 - **views/missions.py:** mission spawning
-  - **spawn_mission:** spawns a mission and schedules dialogue into DialogueEventLog
+  - **spawn_mission:** spawns ship, generates route, creates dialogue chain, schedules events
   - **run_demo:** deprecated demo endpoint
+- **views/audio.py:** Audio endpoints
+  - **audio_preset:** Generates procedural audio (quindars, modem noise)
+  - **audio_lab:** Dev tool for testing audio synthesis
 - **templates/universe/:** HTML templates
   - **base.html:** Base template with baseball card JavaScript
   - **index.html:** Universe browser with hierarchical tree view
@@ -219,19 +215,15 @@ The views are split into multiple modules under `mysite/universe/views/` for cla
   - Star, planet, moon generation functions
   - Atmosphere generation
   - Composition and physical property generation
-- **generate_celestials.py:** Celestial body generation utilities
-- **shipping.py:** Shipping and cargo management logic
-- **signals.py & receivers.py:** Django signal handlers and receivers
+- **signals.py & receivers.py:** Django signal handlers (dialogue_event_processed signal → DialogueEventLog)
 - **schemas/dialogue_schema.py:** JSON schemas for dialogue validation
 - **wordlists/:** Text files with word lists for procedural generation
-- **management/commands:** Django commands for universe data manipulation and simulation control
-  - `import_universe`: Import from XML (with --clear option)
+- **management/commands:** Django management commands
+  - `import_universe`: Import from XML
   - `export_universe`: Export to XML
-  - `generate_ships`: Procedurally generate ships
-  - `generate_actors`: Generate pilots and controllers
-  - `run_simulation`: Run simulation loop
-  - `start_simulation_loop`: Start background simulation
-  - `llm_journey`: LLM-driven journey generation
+  - `start_simulation_loop`: Simulation time loop (emits navigation/dialogue events)
+  - `audio_worker`: Background TTS pre-generation worker
+  - `character_dialogue_demo`: Demo dialogue generation
   - And more...
 - **admin.py & migrations:** Django admin interface and schema migrations
 
@@ -246,14 +238,15 @@ The views are split into multiple modules under `mysite/universe/views/` for cla
    - Click celestial objects to view details
    - Baseball card displays physical properties, atmosphere, orbital data
    - API endpoint `/api/universe/<type>/<id>/` provides JSON data
-3. **Mission Creation:** Missions/journeys generated using ships, actors, and navigation routes.
-4. **Event Scheduling:** Dialogue and navigation events are queued based on simulation time.
-5. **Simulation Loop:** The engine processes events as their scheduled times are reached.
-6. **Presentation:** Processed events are rendered via:
-   - Event scroller (scrolling terminal display)
-   - JSON API for real-time polling
-   - Control panel for simulation management
-7. **Export:** The updated universe state can be exported back to XML via `export_universe` command.
+3. **Mission Creation:** `spawn_mission` creates ship, plans route, generates dialogue chain.
+4. **Audio Pre-Generation:** Background `audio_worker` generates TTS audio 1 hour ahead of playback.
+5. **Event Scheduling:** Dialogue events scheduled based on simulation time (stored in `DialogueEventLog`).
+6. **Event Feed:** `event_feed` API returns events when simulation time reaches their timestamp.
+7. **Presentation:** Events displayed via:
+   - Event scroller (scrolling terminal display with TTS audio)
+   - JSON API for real-time polling (checks `audio_ready` flag)
+   - Control panel for simulation management (time scale, skip, spawn missions)
+8. **Export:** Universe state can be exported to XML via `export_universe` command.
 
 ## Key Features
 
@@ -290,9 +283,11 @@ Location (concrete)
 
 ## Simulation Time Management
 
-- **Time Increments:** The simulation loop advances at regular intervals.
-- **Event Queue:** Events are scheduled and processed as their timestamps are reached.
-- **Conflict Resolution:** The scheduler adjusts event timings to avoid overlaps.
+- **SimulationState:** Singleton model tracks simulation time using anchor point + wall clock elapsed × time scale
+- **Time Scaling:** Simulation can run faster or slower than real-time (1x, 60x, 600x, 3600x)
+- **Event Queue:** `DialogueEventLog` entries are time-gated by `event_feed` API
+- **Background Processing:** `audio_worker` pre-generates audio for events 1 hour ahead
+- **Separation of Concerns:** Web server observes simulation state; does not generate audio or run simulation logic
 
 ## Development Guidelines
 
