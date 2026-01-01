@@ -31,6 +31,8 @@ urlpatterns = [
     path("api/simulation/status/", views.get_simulation_status, name="simulation_status"),
     # API endpoint to skip to next event:
     path("api/simulation/skip-to-next/", views.skip_to_next_event, name="skip_to_next_event"),
+    # API endpoint for service health checks:
+    path("api/simulation/health/", views.health_check, name="health_check"),
     # API endpoint to fetch generated event audio (synchronous on-demand)
     path("api/event_audio/<int:event_id>/", views.event_audio, name="event_audio"),
     # Diagnostics: tail recent logs and adjust log level

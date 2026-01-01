@@ -15,11 +15,14 @@
             <span class="status-label">Scale:</span>
             <span id="timeScaleDisplay" class="status-value">1x</span>
             <span class="status-divider">|</span>
+            <span class="status-label">LLM:</span>
+            <span id="llmStatusDisplay" class="status-value" title="LLM server status">🔴</span>
+            <span class="status-divider">|</span>
+            <span class="status-label">TTS:</span>
+            <span id="ttsStatusDisplay" class="status-value" title="TTS audio worker status">🔴</span>
+            <span class="status-divider">|</span>
             <span class="status-label">Event Queue:</span>
             <span id="pendingEventsDisplay" class="status-value pending-count">0 pending</span>
-            <span class="status-divider">|</span>
-            <span class="status-label">TTS Queue:</span>
-            <span id="ttsQueueDisplay" class="status-value tts-count">0 pending</span>
             <span class="status-divider">|</span>
             <span class="status-label">Next in:</span>
             <span id="nextEventDisplay" class="status-value next-event-time">--</span>
@@ -62,6 +65,7 @@
         const DISPLAY_UPDATE_INTERVAL = 200; // Update display at 5Hz for smooth countdown
         const API_ENDPOINT = '{% url "event_feed" %}';
         const STATUS_ENDPOINT = '{% url "simulation_status" %}';
+        const HEALTH_ENDPOINT = '{% url "health_check" %}';
         const TIME_SCALE_ENDPOINT = '{% url "set_time_scale" %}';
         const SKIP_TO_NEXT_ENDPOINT = '{% url "skip_to_next_event" %}';
         
@@ -101,8 +105,9 @@
         const skipToNextButton = document.getElementById('skipToNextButton');
         const simTimeDisplay = document.getElementById('simTimeDisplay');
         const timeScaleDisplay = document.getElementById('timeScaleDisplay');
+        const llmStatusDisplay = document.getElementById('llmStatusDisplay');
+        const ttsStatusDisplay = document.getElementById('ttsStatusDisplay');
         const pendingEventsDisplay = document.getElementById('pendingEventsDisplay');
-        const ttsQueueDisplay = document.getElementById('ttsQueueDisplay');
         const nextEventDisplay = document.getElementById('nextEventDisplay');
         const scaleBtns = document.querySelectorAll('.scale-btn');
         const audioEnableButton = document.getElementById('audioEnableButton');
@@ -691,6 +696,51 @@
         }
         
         /**
+         * Check service health via backend health check endpoint
+         */
+        async function fetchHealth() {
+            try {
+                const response = await fetch(HEALTH_ENDPOINT);
+                if (!response.ok) {
+                    llmStatusDisplay.textContent = '❓';
+                    workerStatusDisplay.textContent = '❓';
+                    return;
+                }
+                
+                const health = await response.json();
+                
+                // Update LLM status
+                if (health.llm) {
+                    if (health.llm.status === 'ok') {
+                        llmStatusDisplay.textContent = '🟢';
+                        llmStatusDisplay.title = 'LLM: ' + health.llm.message;
+                    } else {
+                        llmStatusDisplay.textContent = '🔴';
+                        llmStatusDisplay.title = 'LLM: ' + health.llm.message;
+                    }
+                }
+                
+                // Update TTS worker status
+                if (health.audio_worker) {
+                    if (health.audio_worker.status === 'ok') {
+                        ttsStatusDisplay.textContent = '🟢';
+                        ttsStatusDisplay.title = 'TTS: ' + health.audio_worker.message;
+                    } else if (health.audio_worker.status === 'idle') {
+                        ttsStatusDisplay.textContent = '🟡';
+                        ttsStatusDisplay.title = 'TTS: ' + health.audio_worker.message;
+                    } else {
+                        ttsStatusDisplay.textContent = '🔴';
+                        ttsStatusDisplay.title = 'TTS: ' + health.audio_worker.message;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching health:', error);
+                llmStatusDisplay.textContent = '❓';
+                ttsStatusDisplay.textContent = '❓';
+            }
+        }
+        
+        /**
          * Update display with interpolated time (called at 5Hz for smooth countdown)
          */
         function updateDisplays() {
@@ -707,18 +757,6 @@
             // Update pending events display
             pendingEventsDisplay.textContent = `${pendingEventCount} pending`;
             pendingEventsDisplay.classList.toggle('has-pending', pendingEventCount > 0);
-            
-            // Update TTS queue display
-            if (ttsQueuePending > 0) {
-                ttsQueueDisplay.textContent = `${ttsQueuePending} pending`;
-                ttsQueueDisplay.classList.add('has-pending');
-            } else if (ttsQueueCached > 0) {
-                ttsQueueDisplay.textContent = `${ttsQueueCached} cached`;
-                ttsQueueDisplay.classList.remove('has-pending');
-            } else {
-                ttsQueueDisplay.textContent = 'idle';
-                ttsQueueDisplay.classList.remove('has-pending');
-            }
             
             // Update time until next event (interpolated)
             if (nextEventTimestamp !== null) {
@@ -772,10 +810,12 @@
             // Initial fetch
             fetchEvents();
             fetchStatus();
+            fetchHealth();
             
             // Set up intervals
-            setInterval(fetchEvents, POLL_INTERVAL);  // Poll events every 2s
+            setInterval(fetchEvents, POLL_INTERVAL);  // Poll events every 1s
             setInterval(fetchStatus, STATUS_POLL_INTERVAL);  // Poll server status every 2s
+            setInterval(fetchHealth, 10000);  // Poll health every 10s
             setInterval(updateDisplays, DISPLAY_UPDATE_INTERVAL);  // Update display at 5Hz
         }
         
@@ -817,15 +857,20 @@
                 if (response.ok) {
                     const data = await response.json();
                     console.log('Events cleared:', data.message);
-                    // Clear the display too
+                    // Clear ALL state - display, queues, and audio tracking
                     eventLog.innerHTML = '';
                     eventQueue = [];
                     displayedEventIds.clear();
-                    lastEventCursor = null; // Reset so we fetch from beginning
-                    // Reset catch-up state - new events will use normal speed
+                    lastEventCursor = null;
+                    // Clear audio waiting state
+                    waitingAudio.clear();
+                    lastAudioCheck.clear();
+                    inflightAudioChecks.clear();
+                    // Reset catch-up state
                     pageLoadSimTime = currentSimTime;
-                    catchUpComplete = true; // Start fresh, no catch-up needed
+                    catchUpComplete = true;
                     eventContainer.scrollTop = 0;
+                    console.log('All client state cleared - ready for new events');
                 } else {
                     throw new Error('Failed to clear events');
                 }
