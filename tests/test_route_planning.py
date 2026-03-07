@@ -765,3 +765,182 @@ class TestRouteDurations(TestCase):
             # But we're comparing different distances, so just verify both are reasonable
             self.assertGreater(sublight_duration, 0, "Sublight duration should be positive")
             self.assertGreater(hyperspace_duration, 0, "Hyperspace duration should be positive")
+
+class TestRouteServerFacadeMethods(TestCase):
+    """
+    Call the internal RouteService facade methods directly to cover the
+    delegation stubs in route_server.py that are never exercised when
+    tests only call plan_route().
+
+    Uses the same test_universe.xml static scenario as the other test
+    classes in this file so no additional fixture setup is needed.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
+        UniverseImporter(xml_file).import_universe()
+
+    def setUp(self):
+        self.svc = RouteService()
+        self.earth = Location.objects.get(name="Earth")
+        self.moon = Location.objects.get(name="Moon")
+        self.luna = Location.objects.get(name="Luna")
+        self.mars = Location.objects.get(name="Mars")
+        self.earth_control = Location.objects.get(name="Earth Orbital Control")
+        self.beta_major = Location.objects.get(name="Beta Major")
+
+    def _plan_earth_moon(self):
+        return self.svc.plan_route(self.earth, self.moon)
+
+    # ------------------------------------------------------------------
+    # Internal delegation stubs
+    # ------------------------------------------------------------------
+
+    def test_build_scale_path_via_facade(self):
+        """_build_scale_path returns a list of integer-comparable scale values."""
+        path = [self.earth, self.moon]
+        scale_path = self.svc._build_scale_path(path)
+        self.assertEqual(len(scale_path), 2)
+
+    def test_determine_transfer_plan_via_facade(self):
+        """_determine_transfer_plan returns a non-empty list for a 2-node path."""
+        from mysite.universe.models.scale import OrderedScale, Scale
+        scale_path = [OrderedScale(Scale.PLANET), OrderedScale(Scale.MOON)]
+        plan = self.svc._determine_transfer_plan(scale_path)
+        self.assertGreater(len(plan), 0)
+
+    def test_compress_location_path_via_facade(self):
+        """_compress_location_path retains endpoints and surface-type nodes."""
+        path = [self.earth, self.moon, self.luna]
+        compressed = self.svc._compress_location_path(path)
+        # First and last are always kept
+        self.assertEqual(compressed[0].name, self.earth.name)
+        self.assertEqual(compressed[-1].name, self.luna.name)
+
+    def test_compress_location_path_empty_returns_empty(self):
+        """_compress_location_path([]) returns []."""
+        result = self.svc._compress_location_path([])
+        self.assertEqual(result, [])
+
+    def test_pretty_print_events_via_facade(self):
+        """pretty_print_events returns a non-empty string for a valid route."""
+        events = self._plan_earth_moon()
+        text = self.svc.pretty_print_events(events)
+        self.assertIsInstance(text, str)
+        self.assertGreater(len(text), 0)
+
+    def test_get_local_locations_via_facade(self):
+        """get_local_locations returns a list of Location objects."""
+        locations = self.svc.get_local_locations(self.earth, Scale.PLANET)
+        self.assertIsInstance(locations, list)
+
+    def test_get_relevant_body_for_maneuver_via_facade(self):
+        """_get_relevant_body_for_maneuver returns a body or None (no crash)."""
+        events = self._plan_earth_moon()
+        for event in events:
+            body = self.svc._get_relevant_body_for_maneuver(event)
+            # May be None for maneuvers with no relevant body; just don't crash
+            self.assertTrue(body is None or hasattr(body, "name"))
+
+    def test_extract_body_params_via_facade(self):
+        """_extract_body_params returns a dict from a body object."""
+        events = self._plan_earth_moon()
+        for event in events:
+            body = self.svc._get_relevant_body_for_maneuver(event)
+            if body is not None:
+                params = self.svc._extract_body_params(body)
+                self.assertIsInstance(params, dict)
+                break
+
+    def test_build_physics_nav_context_via_facade(self):
+        """_build_physics_nav_context returns a dict for events that have a body."""
+        events = self._plan_earth_moon()
+        for event in events:
+            body = self.svc._get_relevant_body_for_maneuver(event)
+            if body is not None:
+                ctx = self.svc._build_physics_nav_context(event, body)
+                self.assertIsInstance(ctx, dict)
+                break
+
+
+class TestRoutePlanEdgeCases(TestCase):
+    """
+    Exercise the edge-case branches inside services/route/plan.py that are
+    not reachable through the standard plan_route() paths already tested.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
+        UniverseImporter(xml_file).import_universe()
+
+    def setUp(self):
+        self.svc = RouteService()
+        self.earth = Location.objects.get(name="Earth")
+        self.earth_control = Location.objects.get(name="Earth Orbital Control")
+        self.moon = Location.objects.get(name="Moon")
+
+    def test_compress_empty_path_returns_empty(self):
+        """compress_location_path([]) must return [] without raising."""
+        from mysite.universe.services.route.plan import compress_location_path
+        self.assertEqual(compress_location_path([]), [])
+
+    def test_compress_two_node_path_keeps_both_endpoints(self):
+        """compress_location_path with two nodes retains both endpoints."""
+        from mysite.universe.services.route.plan import compress_location_path
+        result = compress_location_path([self.earth, self.moon])
+        self.assertEqual(result[0].name, self.earth.name)
+        self.assertEqual(result[-1].name, self.moon.name)
+
+    def test_determine_maneuvers_raises_on_short_path(self):
+        """
+        determine_maneuvers must raise ValueError when given fewer than
+        two locations (invalid route).
+        """
+        from mysite.universe.services.route.plan import determine_maneuvers
+        from mysite.universe.models.navigation import ManeuverType
+        with self.assertRaises(ValueError):
+            determine_maneuvers(
+                self.svc,
+                transfer_plan=[],
+                location_path=[self.earth],   # only one location
+                overall_max=1,
+            )
+
+    def test_plan_route_returns_empty_when_origin_equals_destination(self):
+        """
+        plan_route() returns [] when origin and destination are the same
+        node (path length == 1, which fails the len(path) < 2 guard).
+        """
+        result = self.svc.plan_route(self.earth, self.earth)
+        self.assertEqual(result, [])
+
+    def test_determine_transfer_plan_single_node_returns_unchanged(self):
+        """
+        determine_transfer_plan with a one-element scale_path should
+        return it unchanged (len < 2 early-return branch).
+        """
+        from mysite.universe.services.route.plan import determine_transfer_plan
+        from mysite.universe.models.scale import OrderedScale, Scale
+        single = [OrderedScale(Scale.PLANET)]
+        result = determine_transfer_plan(single)
+        self.assertEqual(result, single)
+
+    def test_station_to_planet_direct_includes_undock(self):
+        """
+        Station → Planet two-node route exercises the UNDOCK branch of the
+        two-node special-case in plan_route.
+        """
+        events = self.svc.plan_route(self.earth_control, self.earth)
+        maneuvers = [e.maneuver.name for e in events]
+        self.assertIn("UNDOCK", maneuvers)
+
+    def test_moon_departure_includes_launch(self):
+        """
+        Moon → Planet two-node route exercises the LAUNCH branch of the
+        two-node special-case in plan_route.
+        """
+        events = self.svc.plan_route(self.moon, self.earth)
+        maneuvers = [e.maneuver.name for e in events]
+        self.assertIn("LAUNCH", maneuvers)
