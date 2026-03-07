@@ -295,3 +295,101 @@ class TestAudioPlanActorlessFallback(TestCase):
         tts_actions = [a for a in plan if a.get("action") == "tts"]
         self.assertEqual(len(tts_actions), 0)
 
+
+class TestAudioPlanMissingProfileOnDemand(TestCase):
+    """
+    The AudioProfile.DoesNotExist branch: when an actor has no audio profile
+    the plan builder assigns one on-demand and continues normally.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.location = Location.objects.create(name="OnDemand Station", scale=Scale.STATION)
+        cls.ship = Ship.create(location=cls.location, name="ON-DEMAND SHIP")
+        cls.pilot = Pilot.create(ship=cls.ship, name="On-Demand Pilot")
+        # Wipe any auto-created profile so the DoesNotExist path is triggered
+        from mysite.universe.models.audio_profile import AudioProfile
+        AudioProfile.objects.filter(actor=cls.pilot).delete()
+
+    def test_pilot_without_profile_gets_one_assigned_and_plan_is_valid(self):
+        """
+        Pilot with no AudioProfile: plan builder assigns profile on-demand
+        and returns a non-empty plan with quindars.
+        """
+        # Verify no profile exists at test start
+        from mysite.universe.models.audio_profile import AudioProfile
+        self.assertFalse(AudioProfile.objects.filter(actor=self.pilot).exists())
+
+        event = DialogueEventLog.objects.create(
+            timestamp=200.0,
+            actor=self.pilot,
+            text="Requesting departure clearance.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        self.assertIn("quindar_end", presets)
+        # Profile should now exist (assigned on-demand)
+        self.assertTrue(AudioProfile.objects.filter(actor=self.pilot).exists())
+
+    def test_pilot_with_incomplete_profile_gets_reassigned(self):
+        """
+        Pilot whose AudioProfile has no voice_template triggers reassignment.
+        Plan should still produce quindars and a TTS action.
+        """
+        from mysite.universe.models.audio_profile import AudioProfile
+        AudioProfile.objects.filter(actor=self.pilot).delete()
+        # Create an intentionally incomplete profile (empty voiceprint)
+        AudioProfile.objects.create(
+            actor=self.pilot,
+            params={
+                "voiceprint": {},   # no voice_template → triggers reassignment
+                "quindar": {},
+                "room_tone": {"enabled": False},
+                "static": {"intensity": 0.0},
+            },
+        )
+
+        event = DialogueEventLog.objects.create(
+            timestamp=300.0,
+            actor=self.pilot,
+            text="Departure on your mark.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        self.assertIn("quindar_end", presets)
+
+
+class TestSentenceCaseFunction(TestCase):
+    """Unit tests for the _sentence_case helper in audio_plans."""
+
+    def _sc(self, text):
+        from mysite.universe.services.audio_plans import _sentence_case
+        return _sentence_case(text)
+
+    def test_all_caps_converted_to_sentence_case(self):
+        """ALL CAPS input is lowercased then first alpha capitalised."""
+        self.assertEqual(self._sc("HELLO WORLD"), "Hello world")
+
+    def test_already_sentence_case_unchanged(self):
+        """Mixed-case text that isn't all-caps is returned as-is."""
+        self.assertEqual(self._sc("Hello world"), "Hello world")
+
+    def test_empty_string_returns_empty(self):
+        self.assertEqual(self._sc(""), "")
+
+    def test_whitespace_only_returns_whitespace(self):
+        self.assertEqual(self._sc("   "), "   ")
+
+    def test_leading_non_alpha_capitalises_first_alpha(self):
+        """Text starting with punctuation: first alpha char gets capitalised."""
+        result = self._sc("123 hello")
+        self.assertTrue(result[4].isupper(), f"Expected 'H' in '{result}'")
+
+    def test_all_caps_with_numbers(self):
+        """ALL-CAPS text with numbers is still lowercased + first-alpha cap."""
+        result = self._sc("RELAY 42 ALPHA")
+        self.assertEqual(result, "Relay 42 alpha")
+

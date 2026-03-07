@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
@@ -67,4 +68,77 @@ class TestSimulationViews(TestCase):
         assert data["status"] == "success"
         assert data["simulation_time"] >= 1500.0
         assert data["next_event_actor"] == "Tester"
+
+
+class TestHealthCheckView(TestCase):
+    """Tests for the GET /api/simulation/health/ endpoint.
+
+    The health check probes localhost:11434 (Ollama LLM server), which is
+    expected to be unavailable in CI.  All paths through the LLM check are
+    reachable via mocking; the audio-worker section uses real DB queries.
+    """
+
+    def setUp(self):
+        SimulationState.objects.all().delete()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.create(pk=1, anchor_sim_time=0.0, anchor_wall_clock=0.0, time_scale=0.0)
+
+    def test_health_check_returns_200_json(self):
+        """Endpoint always returns 200 with a JSON body."""
+        url = reverse("health_check")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("llm", data)
+        self.assertIn("audio_worker", data)
+
+    def test_llm_connection_error_yields_error_status(self):
+        """When localhost:11434 is unreachable the llm key reports 'error'."""
+        import requests as req_module
+        url = reverse("health_check")
+        with patch("requests.get", side_effect=req_module.exceptions.ConnectionError("no server")):
+            resp = self.client.get(url)
+        data = resp.json()
+        self.assertEqual(data["llm"]["status"], "error")
+        self.assertIn("Cannot connect", data["llm"]["message"])
+
+    def test_llm_server_ok_response(self):
+        """When /v1/models returns 200 the llm key reports 'ok'."""
+        url = reverse("health_check")
+        mock_resp = type("R", (), {"status_code": 200})()
+        with patch("requests.get", return_value=mock_resp):
+            resp = self.client.get(url)
+        data = resp.json()
+        self.assertEqual(data["llm"]["status"], "ok")
+
+    def test_llm_server_non_200_response(self):
+        """When /v1/models returns non-200 the llm key reports 'error'."""
+        url = reverse("health_check")
+        mock_resp = type("R", (), {"status_code": 503})()
+        with patch("requests.get", return_value=mock_resp):
+            resp = self.client.get(url)
+        data = resp.json()
+        self.assertEqual(data["llm"]["status"], "error")
+
+    def test_audio_worker_idle_when_no_pending_events(self):
+        """With no events pending audio, audio_worker status is 'idle'."""
+        url = reverse("health_check")
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            resp = self.client.get(url)
+        data = resp.json()
+        self.assertEqual(data["audio_worker"]["status"], "idle")
+
+    def test_audio_worker_warning_when_pending_but_no_recent_generation(self):
+        """Events needing audio but no recent generation → 'warning'."""
+        # Create an event within the 1-hour lookahead window but with no audio
+        DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor_name="Test Pilot",
+            text="Testing audio worker health.",
+        )
+        url = reverse("health_check")
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            resp = self.client.get(url)
+        data = resp.json()
+        self.assertEqual(data["audio_worker"]["status"], "warning")
 
