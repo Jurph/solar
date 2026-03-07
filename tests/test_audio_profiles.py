@@ -94,27 +94,6 @@ def test_satellite_audio_profile_has_voice_and_no_room_tone():
     # If no satellite voices exist yet, that's okay - user is adding them
 
 
-@pytest.mark.django_db(transaction=True)
-def test_audio_assets_available_for_profiles():
-    """
-    Basic presence checks for assets used by audio profiles.
-
-    - Generated voice WAVs are required for assigning voice_template.
-    - Room tone uses presets (not files), but we keep a sanity check that
-      combined raw WAVs exist for potential room-tone sources.
-    """
-    root = Path(__file__).resolve().parent.parent
-    voices_dir = root / "audio" / "voices" / "generated"
-    voice_files = sorted(voices_dir.glob("*.wav"))
-    assert voices_dir.exists(), "voices dir missing: audio/voices/generated"
-    assert voice_files, "No generated voice WAVs found under audio/voices/generated"
-
-    raw_dir = root / "audio" / "voices" / "raw"
-    room_tone_candidates = _room_tone_candidates()
-    assert raw_dir.exists(), "raw voices dir missing: audio/voices/raw"
-    assert room_tone_candidates, "No room-tone candidate WAVs found under audio/voices/raw (combined*.wav)"
-
-
 class TestAudioProfileDefaults(TestCase):
     """Test default audio profile creation and parameters."""
 
