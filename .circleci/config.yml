@@ -17,6 +17,7 @@ jobs:
           name: Install dependencies
           command: |
             pip install --upgrade pip
+            pip install numpy  # pre-install so pkuseg can build from source
             pip install -r requirements.txt
       
       - save_cache:
