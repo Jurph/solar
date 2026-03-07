@@ -103,14 +103,14 @@ class TestAudioPlanSatelliteSpecifics(TestCase):
 
 class TestAudioPlanPilotSpecifics(TestCase):
     """Test audio plan for Pilot actors."""
-    
+
     @classmethod
     def setUpTestData(cls):
         """Set up test data."""
         cls.location = Location.objects.create(name="Test Station", scale=Scale.STATION)
         cls.ship = Ship.create(location=cls.location, name="TEST SHIP")
         cls.pilot = Pilot.create(ship=cls.ship, name="Test Pilot")
-    
+
     def test_audio_plan_for_pilot_uses_quindar(self):
         """Test that Pilot actors get Quindar tones in audio plan."""
         # Create a dialogue event from pilot
@@ -119,14 +119,179 @@ class TestAudioPlanPilotSpecifics(TestCase):
             actor=self.pilot,
             text="Requesting clearance for departure."
         )
-        
+
         audio_plan = build_audio_plan_for_dialogue_event(event)
-        
+
         # Should have Quindar tones
         quindar_actions = [a for a in audio_plan if "quindar" in a.get("preset", "")]
         self.assertGreater(len(quindar_actions), 0, "Pilot events should use Quindar tones")
-        
+
         # Should NOT have modem noise
         modem_actions = [a for a in audio_plan if "modem_noise" in a.get("preset", "")]
         self.assertEqual(len(modem_actions), 0, "Pilot events should NOT use modem noise")
+
+
+class TestAudioPlanControllerSpecifics(TestCase):
+    """Test audio plan for Controller actors (room tone branch)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from mysite.universe.models.actor import Controller
+        cls.location = Location.objects.create(name="Controller Station", scale=Scale.STATION)
+        cls.controller = Controller.create(location=cls.location)
+        cls.controller.name = "Test Control"
+        cls.controller.save()
+
+    def test_controller_plan_has_quindars(self):
+        """Controller events always have Quindar start and end tones."""
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=self.controller,
+            text="You are cleared for departure.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        self.assertIn("quindar_end", presets)
+
+    def test_controller_plan_has_no_modem_noise(self):
+        """Controller events must not include modem noise."""
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=self.controller,
+            text="Proceed to holding pattern.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        modem_actions = [a for a in plan if "modem_noise" in a.get("preset", "")]
+        self.assertEqual(len(modem_actions), 0, "Controllers should never have modem noise")
+
+    def test_controller_plan_has_room_tone_when_profile_enables_it(self):
+        """When the controller profile sets room_tone enabled, a room_tone action appears."""
+        from mysite.universe.models.audio_profile import AudioProfile
+        # Ensure profile has room tone enabled with a wav file
+        AudioProfile.objects.filter(actor=self.controller).delete()
+        AudioProfile.objects.create(
+            actor=self.controller,
+            params={
+                "room_tone": {
+                    "enabled": True,
+                    "wav_file": "Control_station_noise.wav",
+                    "engine_rumble_intensity": 0.0,
+                },
+                "static": {"intensity": 0.0},
+                "quindar": {},
+                "voiceprint": {"voice_template": "controller-default"},
+            },
+        )
+        event = DialogueEventLog.objects.create(
+            timestamp=200.0,
+            actor=self.controller,
+            text="Copy, stand by.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        room_tone_actions = [a for a in plan if a.get("type") == "room_tone"]
+        self.assertGreater(len(room_tone_actions), 0, "Controller should have room_tone when enabled")
+        # Verify the wav_url points to the correct file
+        wav_url = room_tone_actions[0].get("wav_url", "")
+        self.assertIn("Control_station_noise.wav", wav_url)
+
+    def test_controller_plan_has_no_room_tone_when_disabled(self):
+        """When room_tone disabled in profile, no room_tone action appears."""
+        from mysite.universe.models.audio_profile import AudioProfile
+        AudioProfile.objects.filter(actor=self.controller).delete()
+        AudioProfile.objects.create(
+            actor=self.controller,
+            params={
+                "room_tone": {"enabled": False},
+                "static": {"intensity": 0.0},
+                "quindar": {},
+                # voice_template must be set or the code will reassign the whole profile
+                "voiceprint": {"voice_template": "controller-default"},
+            },
+        )
+        event = DialogueEventLog.objects.create(
+            timestamp=300.0,
+            actor=self.controller,
+            text="Negative, hold position.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        room_tone_actions = [a for a in plan if a.get("type") == "room_tone"]
+        self.assertEqual(len(room_tone_actions), 0)
+
+
+class TestAudioPlanStaticLayer(TestCase):
+    """Test static noise layer inclusion/exclusion."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.location = Location.objects.create(name="Static Test Station", scale=Scale.STATION)
+        cls.ship = Ship.create(location=cls.location, name="STATIC SHIP")
+        cls.pilot = Pilot.create(ship=cls.ship, name="Static Pilot")
+
+    def test_static_layer_included_when_intensity_nonzero(self):
+        """When static intensity > 0 in profile, static action is in plan."""
+        from mysite.universe.models.audio_profile import AudioProfile
+        AudioProfile.objects.filter(actor=self.pilot).delete()
+        AudioProfile.objects.create(
+            actor=self.pilot,
+            params={
+                "static": {"intensity": 0.1},
+                "room_tone": {"enabled": False},
+                "quindar": {},
+                "voiceprint": {"voice_template": "pilot-default"},
+            },
+        )
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=self.pilot,
+            text="Requesting departure clearance.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        static_actions = [a for a in plan if "static" in a.get("preset", "")]
+        self.assertGreater(len(static_actions), 0, "Should have static layer when intensity > 0")
+
+    def test_static_layer_excluded_when_intensity_zero(self):
+        """When static intensity == 0, no static action in plan."""
+        from mysite.universe.models.audio_profile import AudioProfile
+        AudioProfile.objects.filter(actor=self.pilot).delete()
+        AudioProfile.objects.create(
+            actor=self.pilot,
+            params={
+                "static": {"intensity": 0.0},
+                "room_tone": {"enabled": False},
+                "quindar": {},
+                "voiceprint": {"voice_template": "pilot-default"},
+            },
+        )
+        event = DialogueEventLog.objects.create(
+            timestamp=200.0,
+            actor=self.pilot,
+            text="On departure now.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        static_actions = [a for a in plan if "static" in a.get("preset", "")]
+        self.assertEqual(len(static_actions), 0)
+
+
+class TestAudioPlanActorlessFallback(TestCase):
+    """Test fallback behavior when event has no actor reference."""
+
+    def test_actorless_event_returns_minimal_plan(self):
+        """Event with no actor FK returns minimal plan with quindars only."""
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=None,
+            actor_name="Ghost Speaker",
+            text="Hello, is anyone there?",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        # Should have exactly quindar_start and quindar_end
+        presets = [a.get("preset") for a in plan]
+        self.assertIn("quindar_start", presets)
+        self.assertIn("quindar_end", presets)
+        # Should NOT have room tone, TTS, or modem noise
+        self.assertNotIn("room_tone", [a.get("type") for a in plan])
+        self.assertNotIn("modem_noise_example", presets)
+        tts_actions = [a for a in plan if a.get("action") == "tts"]
+        self.assertEqual(len(tts_actions), 0)
 
