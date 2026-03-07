@@ -7,7 +7,7 @@ solar/
 ├── docs/                         # Project documentation
 │   ├── ARCHITECTURE.md           # Architecture documentation (this file)
 │   ├── TODO.md                   # Future development plans & feature backlog
-│   ├── CELESTIAL_MODEL_PLAN.md   # Celestial model refactoring plan
+│   ├── PHYSICS_BASED_CONTROLLER_RESPONSES.md  # Controller parameter generation notes
 │   ├── STORED_VS_CALCULATED_PROPERTIES.md  # Property storage decisions
 │   ├── MIGRATION_MANAGEMENT.md   # Migration best practices
 │   └── [other planning docs]
