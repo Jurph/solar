@@ -76,10 +76,7 @@ Added to `README.md`:
 1. Go to https://circleci.com/
 2. Sign in with GitHub
 3. Add project: "Jurph/solar"
-4. **Enable uncertified orbs:**
-   - Go to Organization Settings → Security
-   - Enable "Allow uncertified public orbs"
-5. CircleCI will automatically detect `.circleci/config.yml`
+4. CircleCI will automatically detect `.circleci/config.yml`
 
 ### 2. Enable Codecov
 1. Go to https://codecov.io/
