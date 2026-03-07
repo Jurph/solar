@@ -25,45 +25,83 @@ The goal is something you can leave running in the background like a radio - shi
 
 ## Requirements
 
-You need three things running to get the full experience:
+For the full experience you want:
 
-1. **Python 3.10+** with a virtual environment
-2. **An OpenAI-compatible LLM endpoint** - Ollama is the easiest option locally
-3. **A local GPU with CUDA** for TTS (Chatterbox runs on-device)
+1. **Python 3.10+**
+2. **An OpenAI-compatible LLM endpoint**
+3. **A local GPU with CUDA** for TTS (`chatterbox-tts` runs on-device)
 
-> **GPU note:** The LLM and TTS may compete for VRAM on smaller GPUs. If mission spawning fails, stop the audio worker first, spawn the mission, then restart it.
+Ollama is the easiest local LLM option, but it is not required. Solar talks to an OpenAI-compatible API, so you can point it at whatever you already use.
+
+> **GPU note:** on smaller cards, the LLM and TTS may compete for VRAM. If mission spawning starts failing while the audio worker is running, stop the worker, generate the mission, then start the worker again.
 
 ---
 
 ## Quick start
 
+The easiest way to run the project is to use the launch scripts:
+
+- **Windows:** `launch-django.bat`
+- **Linux/macOS:** `./launch-django.sh`
+
+Those scripts handle the virtual environment, migrations, and Django startup. They also try to start Ollama if it is installed.
+
+If you prefer to do things manually, `venv`, `uv`, and `conda` are all fine.
+
+### Manual setup
+
+1. Create and activate an environment.
+
+**Using `venv`:**
 ```bash
-# 1. Create and activate a virtual environment
 python -m venv venv
 source venv/bin/activate        # Linux/macOS
 venv\Scripts\activate           # Windows
+```
 
-# 2. Install PyTorch for your CUDA version first
-# See: https://pytorch.org/get-started/locally/
+**Using `uv`:**
+```bash
+uv venv --python 3.10
+source .venv/bin/activate       # Linux/macOS
+.venv\Scripts\activate          # Windows
+```
 
-# 3. Install everything else
+**Using `conda`:**
+```bash
+conda create -n solar python=3.10
+conda activate solar
+```
+
+2. Install PyTorch for your CUDA version first.  
+   See: <https://pytorch.org/get-started/locally/>
+
+3. Install the rest of the dependencies.
+```bash
 pip install -r requirements.txt
+```
 
-# 4. Run migrations
+4. Run migrations.
+```bash
 cd mysite
 python manage.py migrate
+```
 
-# 5. Start an LLM (Ollama example)
-ollama serve   # in a separate terminal
+5. Start an LLM endpoint if you want dialogue generation.
+```bash
+ollama serve
+```
 
-# 6. Start Django
+6. Start Django.
+```bash
 python manage.py runserver
+```
 
-# 7. (Optional) Start the audio worker in a third terminal
+7. Optionally start the audio worker if you want pre-generated TTS audio.
+```bash
 python manage.py audio_worker
 ```
 
-Or on Windows/Linux you can use the launch scripts (`launch-django.bat` / `launch-django.sh`) which handle the venv setup and migrations automatically.
+You do **not** need to start everything at once just to poke around. If you only want to browse the universe or inspect the UI, Django by itself is enough. The audio worker is only needed for the fully rendered comms experience.
 
 ---
 
@@ -82,14 +120,14 @@ Once Django is running, open a browser to one of these:
 
 ## LLM setup
 
-Solar uses any OpenAI-compatible endpoint. The default assumes Ollama at `localhost:11434`.
+Solar uses any OpenAI-compatible endpoint. The default (in `llm_service.py`) assumes Ollama at `localhost:11434`.
 
 ```bash
 ollama pull qwen2.5:1.5b    # recommended balance of speed and quality
 ollama serve
 ```
 
-A smaller model like `qwen2.5:0.5b` works but produces noticeably weaker dialogue. `llama3` is better still if you have the VRAM. You can point Solar at a remote API (OpenAI, Anthropic via proxy, etc.) by editing `llm_service.py`.
+A smaller model like `qwen2.5:0.5b` works but produces noticeably weaker dialogue. `llama3` is better still if you have the VRAM. You can point Solar at a remote API (OpenAI, Anthropic via proxy, etc.) by editing the `llm_service.py` file.
 
 ---
 
@@ -107,7 +145,7 @@ A smaller model like `qwen2.5:0.5b` works but produces noticeably weaker dialogu
 | Audio mixing | Custom pipeline | Quindars, room tone, modem noise |
 | Audio pre-generation | Django management command (`audio_worker`) | Renders audio 1hr ahead of playback |
 | Frontend | Django templates + vanilla JS | No framework |
-| Testing | pytest + pytest-django | 390+ tests |
+| Testing | pytest + pytest-django |  |
 | CI / coverage | CircleCI + Codecov | Runs on every push |
 
 ---
@@ -140,6 +178,5 @@ Slow tests require a running LLM and GPU. The CI pipeline runs fast tests only.
 ## Further reading
 
 - [`docs/TODO.md`](docs/TODO.md) - roadmap and feature backlog
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - detailed system architecture
-- [`docs/audio_worker_design.md`](docs/audio_worker_design.md) - audio pre-generation design
+- [`Bibliography/`](bibliography/) - peer-reviewed papers that shaped our procedurally generated galaxy 
 - [`docs/CI_CD_SETUP.md`](docs/CI_CD_SETUP.md) - CI and Codecov setup
