@@ -19,7 +19,7 @@ openai>=2.8.0
 requests>=2.32.0
 
 # TTS integration
-chatterbox-tts>=0.1.2
+chatterbox-tts==0.1.6
 torch>=2.0.0
 torchaudio>=2.0.0
 numpy>=1.23
