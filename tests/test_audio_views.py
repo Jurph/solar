@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import io
+import os
 import wave
 
+from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.core.files.base import ContentFile
@@ -189,3 +191,193 @@ class TestEventAudioEndpoint(TestCase):
         self.assertTrue(response.content.startswith(b'RIFF'))
         self.assertEqual(response.content, wav_bytes)
 
+
+class TestEventAudioDegradedStates(TestCase):
+    """
+    Tests for event_audio endpoint under degraded / seam conditions.
+
+    Policy encoded here:
+    - 404 means event does not exist
+    - 202 means event exists but audio is not currently available
+    - Cache wins over stale/missing audio_file references
+    """
+
+    def setUp(self):
+        self.client = Client()
+        cache.clear()  # Prevent ID-reuse cache pollution between tests
+        self.actor = Pilot.objects.create(name="Degraded State Pilot")
+
+    def _create_minimal_wav(self) -> bytes:
+        with io.BytesIO() as buf:
+            with wave.open(buf, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(22050)
+                wf.writeframes(b'\x00' * (22050 // 10 * 2))
+            return buf.getvalue()
+
+    def _make_event(self) -> DialogueEventLog:
+        return DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=self.actor,
+            actor_name=self.actor.name,
+            text="Test message.",
+        )
+
+    # --- 404 policy: event does not exist ---
+
+    def test_get_missing_event_returns_404(self):
+        """GET for a nonexistent event_id returns 404, not 202."""
+        response = self.client.get('/api/event_audio/999999/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_head_missing_event_returns_404(self):
+        """HEAD for a nonexistent event_id returns 404."""
+        response = self.client.head('/api/event_audio/999999/')
+        self.assertEqual(response.status_code, 404)
+
+    # --- Stale audio_file, no cache: event exists but audio is unavailable ---
+
+    def test_stale_audio_file_cache_miss_returns_202(self):
+        """
+        Event row has audio_file name set but file was deleted from disk.
+        No cache entry exists.  Endpoint must return 202 (not 500 or 404).
+        """
+        event = self._make_event()
+        wav_bytes = self._create_minimal_wav()
+        event.audio_file.save(f'event_{event.id}.wav', ContentFile(wav_bytes))
+        os.remove(event.audio_file.path)  # Simulate stale reference
+
+        response = self.client.get(f'/api/event_audio/{event.id}/')
+        self.assertEqual(response.status_code, 202)
+
+    def test_head_stale_audio_file_cache_miss_returns_202(self):
+        """HEAD: stale audio_file with no cache → 202."""
+        event = self._make_event()
+        wav_bytes = self._create_minimal_wav()
+        event.audio_file.save(f'event_{event.id}.wav', ContentFile(wav_bytes))
+        os.remove(event.audio_file.path)
+
+        response = self.client.head(f'/api/event_audio/{event.id}/')
+        self.assertEqual(response.status_code, 202)
+
+    # --- Cache wins over stale/missing audio_file ---
+
+    def test_stale_audio_file_cache_hit_returns_200(self):
+        """
+        Event row has audio_file name set but file was deleted from disk.
+        Cache has mixed audio.  Cache wins: endpoint returns 200.
+        """
+        event = self._make_event()
+        wav_bytes = self._create_minimal_wav()
+        event.audio_file.save(f'event_{event.id}.wav', ContentFile(wav_bytes))
+        os.remove(event.audio_file.path)  # Stale reference
+        cache.set(f"mixed_audio:{event.id}", wav_bytes)
+
+        response = self.client.get(f'/api/event_audio/{event.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'audio/wav')
+
+    def test_head_stale_audio_file_cache_hit_returns_200(self):
+        """HEAD: stale audio_file + cache hit → 200."""
+        event = self._make_event()
+        wav_bytes = self._create_minimal_wav()
+        event.audio_file.save(f'event_{event.id}.wav', ContentFile(wav_bytes))
+        os.remove(event.audio_file.path)
+        cache.set(f"mixed_audio:{event.id}", wav_bytes)
+
+        response = self.client.head(f'/api/event_audio/{event.id}/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_no_audio_file_cache_hit_returns_200(self):
+        """
+        Event has no audio_file at all, but cache has mixed audio.
+        Endpoint must return 200 (cached audio is still audio).
+        """
+        event = self._make_event()
+        wav_bytes = self._create_minimal_wav()
+        cache.set(f"mixed_audio:{event.id}", wav_bytes)
+
+        response = self.client.get(f'/api/event_audio/{event.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'audio/wav')
+
+    def test_head_no_audio_file_cache_hit_returns_200(self):
+        """HEAD: no audio_file, but cache has data → 200."""
+        event = self._make_event()
+        wav_bytes = self._create_minimal_wav()
+        cache.set(f"mixed_audio:{event.id}", wav_bytes)
+
+        response = self.client.head(f'/api/event_audio/{event.id}/')
+        self.assertEqual(response.status_code, 200)
+
+
+class TestClearEventsFullReset(TestCase):
+    """
+    Tests for clear_events covering all three affected layers:
+    database rows, audio files on disk, and Django cache.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        cache.clear()
+
+    def _create_minimal_wav(self) -> bytes:
+        with io.BytesIO() as buf:
+            with wave.open(buf, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(22050)
+                wf.writeframes(b'\x00' * (22050 // 10 * 2))
+            return buf.getvalue()
+
+    def test_clear_events_removes_cache_keys(self):
+        """clear_events calls cache.clear() so mixed_audio cache entries are gone."""
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor_name="Test Pilot",
+            text="Test.",
+        )
+        wav_bytes = self._create_minimal_wav()
+        cache.set(f"mixed_audio:{event.id}", wav_bytes)
+        self.assertIsNotNone(cache.get(f"mixed_audio:{event.id}"))
+
+        self.client.post('/api/clear-events/')
+
+        self.assertIsNone(
+            cache.get(f"mixed_audio:{event.id}"),
+            "Cache entry should be gone after clear_events",
+        )
+
+    def test_event_audio_after_clear_returns_404(self):
+        """After clear_events, requesting audio for a deleted event returns 404."""
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor_name="Test Pilot",
+            text="Test.",
+        )
+        event_id = event.id
+
+        self.client.post('/api/clear-events/')
+
+        response = self.client.get(f'/api/event_audio/{event_id}/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_clear_events_with_audio_file_deletes_file(self):
+        """clear_events deletes audio files on disk, not just DB rows."""
+        actor = Pilot.objects.create(name="File Deletion Pilot")
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=actor,
+            actor_name=actor.name,
+            text="Test.",
+        )
+        wav_bytes = self._create_minimal_wav()
+        event.audio_file.save(f'event_{event.id}.wav', ContentFile(wav_bytes))
+        file_path = event.audio_file.path
+        self.assertTrue(os.path.exists(file_path))
+
+        self.client.post('/api/clear-events/')
+
+        self.assertFalse(os.path.exists(file_path), "Audio file should be deleted by clear_events")

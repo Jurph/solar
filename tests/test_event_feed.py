@@ -6,7 +6,10 @@ These tests verify the core business logic:
 - Pagination: after_id correctly filters for incremental updates
 - Error handling: invalid inputs are handled gracefully
 """
+import io
 import time
+import wave
+
 from django.test import TestCase, Client
 
 from mysite.universe.models.actor import Satellite
@@ -419,6 +422,228 @@ class EventFeedAudioReadyFlagTests(TestCase):
         # Verify audio URLs are present for both
         self.assertIn('audio_url', event_pending_data)
         self.assertIn('audio_url', event_ready_data)
+
+
+class EventFeedLimitValidationTests(TestCase):
+    """
+    Tests for the limit parameter contract in event_feed.
+
+    Intended behavior:
+    - limit=0  → 200 with empty events list (accepted special case)
+    - limit=-1 → 400 (negative limits are not acceptable)
+    - limit=abc → 400 (non-integer limits are not acceptable)
+    """
+
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=10000.0,
+            anchor_wall_clock=time.time(),
+            time_scale=1.0,
+        )
+        for i in range(3):
+            DialogueEventLog.objects.create(
+                timestamp=9000.0 + i,
+                actor_name=f"Pilot {i}",
+                text=f"Message {i}",
+            )
+
+    def test_limit_zero_returns_200_with_empty_list(self):
+        """limit=0 is an accepted special case: returns 200 with zero events."""
+        response = self.client.get('/api/events/?limit=0')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data['events']), 0)
+
+    def test_limit_negative_returns_400(self):
+        """Negative limit must be rejected with a 400-class error."""
+        response = self.client.get('/api/events/?limit=-1')
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+
+    def test_limit_non_integer_returns_400(self):
+        """Non-integer limit must be rejected with a 400-class error."""
+        response = self.client.get('/api/events/?limit=abc')
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data['status'], 'error')
+
+    def test_limit_large_float_string_returns_400(self):
+        """Floats are not integers; '2.5' must be rejected."""
+        response = self.client.get('/api/events/?limit=2.5')
+        self.assertEqual(response.status_code, 400)
+
+
+class EventFeedTimestampTieBreakTests(TestCase):
+    """
+    Tests for cursor behavior when two events share the same timestamp.
+
+    The cursor is (timestamp, id).  When ts values are equal, id is the
+    tie-breaker.  Events with id <= cursor_id at cursor_ts must be excluded.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+        self.base_sim_time = 10000.0
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=self.base_sim_time,
+            anchor_wall_clock=time.time(),
+            time_scale=1.0,
+        )
+
+    def test_cursor_at_first_of_duplicate_timestamps_skips_it(self):
+        """
+        Given two events at the same timestamp, a cursor at (ts, id_A)
+        must return only event_B (the one with the higher id).
+        """
+        shared_ts = self.base_sim_time - 100.0
+        event_a = DialogueEventLog.objects.create(
+            timestamp=shared_ts, actor_name="Pilot A", text="First"
+        )
+        event_b = DialogueEventLog.objects.create(
+            timestamp=shared_ts, actor_name="Pilot B", text="Second"
+        )
+
+        response = self.client.get(
+            f'/api/events/?after_ts={shared_ts}&after_id={event_a.id}'
+        )
+        data = response.json()
+        self.assertEqual(len(data['events']), 1)
+        self.assertEqual(data['events'][0]['id'], event_b.id)
+
+    def test_cursor_past_all_duplicate_timestamps_returns_empty(self):
+        """
+        A cursor at (ts, id_B) — the last event at that timestamp —
+        returns an empty list.
+        """
+        shared_ts = self.base_sim_time - 100.0
+        DialogueEventLog.objects.create(
+            timestamp=shared_ts, actor_name="Pilot A", text="First"
+        )
+        event_b = DialogueEventLog.objects.create(
+            timestamp=shared_ts, actor_name="Pilot B", text="Second"
+        )
+
+        response = self.client.get(
+            f'/api/events/?after_ts={shared_ts}&after_id={event_b.id}'
+        )
+        data = response.json()
+        self.assertEqual(len(data['events']), 0)
+
+    def test_mixed_timestamps_cursor_at_first_returns_remaining(self):
+        """
+        Three events: two share a timestamp, one is later.
+        Cursor at the first shared-ts event must return the other two.
+        """
+        shared_ts = self.base_sim_time - 200.0
+        later_ts = self.base_sim_time - 100.0
+        event_a = DialogueEventLog.objects.create(
+            timestamp=shared_ts, actor_name="Pilot A", text="First"
+        )
+        event_b = DialogueEventLog.objects.create(
+            timestamp=shared_ts, actor_name="Pilot B", text="Second"
+        )
+        event_c = DialogueEventLog.objects.create(
+            timestamp=later_ts, actor_name="Pilot C", text="Third"
+        )
+
+        response = self.client.get(
+            f'/api/events/?after_ts={shared_ts}&after_id={event_a.id}'
+        )
+        data = response.json()
+        returned_ids = {e['id'] for e in data['events']}
+        self.assertIn(event_b.id, returned_ids)
+        self.assertIn(event_c.id, returned_ids)
+        self.assertNotIn(event_a.id, returned_ids)
+
+
+class EventFeedAudioReadyCacheTests(TestCase):
+    """
+    Tests for audio_ready flag when the Django cache is the source of truth.
+
+    The feed's audio_ready flag is True when EITHER audio_file is set
+    OR the cache has mixed audio for that event.  These tests verify the
+    cache branch specifically.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+        from django.core.cache import cache as django_cache
+        django_cache.clear()
+        self.base_sim_time = 10000.0
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=self.base_sim_time,
+            anchor_wall_clock=time.time(),
+            time_scale=1.0,
+        )
+
+    def test_audio_ready_true_when_only_cache_has_audio(self):
+        """audio_ready=True when no audio_file but cache holds mixed audio."""
+        from django.core.cache import cache as django_cache
+
+        event = DialogueEventLog.objects.create(
+            timestamp=self.base_sim_time - 100.0,
+            actor_name="Cached Pilot",
+            text="Cached.",
+        )
+        # Populate cache; leave audio_file blank
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(22050)
+            wf.writeframes(b'\x00' * 100)
+        django_cache.set(f"mixed_audio:{event.id}", buf.getvalue())
+
+        response = self.client.get('/api/events/')
+        data = response.json()
+        event_data = next(e for e in data['events'] if e['id'] == event.id)
+        self.assertTrue(event_data['audio_ready'])
+
+    def test_audio_ready_false_when_no_file_and_no_cache(self):
+        """audio_ready=False when neither audio_file nor cache has audio."""
+        event = DialogueEventLog.objects.create(
+            timestamp=self.base_sim_time - 100.0,
+            actor_name="Pending Pilot",
+            text="Pending.",
+        )
+
+        response = self.client.get('/api/events/')
+        data = response.json()
+        event_data = next(e for e in data['events'] if e['id'] == event.id)
+        self.assertFalse(event_data['audio_ready'])
+
+    def test_post_clear_feed_is_empty_and_debug_reflects_state(self):
+        """
+        After clear_events, the event feed returns no events.
+        debug.total_events must also report 0.
+        """
+        for i in range(3):
+            DialogueEventLog.objects.create(
+                timestamp=self.base_sim_time - 100.0 * (i + 1),
+                actor_name=f"Pilot {i}",
+                text=f"Message {i}",
+            )
+
+        response = self.client.get('/api/events/')
+        self.assertEqual(len(response.json()['events']), 3)
+
+        self.client.post('/api/clear-events/')
+
+        response = self.client.get('/api/events/')
+        data = response.json()
+        self.assertEqual(len(data['events']), 0)
+        self.assertEqual(data['debug']['total_events'], 0)
 
 
 if __name__ == '__main__':

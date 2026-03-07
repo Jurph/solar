@@ -1128,3 +1128,172 @@ class TestAudioWorkerActorlessEvents:
         if real_event.audio_file and os.path.exists(real_event.audio_file.path):
             os.unlink(real_event.audio_file.path)
 
+
+@pytest.mark.django_db
+class TestAudioWorkerWarmup:
+    """
+    Tests for the _warmup_test() startup verification method.
+
+    The warmup must:
+    - Return True when TTS + file I/O succeed
+    - Return False (not raise) when TTS fails
+    - Leave no orphaned events or files after either outcome
+    """
+
+    def test_warmup_returns_true_when_tts_succeeds(self):
+        """Warmup returns True when TTS generation and file I/O both work."""
+        from unittest.mock import MagicMock
+        cmd = Command()
+        mock_tts = MagicMock()
+        mock_tts.generate.return_value = create_minimal_wav()
+
+        result = cmd._warmup_test(mock_tts)
+
+        assert result is True
+
+    def test_warmup_returns_false_when_tts_raises(self):
+        """Warmup returns False (does not raise) when TTS generation fails."""
+        from unittest.mock import MagicMock
+        cmd = Command()
+        mock_tts = MagicMock()
+        mock_tts.generate.side_effect = RuntimeError("GPU OOM")
+
+        result = cmd._warmup_test(mock_tts)
+
+        assert result is False
+
+    def test_warmup_leaves_no_orphaned_events_on_success(self):
+        """Warmup cleans up the test event it creates."""
+        from unittest.mock import MagicMock
+        cmd = Command()
+        mock_tts = MagicMock()
+        mock_tts.generate.return_value = create_minimal_wav()
+
+        before = DialogueEventLog.objects.count()
+        cmd._warmup_test(mock_tts)
+        after = DialogueEventLog.objects.count()
+
+        assert after == before, "Warmup must not leave test events in the DB"
+
+    def test_warmup_leaves_no_orphaned_events_on_failure(self):
+        """Warmup cleans up the test event even when TTS fails."""
+        from unittest.mock import MagicMock
+        cmd = Command()
+        mock_tts = MagicMock()
+        mock_tts.generate.side_effect = RuntimeError("GPU OOM")
+
+        before = DialogueEventLog.objects.count()
+        cmd._warmup_test(mock_tts)
+        after = DialogueEventLog.objects.count()
+
+        assert after == before, "Warmup must not leave orphaned events after failure"
+
+
+@pytest.mark.django_db
+class TestAudioWorkerMixAudio:
+    """
+    Tests for _mix_audio() asset resolution and degraded-state handling.
+
+    Policy encoded here:
+    - Missing room-tone WAV file: log warning and continue without that layer
+    - Modem noise with no text param: use default "DATA", render successfully
+    - Result must always be valid WAV bytes
+    """
+
+    def test_missing_room_tone_logs_warning_and_returns_valid_wav(self, tmp_path, caplog):
+        """
+        When the audio plan references a room-tone WAV that does not exist on disk,
+        the worker logs a warning and continues rendering without that layer.
+        It does not raise or return empty bytes.
+        """
+        import logging
+        cmd = Command()
+
+        tts_path = str(tmp_path / "tts.wav")
+        with open(tts_path, 'wb') as f:
+            f.write(create_minimal_wav())
+
+        audio_plan = [
+            {
+                "trigger": "event_start",
+                "preset": "quindar_start",
+                "params": {"frequency_hz": 2525.0, "gain": 0.9},
+            },
+            {
+                "preset": "room_tone",
+                "params": {
+                    "wav_url": "/static/universe/audio/roomtone/DOES_NOT_EXIST.wav",
+                    "gain": 0.15,
+                },
+            },
+            {
+                "trigger": "event_end",
+                "preset": "quindar_end",
+                "params": {"frequency_hz": 2475.0, "gain": 0.9},
+            },
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            result = cmd._mix_audio(
+                event_id=42, tts_wav_path=tts_path, audio_plan=audio_plan
+            )
+
+        # Must return valid WAV bytes despite missing room tone
+        assert isinstance(result, bytes)
+        wf = wave.open(io.BytesIO(result))
+        assert wf.getnchannels() == 1
+
+        # Must have emitted a warning about the missing file
+        assert any(
+            "Room tone file not found" in msg for msg in caplog.messages
+        ), f"Expected 'Room tone file not found' in logs; got: {caplog.messages}"
+
+    def test_modem_noise_without_text_uses_default_and_renders(self, tmp_path):
+        """
+        A modem_noise action with no 'text' parameter falls back to the default
+        'DATA' string.  The result must be valid WAV bytes.
+        """
+        cmd = Command()
+
+        tts_path = str(tmp_path / "tts_modem.wav")
+        with open(tts_path, 'wb') as f:
+            f.write(create_minimal_wav())
+
+        audio_plan = [
+            {
+                "trigger": "event_start",
+                "preset": "quindar_start",
+                "params": {"frequency_hz": 2525.0, "gain": 0.9},
+            },
+            {
+                # No "text" key — worker must use default "DATA"
+                "trigger": "event_end",
+                "preset": "modem_noise_example",
+                "params": {},
+            },
+        ]
+
+        result = cmd._mix_audio(
+            event_id=43, tts_wav_path=tts_path, audio_plan=audio_plan
+        )
+
+        assert isinstance(result, bytes)
+        wf = wave.open(io.BytesIO(result))
+        assert wf.getnchannels() == 1
+
+    def test_mix_audio_with_no_plan_actions_returns_valid_wav(self, tmp_path):
+        """
+        An empty audio plan (no quindars, no room tone) still produces valid WAV.
+        This guards against the worker crashing when plan generation returns nothing.
+        """
+        cmd = Command()
+
+        tts_path = str(tmp_path / "tts_empty.wav")
+        with open(tts_path, 'wb') as f:
+            f.write(create_minimal_wav())
+
+        result = cmd._mix_audio(event_id=44, tts_wav_path=tts_path, audio_plan=[])
+
+        assert isinstance(result, bytes)
+        wf = wave.open(io.BytesIO(result))
+        assert wf.getnchannels() == 1

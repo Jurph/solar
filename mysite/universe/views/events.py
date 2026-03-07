@@ -122,7 +122,19 @@ def event_feed(request):
     # Get query parameters
     after_id = request.GET.get('after_id')
     after_ts = request.GET.get('after_ts')
-    limit = int(request.GET.get('limit', 100))
+    raw_limit = request.GET.get('limit', '100')
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        return JsonResponse(
+            {"status": "error", "message": "Invalid limit; must be an integer."},
+            status=400,
+        )
+    if limit < 0:
+        return JsonResponse(
+            {"status": "error", "message": "limit must be non-negative."},
+            status=400,
+        )
     
     # Build query - only events whose time has arrived
     queryset = DialogueEventLog.objects.filter(timestamp__lte=sim_time)
