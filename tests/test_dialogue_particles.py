@@ -587,3 +587,188 @@ class TestSatelliteParticles(DialogueParticleTest):
         # Important behavior: previous dialogue should be preserved
         self.assertEqual(prompt_data.last_dialogue_line, nav_context["previous_broadcast"])
 
+
+class TestSemanticInvariants(DialogueParticleTest):
+    """
+    Semantic invariant tests for particle example quality.
+
+    These tests check that examples are operationally correct, not just
+    non-empty. The goal is to catch cases where examples invent irrelevant
+    units, grant clearance from the wrong speaker, or otherwise produce
+    plausible-but-wrong dialogue.
+    """
+
+    def test_departure_readback_never_invents_kilometers(self):
+        """Readback for sublight/transfer maneuvers must not include 'kilometers'.
+
+        Departure readbacks should echo azimuth only.  Inventing altitude values
+        confuses the LLM into producing numerically nonsensical readbacks.
+        """
+        for maneuver in ("sublight", "transfer", "hyperspace"):
+            self.nav_context["maneuver_type"] = maneuver
+            particle = RadioReadback(
+                actor=self.pilot,
+                recipient="MARS CONTROL",
+                nav_context=self.nav_context,
+            )
+            examples = particle.get_examples()
+            for ex in examples:
+                self.assertNotIn(
+                    "kilometer",
+                    ex.lower(),
+                    f"{maneuver} readback should not invent km: {ex!r}",
+                )
+
+    def test_hyperspace_readback_uses_jump_not_burn(self):
+        """Hyperspace readback must say 'jump', not 'burn'."""
+        self.nav_context["maneuver_type"] = "hyperspace"
+        particle = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        for ex in examples:
+            self.assertNotIn("burn", ex.lower(),
+                             f"Hyperspace readback should not say 'burn': {ex!r}")
+        self.assertTrue(any("jump" in ex.lower() for ex in examples))
+
+    def test_sublight_readback_uses_burn_not_jump(self):
+        """Sublight readback must say 'burn', not 'jump'."""
+        self.nav_context["maneuver_type"] = "sublight"
+        particle = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        for ex in examples:
+            self.assertNotIn("jump", ex.lower(),
+                             f"Sublight readback should not say 'jump': {ex!r}")
+        self.assertTrue(any("burn" in ex.lower() for ex in examples))
+
+    def test_orbital_readback_echoes_instructed_km_when_given(self):
+        """Readback for insertion uses the km value extracted from previous dialogue."""
+        self.nav_context["maneuver_type"] = "insertion"
+        particle = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        # Simulate controller having said "Cleared for insertion to 350 kilometers"
+        particle.previous_dialogue = "Cleared for insertion to 350 kilometers, 28 degrees inclination."
+        examples = particle.get_examples()
+        # At least some examples should echo back "350"
+        self.assertTrue(
+            any("350" in ex for ex in examples),
+            f"Readback should echo 350 km from previous dialogue. Got: {examples}",
+        )
+
+    def test_pilot_request_examples_never_grant_own_clearance(self):
+        """Pilot request examples must not use definitive clearance-granting language.
+
+        Pilots ASK for permission; they do NOT grant it to themselves.
+        These specific phrases indicate a pilot issuing a clearance (wrong role).
+        """
+        # Exact phrases that only controllers say, never pilots in request examples
+        grant_phrases = [
+            "clearance granted",
+            "you are go",
+            "cleared for launch",
+            "cleared for insertion",
+            "cleared for sublight",
+            "launch is approved",
+            "burn is approved",
+        ]
+        for maneuver in ("launch", "insertion", "sublight"):
+            self.nav_context["maneuver_type"] = maneuver
+            particle_cls = {
+                "launch": LaunchRequest,
+                "insertion": InsertionRequest,
+                "sublight": SublightRequest,
+            }[maneuver]
+            particle = particle_cls(
+                actor=self.pilot,
+                recipient="MARS CONTROL",
+                nav_context=self.nav_context,
+            )
+            examples = particle.get_examples()
+            for ex in examples:
+                for phrase in grant_phrases:
+                    self.assertNotIn(
+                        phrase, ex.lower(),
+                        f"{maneuver} request example grants own clearance with '{phrase}': {ex!r}",
+                    )
+
+
+class TestParseInstructedValues(DialogueParticleTest):
+    """
+    Tests for DialogueParticle.parse_instructed_values().
+
+    This method extracts km and degree values from the controller's
+    previous dialogue line so readbacks can echo the exact values given.
+    """
+
+    def _make_particle(self):
+        """Return a simple particle instance for calling parse_instructed_values."""
+        return LaunchRequest(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+
+    def test_extracts_kilometers_from_text(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values(
+            "Cleared for launch to 350 kilometers apogee."
+        )
+        self.assertEqual(result["instructed_km"], 350)
+        self.assertIsNone(result["instructed_deg"])
+
+    def test_extracts_degrees_from_text(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values(
+            "Adjust your inclination to 28 degrees."
+        )
+        self.assertIsNone(result["instructed_km"])
+        self.assertEqual(result["instructed_deg"], 28)
+
+    def test_extracts_both_km_and_degrees(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values(
+            "Cleared for insertion to 250 kilometers, 30 degrees inclination."
+        )
+        self.assertEqual(result["instructed_km"], 250)
+        self.assertEqual(result["instructed_deg"], 30)
+
+    def test_handles_comma_separated_thousands(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values(
+            "Target apogee 1,200 kilometers."
+        )
+        self.assertEqual(result["instructed_km"], 1200)
+
+    def test_uses_previous_dialogue_when_no_text_arg(self):
+        particle = self._make_particle()
+        particle.previous_dialogue = "Go to 180 kilometers, 45 degrees."
+        result = particle.parse_instructed_values()
+        self.assertEqual(result["instructed_km"], 180)
+        self.assertEqual(result["instructed_deg"], 45)
+
+    def test_returns_none_when_no_match(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values("Proceed when ready.")
+        self.assertIsNone(result["instructed_km"])
+        self.assertIsNone(result["instructed_deg"])
+
+    def test_returns_none_for_none_input(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values(None)
+        self.assertIsNone(result["instructed_km"])
+        self.assertIsNone(result["instructed_deg"])
+
+    def test_km_abbreviation_also_works(self):
+        particle = self._make_particle()
+        result = particle.parse_instructed_values("Fly to 400km orbit.")
+        self.assertEqual(result["instructed_km"], 400)
+
