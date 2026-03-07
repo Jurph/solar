@@ -18,6 +18,8 @@ Solar uses CircleCI for continuous integration and Codecov for coverage tracking
 ### Configuration File
 `.circleci/config.yml`
 
+**Note:** Uses Codecov CLI (not orb) to avoid requiring "Allow uncertified public orbs" setting.
+
 ### Running Tests Locally (Same as CI)
 ```bash
 # Activate venv
@@ -74,14 +76,21 @@ Added to `README.md`:
 1. Go to https://circleci.com/
 2. Sign in with GitHub
 3. Add project: "Jurph/solar"
-4. CircleCI will automatically detect `.circleci/config.yml`
+4. **Enable uncertified orbs:**
+   - Go to Organization Settings → Security
+   - Enable "Allow uncertified public orbs"
+5. CircleCI will automatically detect `.circleci/config.yml`
 
 ### 2. Enable Codecov
 1. Go to https://codecov.io/
 2. Sign in with GitHub
 3. Add repository: "Jurph/solar"
-4. Copy the upload token (if needed)
-5. Add token to CircleCI environment variables (usually auto-configured)
+4. Copy the upload token from Codecov repository settings
+5. In CircleCI Project Settings:
+   - Go to Environment Variables
+   - Add variable: `CODECOV_TOKEN` = [paste token from Codecov]
+
+**Token is required for authenticated uploads.**
 
 ### 3. Push to GitHub
 ```bash
