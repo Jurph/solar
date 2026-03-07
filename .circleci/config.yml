@@ -1,0 +1,52 @@
+version: 2.1
+
+orbs:
+  python: circleci/python@2.1.1
+  codecov: codecov/codecov@4.0.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/python:3.10
+    
+    steps:
+      - checkout
+      
+      - restore_cache:
+          keys:
+            - deps-v1-{{ checksum "requirements.txt" }}
+            - deps-v1-
+      
+      - run:
+          name: Install dependencies
+          command: |
+            pip install --upgrade pip
+            pip install -r requirements.txt
+      
+      - save_cache:
+          key: deps-v1-{{ checksum "requirements.txt" }}
+          paths:
+            - ~/.cache/pip
+      
+      - run:
+          name: Run tests with coverage (excluding slow tests)
+          command: |
+            export DJANGO_SETTINGS_MODULE=mysite.settings
+            pytest tests -m "not slow" --cov=mysite/universe --cov-report=xml:coverage.xml --cov-report=term --junitxml=test-results/junit.xml -v
+      
+      - codecov/upload:
+          file: coverage.xml
+      
+      - store_test_results:
+          path: test-results
+      
+      - store_artifacts:
+          path: coverage.xml
+      
+      - store_artifacts:
+          path: test-results
+
+workflows:
+  test-workflow:
+    jobs:
+      - test
