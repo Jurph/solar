@@ -701,6 +701,167 @@ class TestSemanticInvariants(DialogueParticleTest):
                     )
 
 
+class TestControllerResponseSemantics(TestCase):
+    """
+    Semantic correctness tests for RadioResponse.get_examples().
+
+    When a controller has a valid celestial location, the physics service
+    generates real orbital parameters.  These tests verify that the examples
+    include concrete numbers (altitudes, azimuths, inclinations) rather than
+    collapsing to generic filler like "proceed when ready."
+
+    Tests also verify that maneuver-specific vocabulary is used correctly
+    (jump vs. burn, azimuth for departures, km for orbital maneuvers).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+        from mysite.universe.models.station import Station
+        from mysite.universe.models.scale import Scale
+
+        galaxy = Galaxy.objects.create(
+            name="Semantic Test Galaxy", galaxy_type="SP", galaxy_size="M"
+        )
+        system = StarSystem.objects.create(
+            name="Semantic Test System",
+            orbits=galaxy,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        star = Star.objects.create(
+            name="Semantic Test Star", orbits=system, star_type="G"
+        )
+        cls.planet = Planet.objects.create(
+            name="Semantic Test World",
+            scale=Scale.PLANET,
+            orbital_distance_au=1.0,
+            orbital_period_days=365.25,
+            mass_kg=5.972e24,
+            radius_km=6371.0,
+            axial_tilt_deg=23.4,
+            orbital_inclination_deg=0.0,
+            orbits=star,
+            planet_type="TE",
+        )
+        cls.station = Station.objects.create(
+            name="Semantic Test Station",
+            scale=Scale.STATION,
+            orbits=cls.planet,
+            large_berths=2,
+        )
+        cls.controller = Controller.create(location=cls.station)
+        cls.controller.name = "Semantic Control"
+        cls.controller.save()
+
+    def _make_response(self, maneuver_type, **extra_ctx):
+        nav_context = {
+            "maneuver_type": maneuver_type,
+            "current_location": self.planet.name,
+            "origin": self.planet.name,
+            "destination": "Target World",
+        }
+        nav_context.update(extra_ctx)
+        return RadioResponse(
+            actor=self.controller,
+            recipient="TEST SHIP",
+            nav_context=nav_context,
+        )
+
+    def test_launch_examples_include_numeric_altitude(self):
+        """LAUNCH with physics params must produce at least one example with a km altitude."""
+        import re
+        examples = self._make_response("LAUNCH").get_examples()
+        has_numeric_km = any(
+            re.search(r'\d+\s*kilometers?', ex, re.IGNORECASE) for ex in examples
+        )
+        self.assertTrue(
+            has_numeric_km,
+            "LAUNCH examples with physics should include a numeric km altitude.\n" +
+            "\n".join(examples),
+        )
+
+    def test_launch_examples_include_azimuth(self):
+        """LAUNCH with physics params must include at least one azimuth reference."""
+        examples = self._make_response("LAUNCH").get_examples()
+        self.assertTrue(
+            any("azimuth" in ex.lower() for ex in examples),
+            "LAUNCH examples with physics should include azimuth.\n" +
+            "\n".join(examples),
+        )
+
+    def test_sublight_examples_all_include_numeric_azimuth(self):
+        """Every SUBLIGHT example must include 'azimuth' followed by a number."""
+        import re
+        examples = self._make_response("sublight").get_examples()
+        for ex in examples:
+            self.assertIn(
+                "azimuth", ex.lower(),
+                f"Sublight example missing 'azimuth': {ex!r}",
+            )
+            self.assertIsNotNone(
+                re.search(r'azimuth\s+\d+', ex.lower()),
+                f"Sublight azimuth should be followed by a number: {ex!r}",
+            )
+
+    def test_hyperspace_clearance_uses_jump_not_burn(self):
+        """HYPERSPACE clearance must say 'jump', not 'burn'."""
+        examples = self._make_response("hyperspace").get_examples()
+        for ex in examples:
+            self.assertNotIn(
+                "burn", ex.lower(),
+                f"Hyperspace clearance should not say 'burn': {ex!r}",
+            )
+        self.assertTrue(
+            any("jump" in ex.lower() for ex in examples),
+            "Hyperspace clearance should contain 'jump'.\n" + "\n".join(examples),
+        )
+
+    def test_insertion_examples_include_altitude_and_inclination(self):
+        """INSERTION examples with physics must include both altitude and inclination."""
+        import re
+        examples = self._make_response(
+            "insertion", destination=self.planet.name
+        ).get_examples()
+        has_km = any(
+            re.search(r'\d+\s*kilometers?', ex, re.IGNORECASE) for ex in examples
+        )
+        has_deg = any(
+            re.search(r'\d+\s*degrees?', ex, re.IGNORECASE) for ex in examples
+        )
+        self.assertTrue(
+            has_km,
+            "INSERTION examples should include altitude.\n" + "\n".join(examples),
+        )
+        self.assertTrue(
+            has_deg,
+            "INSERTION examples should include inclination.\n" + "\n".join(examples),
+        )
+
+    def test_controller_without_actor_falls_back_gracefully(self):
+        """RadioResponse with no actor returns non-empty examples without crashing."""
+        particle = RadioResponse(
+            actor=None,
+            recipient="TEST SHIP",
+            nav_context={"maneuver_type": "LAUNCH", "current_location": "Unknown"},
+        )
+        examples = particle.get_examples()
+        self.assertGreater(len(examples), 0, "Fallback examples must not be empty")
+
+    def test_sublight_examples_do_not_contain_kilometers(self):
+        """
+        Sublight clearances are azimuth-based departures; they must not invent
+        altitude values.  Only orbital maneuvers give altitude instructions.
+        """
+        examples = self._make_response("sublight").get_examples()
+        for ex in examples:
+            self.assertNotIn(
+                "kilometer", ex.lower(),
+                f"Sublight clearance should not mention km altitude: {ex!r}",
+            )
+
+
 class TestParseInstructedValues(DialogueParticleTest):
     """
     Tests for DialogueParticle.parse_instructed_values().
