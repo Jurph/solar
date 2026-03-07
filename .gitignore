@@ -50,6 +50,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+test-results/
 
 # Translations
 *.mo
@@ -136,6 +137,10 @@ dmypy.json
 
 # LLM benchmark data (test artifacts)
 artifacts/llm_benchmark.jsonl
+
+# Coverage artifacts
+coverage.xml
+.coverage
 
 # Qwen2.5 - users should download the repo separately and place it in the models folder
 mysite/universe/models/language/*

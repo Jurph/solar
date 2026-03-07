@@ -1,4 +1,8 @@
 # Solar
+
+[![CircleCI](https://dl.circleci.com/status-badge/img/circleci/Jurph/solar/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/circleci/Jurph/solar/tree/main)
+[![codecov](https://codecov.io/gh/Jurph/solar/branch/main/graph/badge.svg)](https://codecov.io/gh/Jurph/solar)
+
 A procedural space system builder 
 
 ## Vision
