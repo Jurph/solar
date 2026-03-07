@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:circleci.com)"
+      "WebFetch(domain:circleci.com)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(venv/Scripts/python.exe:*)"
     ]
   }
 }
