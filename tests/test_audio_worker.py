@@ -1042,9 +1042,89 @@ class TestAudioWorkerIntegration:
         
         # Verify TTS was called 10 times (once per event)
         assert mock_tts.generate.call_count == 10
-        
+
         # Cleanup test files
         for event in events:
             if event.audio_file and os.path.exists(event.audio_file.path):
                 os.unlink(event.audio_file.path)
+
+
+@pytest.mark.django_db
+class TestAudioWorkerActorlessEvents:
+    """Tests for worker behavior when events have no actor reference."""
+
+    def test_all_actorless_events_returns_zero(self):
+        """
+        When all events in the lookahead window have actor=None, the batch
+        returns 0 (critical log emitted, no crash).
+        """
+        sim_state = create_sim_state_at_time(1000.0)
+        current_time = sim_state.get_simulation_time()
+
+        # Create events with no actor FK
+        for i in range(3):
+            DialogueEventLog.objects.create(
+                timestamp=current_time + float(i * 10),
+                actor=None,
+                actor_name="Ghost",
+                text="Nobody home.",
+            )
+
+        dummy_wav = create_minimal_wav()
+        with patch('mysite.universe.management.commands.audio_worker.ChatterboxTTSService') as MockTTS:
+            mock_tts = MockTTS.return_value
+            mock_tts.generate.return_value = dummy_wav
+            command = Command()
+            processed = command._process_batch(
+                tts_service=mock_tts,
+                batch_size=10,
+                lookahead_seconds=3600,
+            )
+
+        assert processed == 0, "Batch with only actor-less events should return 0"
+
+    def test_mixed_actorless_and_real_events_skips_actorless(self):
+        """
+        When a batch has some actor-less events alongside real events, the worker
+        skips the actor-less ones and still processes the real events.
+        """
+        sim_state = create_sim_state_at_time(1000.0)
+        current_time = sim_state.get_simulation_time()
+
+        real_actor = Controller.objects.create(name="Real Control")
+
+        # Actor-less event (earlier timestamp)
+        DialogueEventLog.objects.create(
+            timestamp=current_time + 5.0,
+            actor=None,
+            actor_name="Ghost",
+            text="Orphan event.",
+        )
+
+        # Real actor event (later timestamp)
+        real_event = DialogueEventLog.objects.create(
+            timestamp=current_time + 10.0,
+            actor=real_actor,
+            actor_name=real_actor.name,
+            text="Real controller message.",
+        )
+
+        dummy_wav = create_minimal_wav()
+        with patch('mysite.universe.management.commands.audio_worker.ChatterboxTTSService') as MockTTS:
+            mock_tts = MockTTS.return_value
+            mock_tts.generate.return_value = dummy_wav
+            command = Command()
+            processed = command._process_batch(
+                tts_service=mock_tts,
+                batch_size=5,
+                lookahead_seconds=3600,
+            )
+
+        assert processed == 1, f"Should process 1 real event, got {processed}"
+        real_event.refresh_from_db()
+        assert real_event.audio_file, "Real actor event should have audio"
+
+        # Cleanup
+        if real_event.audio_file and os.path.exists(real_event.audio_file.path):
+            os.unlink(real_event.audio_file.path)
 
