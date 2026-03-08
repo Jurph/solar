@@ -17,7 +17,11 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from mysite.universe.models.event import DialogueEventLog
+# audio_worker imports ChatterboxTTSService → tts_service → torch at module
+# level. Skip this file gracefully in CI where torch is not installed.
+pytest.importorskip("torch")
+
+from mysite.universe.models.event import DialogueEventLog  # noqa: E402
 from mysite.universe.models.simulation import SimulationState
 from mysite.universe.models.actor import Controller, Pilot
 from mysite.universe.models.base import Location

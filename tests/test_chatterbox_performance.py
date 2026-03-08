@@ -14,7 +14,11 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 import pytest
 from django.conf import settings
 
-from mysite.universe.services.tts_service import get_tts_service
+# Skip this entire file gracefully when torch is not installed (CI uses
+# requirements.txt only; torch lives in requirements-ml.txt).
+pytest.importorskip("torch")
+
+from mysite.universe.services.tts_service import get_tts_service  # noqa: E402
 import google.protobuf as _pb
 
 # Suppress known diffusers LoRA warning (using peft backend is already installed)
@@ -28,7 +32,11 @@ warnings.filterwarnings(
 
 def _canonical_sentences():
     path = Path(settings.BASE_DIR) / "docs" / "Canonical Audio Sentences.txt"
-    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    lines = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     return lines
 
 
@@ -41,19 +49,34 @@ def _wav_duration_seconds(wav_bytes: bytes) -> float:
 
 def _have_local_model() -> bool:
     env_model = os.getenv("CHATTERBOX_LOCAL_PATH")
-    model_path = Path(env_model) if env_model else Path(settings.BASE_DIR) / "models" / "chatterbox-turbo"
+    model_path = (
+        Path(env_model)
+        if env_model
+        else Path(settings.BASE_DIR) / "models" / "chatterbox-turbo"
+    )
     return model_path.exists()
 
 
 def _have_voice(voice_id: str) -> bool:
-    voice_path = Path(settings.BASE_DIR) / "mysite" / "universe" / "static" / "universe" / "voices" / f"{voice_id}.wav"
+    voice_path = (
+        Path(settings.BASE_DIR)
+        / "mysite"
+        / "universe"
+        / "static"
+        / "universe"
+        / "voices"
+        / f"{voice_id}.wav"
+    )
     return voice_path.exists()
 
 
 pytestmark = pytest.mark.slow
 
 
-@pytest.mark.skipif(not _have_local_model(), reason="Local chatterbox model not found (set CHATTERBOX_LOCAL_PATH)")
+@pytest.mark.skipif(
+    not _have_local_model(),
+    reason="Local chatterbox model not found (set CHATTERBOX_LOCAL_PATH)",
+)
 def test_chatterbox_latency_short_and_long():
     # Hard guard: protobuf 4.x compiled descriptors can break TF-heavy imports; we force python impl above,
     # but also skip if version is far from the recommended 3.20.x range.
@@ -74,7 +97,9 @@ def test_chatterbox_latency_short_and_long():
         service = get_tts_service()
         device = getattr(service, "device", "unknown")
     except RuntimeError as e:
-        pytest.skip(f"Failed to initialize TTS (GPU may be in use by audio worker): {e}")
+        pytest.skip(
+            f"Failed to initialize TTS (GPU may be in use by audio worker): {e}"
+        )
     except Exception as e:
         # Catch GPU access violations and other GPU contention errors
         if "access violation" in str(e).lower() or "gpu" in str(e).lower():
@@ -117,7 +142,9 @@ def test_chatterbox_latency_short_and_long():
             raise AssertionError(f"{label} generation too slow ({elapsed:.1f}s)")
 
         # Log/print for visibility in test output
-        print(f"[{label}] text_len={len(text)} duration={duration:.2f}s wall={elapsed:.2f}s")
+        print(
+            f"[{label}] text_len={len(text)} duration={duration:.2f}s wall={elapsed:.2f}s"
+        )
 
         # Persist metrics to artifacts for later tuning
         artifacts_dir = Path(settings.BASE_DIR) / "artifacts"
@@ -136,7 +163,10 @@ def test_chatterbox_latency_short_and_long():
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(not _have_local_model(), reason="Local chatterbox model not found (set CHATTERBOX_LOCAL_PATH)")
+@pytest.mark.skipif(
+    not _have_local_model(),
+    reason="Local chatterbox model not found (set CHATTERBOX_LOCAL_PATH)",
+)
 def test_chatterbox_voice_switch_latency():
     # Measure per-voice latency to understand switching overhead.
     voices = [
@@ -178,7 +208,9 @@ def test_chatterbox_voice_switch_latency():
         if elapsed > 300.0:
             raise AssertionError(f"{v} generation too slow ({elapsed:.1f}s)")
 
-        print(f"[voice_switch] voice={v} text_len={len(text)} duration={duration:.2f}s wall={elapsed:.2f}s")
+        print(
+            f"[voice_switch] voice={v} text_len={len(text)} duration={duration:.2f}s wall={elapsed:.2f}s"
+        )
 
         record = {
             "case": "voice_switch",
@@ -200,5 +232,6 @@ def test_chatterbox_performance_artifacts_exist():
     """
     artifacts_dir = Path(settings.BASE_DIR) / "artifacts"
     out_path = artifacts_dir / "tts_performance.jsonl"
-    assert out_path.exists(), "tts_performance.jsonl not found; run performance tests to generate metrics"
-
+    assert out_path.exists(), (
+        "tts_performance.jsonl not found; run performance tests to generate metrics"
+    )
