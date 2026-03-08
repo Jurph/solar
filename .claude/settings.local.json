@@ -5,7 +5,16 @@
       "Bash(python:*)",
       "Bash(source:*)",
       "Bash(venv/Scripts/python.exe:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(venv/Scripts/pre-commit install:*)",
+      "WebSearch",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(where:*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(echo \"PATH=$PATH\")",
+      "Bash(claude mcp:*)",
+      "Bash(curl:*)"
     ]
   }
 }
