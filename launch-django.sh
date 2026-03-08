@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# NOTE: This script intentionally overlaps with launch-django.bat.
+# The duplication is deliberate because POSIX shell and Windows batch
+# have different process, activation, and startup semantics.
+# Keep behavior aligned across both files, but do not try to force
+# them into a single cross-platform script.
+
 launch_server() {
     echo "Attempting to start ollama server..."
     (ollama serve &) 
