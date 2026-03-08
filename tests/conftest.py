@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pytest
-import django
 
-_CURRENT_TEST_NODEID: ContextVar[Optional[str]] = ContextVar("_CURRENT_TEST_NODEID", default=None)
+_CURRENT_TEST_NODEID: ContextVar[Optional[str]] = ContextVar(
+    "_CURRENT_TEST_NODEID", default=None
+)
 
 
 def _get_benchmark_path() -> Optional[Path]:
@@ -116,7 +117,9 @@ def _install_llm_benchmark_hooks():
                 "ok": ok,
                 "seconds": end - start,
                 "messages_count": len(messages) if isinstance(messages, list) else None,
-                "input_chars": sum(len(m.get("content", "")) for m in messages) if isinstance(messages, list) else None,
+                "input_chars": sum(len(m.get("content", "")) for m in messages)
+                if isinstance(messages, list)
+                else None,
                 "output_chars": len(result) if isinstance(result, str) else None,
                 "temperature": kwargs.get("temperature", None),
                 "max_tokens": kwargs.get("max_tokens", None),
@@ -142,8 +145,12 @@ def _install_llm_benchmark_hooks():
             end = time.perf_counter()
             nodeid = _CURRENT_TEST_NODEID.get()
 
-            user_message = kwargs.get("user_message", args[0] if len(args) > 0 else None)
-            system_prompt = kwargs.get("system_prompt", args[1] if len(args) > 1 else None)
+            user_message = kwargs.get(
+                "user_message", args[0] if len(args) > 0 else None
+            )
+            system_prompt = kwargs.get(
+                "system_prompt", args[1] if len(args) > 1 else None
+            )
 
             record = {
                 "ts": datetime.now(timezone.utc).isoformat(),
@@ -151,7 +158,9 @@ def _install_llm_benchmark_hooks():
                 "method": "LLMService.generate_with_system_prompt",
                 "ok": ok,
                 "seconds": end - start,
-                "input_chars": (len(system_prompt) if isinstance(system_prompt, str) else 0)
+                "input_chars": (
+                    len(system_prompt) if isinstance(system_prompt, str) else 0
+                )
                 + (len(user_message) if isinstance(user_message, str) else 0),
                 "output_chars": len(result) if isinstance(result, str) else None,
                 "temperature": kwargs.get("temperature", None),
@@ -186,5 +195,3 @@ def _tts_warmup_if_slow(pytestconfig):
     except Exception:
         # Best-effort; don't fail collection if warmup is unavailable.
         pass
-
-

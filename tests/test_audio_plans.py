@@ -7,7 +7,7 @@ Tests audio plan building for different actor types:
 - Controller actors: Quindars + TTS
 - Audio plan structure and parameters
 """
-import pytest
+
 from django.test import TestCase
 
 from mysite.universe.models.actor import Pilot, Satellite
@@ -21,11 +21,13 @@ from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_e
 
 class TestAudioPlanSatelliteSpecifics(TestCase):
     """Test audio plan detection for Satellite actors."""
-    
+
     @classmethod
     def setUpTestData(cls):
         """Set up test data shared across all tests."""
-        galaxy = Galaxy.objects.create(name="Test Galaxy", galaxy_type="SP", galaxy_size="L")
+        galaxy = Galaxy.objects.create(
+            name="Test Galaxy", galaxy_type="SP", galaxy_size="L"
+        )
         cls.system = StarSystem.objects.create(
             name="Test System",
             orbits=galaxy,
@@ -34,67 +36,76 @@ class TestAudioPlanSatelliteSpecifics(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Test Star", orbits=cls.system, star_type="G")
-        planet = Planet.objects.create(name="Test Planet", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        Planet.objects.create(
+            name="Test Planet", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
         cls.location = Location.objects.create(name="Test Station", scale=Scale.STATION)
 
-        cls.satellite = Satellite.objects.create(name=f"{cls.system.name} Navsat", location=cls.system)
-        
+        cls.satellite = Satellite.objects.create(
+            name=f"{cls.system.name} Navsat", location=cls.system
+        )
+
         # Create ship and pilot for comparison tests
         cls.ship = Ship.create(location=cls.location, name="TEST SHIP")
         cls.pilot = Pilot.create(ship=cls.ship)
         cls.pilot.name = "Test Pilot"
         cls.pilot.save()
-    
+
     def test_audio_plan_for_satellite_uses_modem_noise(self):
         """Test that Satellite actors get modem noise in audio plan (with quindars)."""
         # Ensure satellite has an audio profile
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.create_default_for_actor(self.satellite)
-        
+
         # Create a nav broadcast event
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
             actor=self.satellite,
-            text="RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
+            text="RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345",
         )
-        
+
         audio_plan = build_audio_plan_for_dialogue_event(event)
-        
+
         # Satellites should have modem noise preset
         modem_actions = [a for a in audio_plan if "modem_noise" in a.get("preset", "")]
         if len(modem_actions) == 0:
             # If no modem actions, check what we actually got
             all_presets = [a.get("preset", "") for a in audio_plan]
-            self.fail(f"Expected modem_noise preset, but got: {all_presets}. Full plan: {audio_plan}")
-        self.assertGreater(len(modem_actions), 0, "Satellite events should use modem noise")
-        
+            self.fail(
+                f"Expected modem_noise preset, but got: {all_presets}. Full plan: {audio_plan}"
+            )
+        self.assertGreater(
+            len(modem_actions), 0, "Satellite events should use modem noise"
+        )
+
         # Satellites SHOULD have Quindar tones (start/end of transmission)
         # Comment in audio_plans.py says: "Don't remove Quindars from satellites"
         quindar_actions = [a for a in audio_plan if "quindar" in a.get("preset", "")]
-        self.assertGreater(len(quindar_actions), 0, "Satellite events SHOULD use Quindar tones")
-    
+        self.assertGreater(
+            len(quindar_actions), 0, "Satellite events SHOULD use Quindar tones"
+        )
+
     def test_audio_plan_for_satellite_includes_broadcast_text(self):
         """Test that satellite audio plan includes broadcast text in params."""
         # Ensure satellite has an audio profile
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.create_default_for_actor(self.satellite)
-        
+
         broadcast_text = "RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
         event = DialogueEventLog.objects.create(
-            timestamp=100.0,
-            actor=self.satellite,
-            text=broadcast_text
+            timestamp=100.0, actor=self.satellite, text=broadcast_text
         )
-        
+
         audio_plan = build_audio_plan_for_dialogue_event(event)
-        
+
         # Find modem noise action
         modem_action = next(
-            (a for a in audio_plan if "modem_noise" in a.get("preset", "")),
-            None
+            (a for a in audio_plan if "modem_noise" in a.get("preset", "")), None
         )
         self.assertIsNotNone(modem_action, "Should have modem noise action")
-        
+
         # Check that params include the broadcast text
         params = modem_action.get("params", {})
         self.assertIn("text", params)
@@ -117,18 +128,22 @@ class TestAudioPlanPilotSpecifics(TestCase):
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
             actor=self.pilot,
-            text="Requesting clearance for departure."
+            text="Requesting clearance for departure.",
         )
 
         audio_plan = build_audio_plan_for_dialogue_event(event)
 
         # Should have Quindar tones
         quindar_actions = [a for a in audio_plan if "quindar" in a.get("preset", "")]
-        self.assertGreater(len(quindar_actions), 0, "Pilot events should use Quindar tones")
+        self.assertGreater(
+            len(quindar_actions), 0, "Pilot events should use Quindar tones"
+        )
 
         # Should NOT have modem noise
         modem_actions = [a for a in audio_plan if "modem_noise" in a.get("preset", "")]
-        self.assertEqual(len(modem_actions), 0, "Pilot events should NOT use modem noise")
+        self.assertEqual(
+            len(modem_actions), 0, "Pilot events should NOT use modem noise"
+        )
 
 
 class TestAudioPlanControllerSpecifics(TestCase):
@@ -137,7 +152,10 @@ class TestAudioPlanControllerSpecifics(TestCase):
     @classmethod
     def setUpTestData(cls):
         from mysite.universe.models.actor import Controller
-        cls.location = Location.objects.create(name="Controller Station", scale=Scale.STATION)
+
+        cls.location = Location.objects.create(
+            name="Controller Station", scale=Scale.STATION
+        )
         cls.controller = Controller.create(location=cls.location)
         cls.controller.name = "Test Control"
         cls.controller.save()
@@ -163,11 +181,14 @@ class TestAudioPlanControllerSpecifics(TestCase):
         )
         plan = build_audio_plan_for_dialogue_event(event)
         modem_actions = [a for a in plan if "modem_noise" in a.get("preset", "")]
-        self.assertEqual(len(modem_actions), 0, "Controllers should never have modem noise")
+        self.assertEqual(
+            len(modem_actions), 0, "Controllers should never have modem noise"
+        )
 
     def test_controller_plan_has_room_tone_when_profile_enables_it(self):
         """When the controller profile sets room_tone enabled, a room_tone action appears."""
         from mysite.universe.models.audio_profile import AudioProfile
+
         # Ensure profile has room tone enabled with a wav file
         AudioProfile.objects.filter(actor=self.controller).delete()
         AudioProfile.objects.create(
@@ -190,7 +211,9 @@ class TestAudioPlanControllerSpecifics(TestCase):
         )
         plan = build_audio_plan_for_dialogue_event(event)
         room_tone_actions = [a for a in plan if a.get("type") == "room_tone"]
-        self.assertGreater(len(room_tone_actions), 0, "Controller should have room_tone when enabled")
+        self.assertGreater(
+            len(room_tone_actions), 0, "Controller should have room_tone when enabled"
+        )
         # Verify the wav_url points to the correct file
         wav_url = room_tone_actions[0].get("wav_url", "")
         self.assertIn("Control_station_noise.wav", wav_url)
@@ -198,6 +221,7 @@ class TestAudioPlanControllerSpecifics(TestCase):
     def test_controller_plan_has_no_room_tone_when_disabled(self):
         """When room_tone disabled in profile, no room_tone action appears."""
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.objects.filter(actor=self.controller).delete()
         AudioProfile.objects.create(
             actor=self.controller,
@@ -224,13 +248,16 @@ class TestAudioPlanStaticLayer(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.location = Location.objects.create(name="Static Test Station", scale=Scale.STATION)
+        cls.location = Location.objects.create(
+            name="Static Test Station", scale=Scale.STATION
+        )
         cls.ship = Ship.create(location=cls.location, name="STATIC SHIP")
         cls.pilot = Pilot.create(ship=cls.ship, name="Static Pilot")
 
     def test_static_layer_included_when_intensity_nonzero(self):
         """When static intensity > 0 in profile, static action is in plan."""
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.objects.filter(actor=self.pilot).delete()
         AudioProfile.objects.create(
             actor=self.pilot,
@@ -248,11 +275,14 @@ class TestAudioPlanStaticLayer(TestCase):
         )
         plan = build_audio_plan_for_dialogue_event(event)
         static_actions = [a for a in plan if "static" in a.get("preset", "")]
-        self.assertGreater(len(static_actions), 0, "Should have static layer when intensity > 0")
+        self.assertGreater(
+            len(static_actions), 0, "Should have static layer when intensity > 0"
+        )
 
     def test_static_layer_excluded_when_intensity_zero(self):
         """When static intensity == 0, no static action in plan."""
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.objects.filter(actor=self.pilot).delete()
         AudioProfile.objects.create(
             actor=self.pilot,
@@ -304,11 +334,14 @@ class TestAudioPlanMissingProfileOnDemand(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.location = Location.objects.create(name="OnDemand Station", scale=Scale.STATION)
+        cls.location = Location.objects.create(
+            name="OnDemand Station", scale=Scale.STATION
+        )
         cls.ship = Ship.create(location=cls.location, name="ON-DEMAND SHIP")
         cls.pilot = Pilot.create(ship=cls.ship, name="On-Demand Pilot")
         # Wipe any auto-created profile so the DoesNotExist path is triggered
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.objects.filter(actor=cls.pilot).delete()
 
     def test_pilot_without_profile_gets_one_assigned_and_plan_is_valid(self):
@@ -318,6 +351,7 @@ class TestAudioPlanMissingProfileOnDemand(TestCase):
         """
         # Verify no profile exists at test start
         from mysite.universe.models.audio_profile import AudioProfile
+
         self.assertFalse(AudioProfile.objects.filter(actor=self.pilot).exists())
 
         event = DialogueEventLog.objects.create(
@@ -339,12 +373,13 @@ class TestAudioPlanMissingProfileOnDemand(TestCase):
         Plan should still produce quindars and a TTS action.
         """
         from mysite.universe.models.audio_profile import AudioProfile
+
         AudioProfile.objects.filter(actor=self.pilot).delete()
         # Create an intentionally incomplete profile (empty voiceprint)
         AudioProfile.objects.create(
             actor=self.pilot,
             params={
-                "voiceprint": {},   # no voice_template → triggers reassignment
+                "voiceprint": {},  # no voice_template → triggers reassignment
                 "quindar": {},
                 "room_tone": {"enabled": False},
                 "static": {"intensity": 0.0},
@@ -367,6 +402,7 @@ class TestSentenceCaseFunction(TestCase):
 
     def _sc(self, text):
         from mysite.universe.services.audio_plans import _sentence_case
+
         return _sentence_case(text)
 
     def test_all_caps_converted_to_sentence_case(self):
@@ -392,4 +428,3 @@ class TestSentenceCaseFunction(TestCase):
         """ALL-CAPS text with numbers is still lowercased + first-alpha cap."""
         result = self._sc("RELAY 42 ALPHA")
         self.assertEqual(result, "Relay 42 alpha")
-

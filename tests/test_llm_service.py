@@ -31,7 +31,10 @@ class TestLLMServiceValidation:
     def test_is_invalid_dialogue_message_patterns(self):
         assert LLMService.is_invalid_dialogue_message("${foo}") is True
         assert LLMService.is_invalid_dialogue_message('{ "role": "PILOT" }') is True
-        assert LLMService.is_invalid_dialogue_message("Error in communication: blah") is True
+        assert (
+            LLMService.is_invalid_dialogue_message("Error in communication: blah")
+            is True
+        )
         assert LLMService.is_invalid_dialogue_message("Totally normal text") is False
         assert LLMService.is_invalid_dialogue_message("") is False
         assert LLMService.is_invalid_dialogue_message(None) is False
@@ -46,7 +49,9 @@ class TestLLMServiceChat:
             choices=[SimpleNamespace(text="unused")]
         )
 
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         response_json = """```json
@@ -57,8 +62,15 @@ class TestLLMServiceChat:
         response_obj.raise_for_status.return_value = None
         response_obj.json.return_value = {"message": {"content": response_json}}
 
-        schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-        with patch("mysite.universe.services.llm_service.requests.post", return_value=response_obj) as post:
+        schema = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+        }
+        with patch(
+            "mysite.universe.services.llm_service.requests.post",
+            return_value=response_obj,
+        ) as post:
             out = svc.chat(
                 messages=[
                     {"role": "system", "content": "Return ONLY JSON."},
@@ -86,7 +98,9 @@ class TestLLMServiceChat:
             choices=[SimpleNamespace(text="unused")]
         )
 
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         # This message will FAIL DialogueMessage validator (missing speaker/recipient mentions),
@@ -97,8 +111,15 @@ class TestLLMServiceChat:
         response_obj.raise_for_status.return_value = None
         response_obj.json.return_value = {"message": {"content": response_json}}
 
-        schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-        with patch("mysite.universe.services.llm_service.requests.post", return_value=response_obj):
+        schema = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+        }
+        with patch(
+            "mysite.universe.services.llm_service.requests.post",
+            return_value=response_obj,
+        ):
             out = svc.chat(
                 messages=[
                     {"role": "system", "content": "JSON schema"},
@@ -122,7 +143,9 @@ class TestLLMServiceChat:
             choices=[SimpleNamespace(text="Some plain text")]
         )
 
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         out = svc.chat(
@@ -136,7 +159,9 @@ class TestLLMServiceChat:
         assert out == "Some plain text"
         assert fake_openai.completions.create.call_count == 1
 
-    def test_chat_system_prompt_replaces_existing_system_message_in_structured_mode(self):
+    def test_chat_system_prompt_replaces_existing_system_message_in_structured_mode(
+        self,
+    ):
         """
         Backward-compat behavior: system_prompt arg should override any provided system message.
         This matters because downstream JSON-mode detection is based on system content.
@@ -144,7 +169,9 @@ class TestLLMServiceChat:
         config_path = _write_temp_llm_config()
 
         fake_openai = Mock()
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         response_obj = Mock()
@@ -155,8 +182,15 @@ class TestLLMServiceChat:
             }
         }
 
-        schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-        with patch("mysite.universe.services.llm_service.requests.post", return_value=response_obj) as post:
+        schema = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+        }
+        with patch(
+            "mysite.universe.services.llm_service.requests.post",
+            return_value=response_obj,
+        ) as post:
             svc.chat(
                 messages=[
                     {"role": "system", "content": "OLD SYSTEM"},
@@ -175,7 +209,9 @@ class TestLLMServiceChat:
     def test_chat_system_prompt_inserts_system_message_when_missing(self):
         config_path = _write_temp_llm_config()
         fake_openai = Mock()
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         response_obj = Mock()
@@ -186,8 +222,15 @@ class TestLLMServiceChat:
             }
         }
 
-        schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-        with patch("mysite.universe.services.llm_service.requests.post", return_value=response_obj) as post:
+        schema = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+        }
+        with patch(
+            "mysite.universe.services.llm_service.requests.post",
+            return_value=response_obj,
+        ) as post:
             svc.chat(
                 messages=[{"role": "user", "content": "Hello"}],
                 system_prompt="Return JSON.",
@@ -206,7 +249,9 @@ class TestLLMServiceChat:
             choices=[SimpleNamespace(text="Definitely not JSON")]
         )
 
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         with pytest.raises(ValueError):
@@ -224,7 +269,9 @@ class TestLLMServiceChat:
 
         fake_openai = Mock()
         fake_openai.completions.create.side_effect = RuntimeError("network down")
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         out = svc.chat(
@@ -240,11 +287,15 @@ class TestLLMServiceChat:
     def test_generate_with_system_prompt_delegates_to_chat(self):
         config_path = _write_temp_llm_config()
         fake_openai = Mock()
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
         svc.chat = Mock(return_value="OK")
-        out = svc.generate_with_system_prompt("hello", "sys", temperature=0.1, max_tokens=5)
+        out = svc.generate_with_system_prompt(
+            "hello", "sys", temperature=0.1, max_tokens=5
+        )
         assert out == "OK"
         assert svc.chat.call_count == 1
 
@@ -259,7 +310,9 @@ class TestLLMServiceChat:
             choices=[SimpleNamespace(text="Non-quiet plain text")]
         )
 
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=False)
 
         with patch("builtins.print"):
@@ -285,7 +338,9 @@ class TestLLMServiceChat:
             choices=[SimpleNamespace(text="not-json")]
         )
 
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=False)
 
         with (
@@ -301,15 +356,70 @@ class TestLLMServiceChat:
                 format=None,
             )
 
+    def test_chat_json_mode_raises_when_model_construct_also_fails(self):
+        """
+        Cover the deep fallback branch: validation fails AND model_construct raises.
+        The service should re-raise a ValueError rather than swallowing the error.
+        """
+        config_path = _write_temp_llm_config()
+
+        fake_openai = Mock()
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
+            svc = LLMService(config_path=config_path, quiet_mode=True)
+
+        # Valid JSON object but with a field that will cause both strict validation
+        # and model_construct to fail by patching DialogueMessage.model_construct.
+        response_json = '{"role":"PILOT","speaker_callsign":"A","recipient_callsign":"B","message":"hi"}'
+        response_obj = Mock()
+        response_obj.raise_for_status.return_value = None
+        response_obj.json.return_value = {"message": {"content": response_json}}
+
+        schema = {"type": "object"}
+        with (
+            patch(
+                "mysite.universe.services.llm_service.requests.post",
+                return_value=response_obj,
+            ),
+            patch(
+                "mysite.universe.services.llm_service.DialogueMessage.model_construct",
+                side_effect=TypeError("construct exploded"),
+            ),
+            pytest.raises(
+                ValueError, match="LLM failed to generate valid DialogueMessage"
+            ),
+        ):
+            svc.chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Return JSON DialogueMessage schema.",
+                    },
+                    {"role": "user", "content": "Say hi."},
+                ],
+                use_structured_output=True,
+                format=schema,
+            )
+
     def test_chat_json_mode_propagates_transport_errors_as_value_error(self):
         config_path = _write_temp_llm_config()
 
         fake_openai = Mock()
-        with patch("mysite.universe.services.llm_service.OpenAI", return_value=fake_openai):
+        with patch(
+            "mysite.universe.services.llm_service.OpenAI", return_value=fake_openai
+        ):
             svc = LLMService(config_path=config_path, quiet_mode=True)
 
-        schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-        with patch("mysite.universe.services.llm_service.requests.post", side_effect=RuntimeError("boom")):
+        schema = {
+            "type": "object",
+            "properties": {"message": {"type": "string"}},
+            "required": ["message"],
+        }
+        with patch(
+            "mysite.universe.services.llm_service.requests.post",
+            side_effect=RuntimeError("boom"),
+        ):
             with pytest.raises(ValueError) as e:
                 svc.chat(
                     messages=[
@@ -320,4 +430,3 @@ class TestLLMServiceChat:
                     format=schema,
                 )
         assert "Error communicating with LLM" in str(e.value)
-

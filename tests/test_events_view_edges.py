@@ -6,6 +6,7 @@ Tests for branches not covered by test_event_feed.py:
 - _sentence_case() utility
 - event_feed cursor validation error paths
 """
+
 import time
 from django.test import TestCase, Client
 
@@ -24,7 +25,9 @@ class TestResolveVoiceForEvent(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.location = Location.objects.create(name="Voice Test Station", scale=Scale.STATION)
+        cls.location = Location.objects.create(
+            name="Voice Test Station", scale=Scale.STATION
+        )
         cls.ship = Ship.objects.create(
             name="VOICE TEST SHIP",
             current_location=cls.location,
@@ -65,7 +68,7 @@ class TestResolveVoiceForEvent(TestCase):
         """Actor with a valid audio profile and voice_template returns that template."""
         # Ensure pilot has a profile with a known voice_template
         AudioProfile.objects.filter(actor=self.pilot).delete()
-        profile = AudioProfile.objects.create(
+        AudioProfile.objects.create(
             actor=self.pilot,
             params={
                 "voiceprint": {"voice_template": "pilot-F-003_canonical_all"},
@@ -94,10 +97,10 @@ class TestResolveVoiceForEvent(TestCase):
         """Actor profile with no voice_template falls back to 'pilot_default'."""
         # Create a profile with no voice template set
         AudioProfile.objects.filter(actor=self.pilot).delete()
-        profile = AudioProfile.objects.create(
+        AudioProfile.objects.create(
             actor=self.pilot,
             params={
-                "voiceprint": {},   # No voice_template key
+                "voiceprint": {},  # No voice_template key
                 "room_tone": {"enabled": False},
                 "static": {"intensity": 0.0},
                 "quindar": {},

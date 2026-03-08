@@ -1,6 +1,5 @@
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from mysite.universe.services.dictionary import DictionaryService
 
@@ -14,15 +13,16 @@ class TestDictionaryService(unittest.TestCase):
         for category, words in self.dictionary.wordlists.items():
             for word in words:
                 # No leading/trailing whitespace
-                self.assertEqual(word, word.strip(),
-                    f"Found whitespace issues in {category}: '{word}'")
+                self.assertEqual(
+                    word,
+                    word.strip(),
+                    f"Found whitespace issues in {category}: '{word}'",
+                )
                 # No empty strings
-                self.assertGreater(len(word), 0,
-                    f"Found empty string in {category}")
+                self.assertGreater(len(word), 0, f"Found empty string in {category}")
                 # No duplicates in list
                 self.assertEqual(
-                    words.count(word), 1,
-                    f"Found duplicate '{word}' in {category}"
+                    words.count(word), 1, f"Found duplicate '{word}' in {category}"
                 )
 
     # ------------------------------------------------------------------
