@@ -1145,3 +1145,151 @@ class TestRoutePlanEdgeCases(TestCase):
         events = self.svc.plan_route(self.moon, self.earth)
         maneuvers = [e.maneuver.name for e in events]
         self.assertIn("LAUNCH", maneuvers)
+
+
+class TestDetermineManeuversBranches(TestCase):
+    """
+    Cover the branches in determine_maneuvers() that are unreachable via
+    the normal plan_route() flow:
+    - DIRECT_ASCENT block (lines 203-245): triggered only when a crafted
+      transfer_plan containing ManeuverType.DIRECT_ASCENT is passed directly.
+    - Multi-leg Station departure (lines 283-285, 331-332).
+    - 3-element INSERTION plan with STATION destination (line 294).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
+        UniverseImporter(xml_file).import_universe()
+
+    def setUp(self):
+        from mysite.universe.models.scale import OrderedScale, Scale
+
+        self.svc = RouteService()
+        self.earth = Location.objects.get(name="Earth")
+        self.earth_control = Location.objects.get(name="Earth Orbital Control")
+        self.luna = Location.objects.get(name="Luna")
+        self.moon = Location.objects.get(name="Moon")
+        self.mars = Location.objects.get(name="Mars")
+
+        # Shorthand scale values used when crafting transfer plans.
+        self.S_PLANET = OrderedScale(Scale.PLANET)
+        self.S_MOON = OrderedScale(Scale.MOON)
+        self.S_STATION = OrderedScale(Scale.STATION)
+        self.S_STARSYSTEM = OrderedScale(Scale.STARSYSTEM)
+
+    def _maneuver_names(self, events):
+        return [e.maneuver.name for e in events]
+
+    # ------------------------------------------------------------------
+    # DIRECT_ASCENT block (lines 203-245)
+    # ------------------------------------------------------------------
+
+    def test_direct_ascent_station_origin_planet_dest(self):
+        """
+        DIRECT_ASCENT with Station origin → UNDOCK prepended (line 225-226),
+        DIRECT_ASCENT in the middle (229), DEORBIT+LANDING at arrival (240-241).
+        """
+        tp = [self.S_STATION, ManeuverType.DIRECT_ASCENT, self.S_PLANET]
+        events = self.svc._determine_maneuvers(
+            tp, [self.earth_control, self.earth], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        self.assertIn("UNDOCK", names)
+        self.assertIn("DIRECT_ASCENT", names)
+        self.assertIn("DEORBIT", names)
+        self.assertIn("LANDING", names)
+        self.assertNotIn("DOCK", names)
+        self.assertNotIn("CIRCULARIZE", names)
+
+    def test_direct_ascent_moon_origin_moon_dest(self):
+        """
+        DIRECT_ASCENT with Moon origin → LAUNCH prepended (227-228),
+        CIRCULARIZE+DEORBIT+LANDING at Moon arrival (232-239).
+        """
+        tp = [self.S_MOON, ManeuverType.DIRECT_ASCENT, self.S_MOON]
+        events = self.svc._determine_maneuvers(
+            tp, [self.luna, self.moon], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        self.assertIn("LAUNCH", names)
+        self.assertIn("DIRECT_ASCENT", names)
+        self.assertIn("CIRCULARIZE", names)
+        self.assertIn("DEORBIT", names)
+        self.assertIn("LANDING", names)
+
+    def test_direct_ascent_planet_origin_station_dest(self):
+        """
+        DIRECT_ASCENT with Station destination → DOCK appended (230-231),
+        no LAUNCH or UNDOCK on the origin side.
+        """
+        tp = [self.S_PLANET, ManeuverType.DIRECT_ASCENT, self.S_STATION]
+        events = self.svc._determine_maneuvers(
+            tp, [self.earth, self.earth_control], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        self.assertIn("DIRECT_ASCENT", names)
+        self.assertIn("DOCK", names)
+        self.assertNotIn("UNDOCK", names)
+        self.assertNotIn("CIRCULARIZE", names)
+
+    def test_direct_ascent_planet_origin_planet_dest(self):
+        """
+        DIRECT_ASCENT with Planet destination (else branch, line 240-241):
+        DEORBIT+LANDING but no DOCK or CIRCULARIZE.
+        """
+        tp = [self.S_PLANET, ManeuverType.DIRECT_ASCENT, self.S_PLANET]
+        events = self.svc._determine_maneuvers(
+            tp, [self.earth, self.mars], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        self.assertIn("DIRECT_ASCENT", names)
+        self.assertIn("DEORBIT", names)
+        self.assertIn("LANDING", names)
+        self.assertNotIn("DOCK", names)
+        self.assertNotIn("CIRCULARIZE", names)
+
+    # ------------------------------------------------------------------
+    # Multi-leg Station departure (lines 283-285) and non-planetary
+    # origin transfer phase (lines 331-332)
+    # ------------------------------------------------------------------
+
+    def test_multileg_station_departure_covers_undock_and_sublight(self):
+        """
+        Multi-leg route from a Station origin (len(transfer_plan) > 3):
+        - Departure phase: UNDOCK, INSERTION, CIRCULARIZE (lines 283-285).
+        - Transfer phase: non-planetary origin → SUBLIGHT, CIRCULARIZE (331-332).
+        """
+        tp = [
+            self.S_STATION,
+            ManeuverType.INSERTION,
+            self.S_PLANET,
+            ManeuverType.SUBLIGHT,
+            self.S_PLANET,
+        ]
+        events = self.svc._determine_maneuvers(
+            tp, [self.earth_control, self.earth, self.mars], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        self.assertIn("UNDOCK", names)
+        self.assertIn("INSERTION", names)
+        self.assertIn("SUBLIGHT", names)
+        self.assertIn("DEORBIT", names)
+        self.assertIn("LANDING", names)
+
+    # ------------------------------------------------------------------
+    # 3-element INSERTION plan with STATION destination (line 294)
+    # ------------------------------------------------------------------
+
+    def test_insertion_plan_to_station_dest_adds_plane_change(self):
+        """
+        3-element transfer plan (INSERTION, not DIRECT_ASCENT) with Station
+        destination: transfer phase emits PLANE_CHANGE (line 294).
+        """
+        tp = [self.S_PLANET, ManeuverType.INSERTION, self.S_STATION]
+        events = self.svc._determine_maneuvers(
+            tp, [self.earth, self.earth_control], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        self.assertIn("PLANE_CHANGE", names)
+        self.assertIn("DOCK", names)
