@@ -6,8 +6,8 @@ with procedurally generated names, traits, and prompts.
 """
 
 from django.core.management.base import BaseCommand
-from mysite.universe.models.actor import Pilot, Controller
-from mysite.universe.models.base import Location
+
+from mysite.universe.models.actor import Pilot
 from mysite.universe.models.ship import Ship
 
 
