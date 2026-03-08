@@ -1,4 +1,9 @@
 @echo off
+REM NOTE: This script intentionally overlaps with launch-django.sh.
+REM The duplication is deliberate because Windows batch and POSIX shell
+REM have different process, activation, and startup semantics.
+REM Keep behavior aligned across both files, but do not try to force
+REM them into a single cross-platform script.
 :start
 echo Starting Django development environment...
 
