@@ -4,44 +4,73 @@ jobs:
   test:
     docker:
       - image: cimg/python:3.10
-    
+    parallelism: 4
+
     steps:
       - checkout
-      
+
       - restore_cache:
           keys:
             - deps-v1-{{ checksum "requirements.txt" }}
             - deps-v1-
-      
+
       - run:
           name: Install dependencies
           command: |
             pip install --upgrade pip
             pip install -r requirements.txt
-      
+            pip install codecov-cli
+
       - save_cache:
           key: deps-v1-{{ checksum "requirements.txt" }}
           paths:
             - ~/.cache/pip
-      
+
       - run:
           name: Run tests with coverage
           command: |
             export DJANGO_SETTINGS_MODULE=mysite.settings
-            pytest tests -m "not slow" --cov=mysite/universe --cov-report=xml:coverage.xml --cov-report=term --junitxml=test-results/junit.xml
-      
+            TESTS=$(circleci tests glob "tests/test_*.py" | \
+                    circleci tests split --split-by=timings)
+            pytest $TESTS -m "not slow" \
+              --cov=mysite/universe \
+              --cov-report=xml:coverage.xml \
+              --cov-report=term \
+              --junitxml=test-results/junit.xml
+
       - run:
-          name: Upload coverage to Codecov
+          name: Upload partial coverage to Codecov
           command: |
-            bash <(curl -s https://codecov.io/bash) -t ${CODECOV_TOKEN} -f coverage.xml
-      
+            codecovCLI upload-process \
+              --token=$CODECOV_TOKEN \
+              --flag parallel \
+              --plugin pycoverage \
+              --coverage-files-search-root-folder .
+
       - store_test_results:
           path: test-results
-      
+
       - store_artifacts:
           path: coverage.xml
+
+  notify-codecov:
+    docker:
+      - image: cimg/python:3.10
+
+    steps:
+      - run:
+          name: Install codecov-cli
+          command: pip install codecov-cli
+
+      - run:
+          name: Notify Codecov to merge parallel uploads
+          command: |
+            codecovCLI send-notifications --token=$CODECOV_TOKEN
 
 workflows:
   test-workflow:
     jobs:
       - test
+      - notify-codecov:
+          requires:
+            - test
