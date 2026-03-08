@@ -11,24 +11,26 @@ jobs:
 
       - restore_cache:
           keys:
-            - deps-v1-{{ checksum "requirements.txt" }}
-            - deps-v1-
+            - venv-v1-{{ checksum "requirements.txt" }}
+            - venv-v1-
 
       - run:
           name: Install dependencies
           command: |
-            pip install --upgrade pip
-            pip install -r requirements.txt
-            pip install codecov-cli
+            python -m venv venv
+            venv/bin/pip install --upgrade pip
+            venv/bin/pip install -r requirements.txt
+            venv/bin/pip install codecov-cli
 
       - save_cache:
-          key: deps-v1-{{ checksum "requirements.txt" }}
+          key: venv-v1-{{ checksum "requirements.txt" }}
           paths:
-            - ~/.cache/pip
+            - venv
 
       - run:
           name: Run tests with coverage
           command: |
+            source venv/bin/activate
             export DJANGO_SETTINGS_MODULE=mysite.settings
             TESTS=$(circleci tests glob "tests/test_*.py" | \
                     circleci tests split --split-by=timings)
@@ -41,7 +43,8 @@ jobs:
       - run:
           name: Upload partial coverage to Codecov
           command: |
-            python -m codecov_cli upload-process \
+            source venv/bin/activate
+            codecovCLI upload-process \
               --token=$CODECOV_TOKEN \
               --flag parallel \
               --plugin pycoverage \
@@ -53,6 +56,10 @@ jobs:
       - store_artifacts:
           path: coverage.xml
 
+  # TODO: this job spins up a full cimg/python:3.10 container just to run one
+  # CLI command. Consider switching to cimg/base and using the Codecov orb
+  # (https://circleci.com/developer/orbs/orb/codecov/codecov) to skip the
+  # pip install entirely and shave ~60s off this job's cold start.
   notify-codecov:
     docker:
       - image: cimg/python:3.10
@@ -65,7 +72,8 @@ jobs:
       - run:
           name: Notify Codecov to merge parallel uploads
           command: |
-            python -m codecov_cli send-notifications --token=$CODECOV_TOKEN
+            export PATH="$(python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH"
+            codecovCLI send-notifications --token=$CODECOV_TOKEN
 
 workflows:
   test-workflow:
