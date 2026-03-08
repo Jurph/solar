@@ -220,3 +220,190 @@ class TestOrderedScaleEdgeCases(TestCase):
         s = OrderedScale(99)
         result = str(s)
         self.assertEqual(result, "99")
+
+
+class TestPhysicalBodyOrbitalMethods(TestCase):
+    """Tests for get_geostationary_altitude_km() and get_low_orbit_altitude_km() on PhysicalBody."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet
+
+        cls.galaxy = Galaxy.objects.create(
+            name="OrbTest Galaxy", galaxy_type="SP", galaxy_size="S"
+        )
+        cls.system = StarSystem.objects.create(
+            name="OrbTest System",
+            orbits=cls.galaxy,
+            galactic_x_ly=1.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        cls.star = Star.objects.create(
+            name="OrbTest Star",
+            orbits=cls.system,
+            star_type="G",
+            mass_kg=1.989e30,
+        )
+        # Earth-like planet: mass, radius, rotation period all set
+        cls.earth_like = Planet.objects.create(
+            name="OrbTest Earth",
+            orbits=cls.star,
+            planet_type="TE",
+            mass_kg=5.972e24,
+            radius_km=6371.0,
+            rotation_period_hours=24.0,
+            orbital_distance_au=1.0,
+        )
+        # Airless body: no rotation period → GEO can't be computed
+        cls.airless = Planet.objects.create(
+            name="OrbTest Airless",
+            orbits=cls.star,
+            planet_type="DE",
+            mass_kg=6.42e23,
+            radius_km=3390.0,
+            orbital_distance_au=1.52,
+        )
+
+    def test_geo_altitude_earth_like_approx_35786_km(self):
+        """Earth-like planet (24h rotation, Earth mass/radius) → GEO ≈ 35 786 km."""
+        alt = self.earth_like.get_geostationary_altitude_km()
+        self.assertIsNotNone(alt)
+        # Real value ≈ 35 869 km; accept ±200 km for floating-point model precision
+        self.assertAlmostEqual(alt, 35786.0, delta=200.0)
+
+    def test_geo_altitude_returns_none_without_rotation_period(self):
+        """Planet with no rotation_period_hours → method returns None."""
+        alt = self.airless.get_geostationary_altitude_km()
+        self.assertIsNone(alt)
+
+    def test_low_orbit_is_twice_min_safe_orbit(self):
+        """get_low_orbit_altitude_km() == 2 × get_min_safe_orbit_km()."""
+        min_safe = self.airless.get_min_safe_orbit_km()
+        low = self.airless.get_low_orbit_altitude_km()
+        self.assertAlmostEqual(low, min_safe * 2.0, places=3)
+
+
+class TestCalculateStationOrbit(TestCase):
+    """Tests for location_service.calculate_station_orbit()."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from mysite.universe.models.celestial import (
+            Galaxy,
+            StarSystem,
+            Star,
+            Planet,
+            Moon,
+        )
+        from mysite.universe.models.station import Station
+
+        cls.galaxy = Galaxy.objects.create(
+            name="CSO Galaxy", galaxy_type="SP", galaxy_size="S"
+        )
+        cls.system = StarSystem.objects.create(
+            name="CSO System",
+            orbits=cls.galaxy,
+            galactic_x_ly=2.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        cls.star = Star.objects.create(
+            name="CSO Star",
+            orbits=cls.system,
+            star_type="G",
+            mass_kg=1.989e30,
+        )
+        # Earth-like: GEO should succeed (~35 786 km, well within ~1.5M km Hill sphere)
+        cls.geo_planet = Planet.objects.create(
+            name="CSO GEO Planet",
+            orbits=cls.star,
+            planet_type="TE",
+            mass_kg=5.972e24,
+            radius_km=6371.0,
+            rotation_period_hours=24.0,
+            orbital_distance_au=1.0,
+        )
+        # No rotation period → GEO fails; has a moon → L4 expected
+        cls.gas_giant = Planet.objects.create(
+            name="CSO Gas Giant",
+            orbits=cls.star,
+            planet_type="GG",
+            mass_kg=1.898e27,
+            radius_km=69911.0,
+            orbital_distance_au=5.2,
+        )
+        cls.big_moon = Moon.objects.create(
+            name="CSO Big Moon",
+            orbits=cls.gas_giant,
+            moon_type="IC",
+            mass_kg=1.48e23,
+            radius_km=2634.0,
+            orbital_distance_km=1_070_400.0,
+        )
+        # Airless body: no rotation, no moons → LOW expected
+        cls.airless_planet = Planet.objects.create(
+            name="CSO Airless",
+            orbits=cls.star,
+            planet_type="DE",
+            mass_kg=6.42e23,
+            radius_km=3390.0,
+            orbital_distance_au=1.52,
+        )
+        cls.station = Station.objects.create(
+            name="CSO Station",
+            orbits=cls.geo_planet,
+            large_berths=1,
+            medium_berths=2,
+            small_berths=4,
+        )
+
+    def test_geo_orbit_for_earth_like_planet(self):
+        """Earth-like planet returns GEO orbit at ≈ 35 786 km."""
+        from mysite.universe.services.location_service import calculate_station_orbit
+
+        km, orbit_type = calculate_station_orbit(self.station, self.geo_planet)
+        self.assertEqual(orbit_type, "GEO")
+        self.assertAlmostEqual(km, 35786.0, delta=100.0)
+
+    def test_l4_orbit_for_planet_with_moon(self):
+        """Gas giant with no rotation period but a large moon → L4 at moon's orbital distance."""
+        from mysite.universe.services.location_service import calculate_station_orbit
+        from mysite.universe.models.station import Station as StationModel
+
+        station = StationModel.objects.create(
+            name="CSO Gas Station",
+            orbits=self.gas_giant,
+            large_berths=1,
+            medium_berths=1,
+            small_berths=2,
+        )
+        km, orbit_type = calculate_station_orbit(station, self.gas_giant)
+        self.assertEqual(orbit_type, "L4")
+        self.assertEqual(km, round(self.big_moon.orbital_distance_km))
+
+    def test_low_orbit_for_airless_body_without_moons(self):
+        """Airless planet with no rotation and no moons → LOW orbit."""
+        from mysite.universe.services.location_service import calculate_station_orbit
+        from mysite.universe.models.station import Station as StationModel
+
+        station = StationModel.objects.create(
+            name="CSO Airless Station",
+            orbits=self.airless_planet,
+            large_berths=1,
+            medium_berths=1,
+            small_berths=2,
+        )
+        km, orbit_type = calculate_station_orbit(station, self.airless_planet)
+        self.assertEqual(orbit_type, "LOW")
+        expected = round(self.airless_planet.get_low_orbit_altitude_km())
+        self.assertEqual(km, expected)
+
+    def test_custom_fallback_for_plain_location(self):
+        """Passing a plain Location (no PhysicalBody methods) → CUSTOM at 400 km."""
+        from mysite.universe.services.location_service import calculate_station_orbit
+
+        plain = Location.objects.create(name="CSO Plain", scale=Scale.PLANET)
+        km, orbit_type = calculate_station_orbit(self.station, plain)
+        self.assertEqual(orbit_type, "CUSTOM")
+        self.assertEqual(km, 400)

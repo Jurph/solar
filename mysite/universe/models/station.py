@@ -3,40 +3,53 @@ from django.core.exceptions import ValidationError
 from .base import Location
 from .ship import Ship
 
+
 class Station(Location):
+    ORBIT_TYPE_CHOICES = [
+        ("GEO", "Geostationary"),
+        ("HALF_GEO", "Half-Geostationary"),
+        ("L4", "L4 Lagrange Point"),
+        ("L5", "L5 Lagrange Point"),
+        ("LOW", "Low Orbit"),
+        ("CUSTOM", "Custom/Manual"),
+    ]
+
     large_berths = models.PositiveSmallIntegerField(default=1)
     medium_berths = models.PositiveSmallIntegerField(default=2)
     small_berths = models.PositiveSmallIntegerField(default=8)
     orbital_distance_km = models.FloatField(
         null=True,
         blank=True,
-        help_text="Orbital distance from parent body surface in km"
+        help_text="Orbital distance from parent body surface in km",
+    )
+    orbit_type = models.CharField(
+        max_length=8,
+        choices=ORBIT_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="How the orbital position was determined (auto-calculated or manual)",
     )
     orbits = models.ForeignKey(
         Location,
         on_delete=models.CASCADE,
-        related_name='orbiting_stations'
+        related_name="orbiting_stations",
     )
+
 
 class BerthAssignment(models.Model):
     station = models.ForeignKey(
-        'Station', 
-        on_delete=models.CASCADE,
-        related_name='current_berths'
+        "Station", on_delete=models.CASCADE, related_name="current_berths"
     )
     ship = models.OneToOneField(
-        'Ship',
-        on_delete=models.CASCADE,
-        related_name='current_berth'
+        "Ship", on_delete=models.CASCADE, related_name="current_berth"
     )
     berth_size = models.CharField(
-        max_length=1,
-        choices=[('L', 'Large'), ('M', 'Medium'), ('S', 'Small')]
+        max_length=1, choices=[("L", "Large"), ("M", "Medium"), ("S", "Small")]
     )
     assigned_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ['station', 'ship']
+        unique_together = ["station", "ship"]
 
     def get_available_berths(self, size: str) -> int:
         """Return number of available berths of given size"""
@@ -44,13 +57,11 @@ class BerthAssignment(models.Model):
         used = self.current_berths.filter(berth_size=size).count()
         return total - used
 
-    def assign_berth(self, ship: 'Ship') -> 'BerthAssignment':
+    def assign_berth(self, ship: "Ship") -> "BerthAssignment":
         """Attempt to assign a berth to a ship"""
         if self.get_available_berths(ship.size) <= 0:
             raise ValidationError(f"No available {ship.get_size_display()} berths")
-            
+
         return self.BerthAssignment.objects.create(
-            station=self,
-            ship=ship,
-            berth_size=ship.size
+            station=self, ship=ship, berth_size=ship.size
         )
