@@ -11,8 +11,8 @@ Covers:
 - _determine_actor_and_recipient() routing
 - generate_chain_iteratively() termination
 """
-import json
-from unittest.mock import MagicMock, patch
+
+from unittest.mock import MagicMock
 from django.test import TestCase
 
 from mysite.universe.models.actor import Pilot, Controller, Satellite
@@ -35,7 +35,9 @@ class DialogueServiceTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.location = Location.objects.create(name="Hub Station", scale=Scale.STATION)
-        cls.ship = Ship.objects.create(name="STELLAR NOVA", current_location=cls.location, size=Ship.Size.MEDIUM)
+        cls.ship = Ship.objects.create(
+            name="STELLAR NOVA", current_location=cls.location, size=Ship.Size.MEDIUM
+        )
         cls.pilot = Pilot.create(ship=cls.ship)
         cls.pilot.name = "Lt. Vasquez"
         cls.pilot.save()
@@ -90,6 +92,7 @@ class TestBuildPrompt(DialogueServiceTestBase):
     def test_previous_dialogue_included_in_user_prompt(self):
         """When previous_dialogue is supplied, user_prompt references it."""
         from mysite.universe.schemas.dialogue_schema import DialogueMessage
+
         service, _ = self._make_service()
         particle = RadioResponse(
             actor=self.controller,
@@ -256,7 +259,9 @@ class TestSelectNextParticleType(DialogueServiceTestBase):
 
     def test_deterministic_selection_with_only_one_nonzero(self):
         """With only one non-zero entry, it must win every time."""
-        result = self.service._select_next_particle_type({"response": 0.95, "hold": 0.0})
+        result = self.service._select_next_particle_type(
+            {"response": 0.95, "hold": 0.0}
+        )
         self.assertEqual(result, "response")
 
 

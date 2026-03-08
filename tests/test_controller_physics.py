@@ -7,11 +7,11 @@ Covers:
 - Parameter generation for each maneuver type
 - Fallback behavior when bodies are missing
 """
+
 from django.test import TestCase
 
 from mysite.universe.models.actor import Controller
-from mysite.universe.models.base import Location
-from mysite.universe.models.celestial import Planet, Moon, Star, StarSystem, Galaxy
+from mysite.universe.models.celestial import Planet, Star, StarSystem, Galaxy
 from mysite.universe.models.scale import Scale
 from mysite.universe.models.station import Station
 from mysite.universe.services.controller_physics import ControllerPhysicsService
@@ -23,8 +23,12 @@ class ControllerPhysicsTestBase(TestCase):
     @classmethod
     def setUpTestData(cls):
         galaxy = Galaxy.objects.create(name="Test Galaxy CP", scale=Scale.GALAXY)
-        system = StarSystem.objects.create(name="Test System CP", scale=Scale.STARSYSTEM, orbits=galaxy)
-        star = Star.objects.create(name="Test Star CP", scale=Scale.STAR, star_type="G", orbits=system)
+        system = StarSystem.objects.create(
+            name="Test System CP", scale=Scale.STARSYSTEM, orbits=galaxy
+        )
+        star = Star.objects.create(
+            name="Test Star CP", scale=Scale.STAR, star_type="G", orbits=system
+        )
 
         cls.origin_planet = Planet.objects.create(
             name="Origin World",
@@ -230,7 +234,8 @@ class TestGenerateParameters(ControllerPhysicsTestBase):
     def test_sublight_fallback_when_no_locations(self):
         """Fallback to random azimuth when origin/destination are unknown."""
         params = ControllerPhysicsService.generate_sublight_parameters(
-            self.origin_planet, {"maneuver_type": "SUBLIGHT"}  # No origin/destination
+            self.origin_planet,
+            {"maneuver_type": "SUBLIGHT"},  # No origin/destination
         )
         self.assertIn("azimuth_deg", params)
         self.assertGreaterEqual(params["azimuth_deg"], 0.0)
@@ -274,14 +279,18 @@ class TestGenerateParameters(ControllerPhysicsTestBase):
         """generate_plane_change_parameters() returns target_inclination_deg."""
         body = self.origin_planet
         nav_ctx = self._nav_ctx("PLANE_CHANGE")
-        params = ControllerPhysicsService.generate_plane_change_parameters(body, nav_ctx)
+        params = ControllerPhysicsService.generate_plane_change_parameters(
+            body, nav_ctx
+        )
         self.assertIn("target_inclination_deg", params)
 
     def test_plane_change_inclination_in_valid_range(self):
         """Plane change inclination is 0–180 degrees."""
         body = self.origin_planet
         nav_ctx = self._nav_ctx("PLANE_CHANGE")
-        params = ControllerPhysicsService.generate_plane_change_parameters(body, nav_ctx)
+        params = ControllerPhysicsService.generate_plane_change_parameters(
+            body, nav_ctx
+        )
         self.assertGreaterEqual(params["target_inclination_deg"], 0.0)
         self.assertLessEqual(params["target_inclination_deg"], 180.0)
 

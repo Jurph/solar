@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import os
-from unittest.mock import patch
 
-from django.conf import settings
 from django.test import TestCase
 
 import io
 from contextlib import redirect_stdout
 
-from mysite.universe.import_xml import UniverseImporter
 from mysite.universe.models.base import Location
 from mysite.universe.models.celestial import Galaxy, StarSystem, Star, Planet, Moon
 from mysite.universe.models.constants import TypeName
@@ -41,9 +37,15 @@ class TestBuildNavigationEvents(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Sol", orbits=system, star_type="G")
-        self.earth = Planet.objects.create(name="Earth", orbits=star, planet_type="TE", orbital_distance_au=1.0)
-        self.mars = Planet.objects.create(name="Mars", orbits=star, planet_type="TE", orbital_distance_au=1.5)
-        self.station = Station.objects.create(name="Earth Orbital Control", orbits=self.earth, scale=Scale.STATION)
+        self.earth = Planet.objects.create(
+            name="Earth", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
+        self.mars = Planet.objects.create(
+            name="Mars", orbits=star, planet_type="TE", orbital_distance_au=1.5
+        )
+        self.station = Station.objects.create(
+            name="Earth Orbital Control", orbits=self.earth, scale=Scale.STATION
+        )
 
     def test_empty_path_returns_empty_events(self):
         assert build_navigation_events([]) == []
@@ -81,9 +83,13 @@ class TestNavigationHelpers(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Star", orbits=system, star_type="G")
-        self.earth = Planet.objects.create(name="Earth2", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        self.earth = Planet.objects.create(
+            name="Earth2", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
         self.moon = Moon.objects.create(name="Moon2", orbits=self.earth, moon_type="R")
-        self.station = Station.objects.create(name="Earth2 Control", orbits=self.earth, scale=Scale.STATION)
+        self.station = Station.objects.create(
+            name="Earth2 Control", orbits=self.earth, scale=Scale.STATION
+        )
 
         UniverseGraph.get_instance().rebuild_graph()
 
@@ -99,8 +105,15 @@ class TestNavigationHelpers(TestCase):
 
     def test_requires_plane_change_true_when_parents_differ(self):
         # current and destination orbit different parents => plane change required
-        other_star = Star.objects.create(name="Other", orbits=self.earth.orbits.orbits, star_type="G")
-        other_planet = Planet.objects.create(name="OtherPlanet", orbits=other_star, planet_type="TE", orbital_distance_au=2.0)
+        other_star = Star.objects.create(
+            name="Other", orbits=self.earth.orbits.orbits, star_type="G"
+        )
+        other_planet = Planet.objects.create(
+            name="OtherPlanet",
+            orbits=other_star,
+            planet_type="TE",
+            orbital_distance_au=2.0,
+        )
 
         ev = NavigationEvent(
             origin=self.earth,
@@ -137,9 +150,13 @@ class TestNavigationHelpers(TestCase):
         assert controller is not None
         assert controller.get_type_name() in TypeName.PLANETARY_BODIES
 
-    def test_find_controlling_station_returns_none_for_galaxy_when_filtered_to_planet_scale(self):
+    def test_find_controlling_station_returns_none_for_galaxy_when_filtered_to_planet_scale(
+        self,
+    ):
         # For a galaxy, local_graph with PLANET scale returns empty, so controller is None.
-        galaxy_loc = Galaxy.objects.create(name="Remote Galaxy", galaxy_type="SP", galaxy_size="L")
+        galaxy_loc = Galaxy.objects.create(
+            name="Remote Galaxy", galaxy_type="SP", galaxy_size="L"
+        )
         UniverseGraph.get_instance().rebuild_graph()
         assert find_controlling_station(galaxy_loc) is None
 
@@ -152,7 +169,9 @@ class TestNavigationHelpers(TestCase):
         def get_neighbors(x):
             return neighbors.get(x, [])
 
-        found = bfs_find_nearest_node(a, target_check=lambda x: x is c, get_neighbors=get_neighbors)
+        found = bfs_find_nearest_node(
+            a, target_check=lambda x: x is c, get_neighbors=get_neighbors
+        )
         assert found is c
 
 
@@ -171,7 +190,9 @@ class TestCelestialScaleDefaults(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="DStar", orbits=system, star_type="G")
-        planet = Planet.objects.create(name="DPlanet", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        planet = Planet.objects.create(
+            name="DPlanet", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
         moon = Moon.objects.create(name="DMoon", orbits=planet, moon_type="R")
 
         assert galaxy.scale == Scale.GALAXY
@@ -192,15 +213,21 @@ class TestUniverseGraphEdgeCases(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="UStar", orbits=system, star_type="G")
-        self.planet = Planet.objects.create(name="UPlanet", orbits=star, planet_type="TE", orbital_distance_au=1.0)
-        self.station = Station.objects.create(name="UStation", orbits=self.planet, scale=Scale.STATION)
+        self.planet = Planet.objects.create(
+            name="UPlanet", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
+        self.station = Station.objects.create(
+            name="UStation", orbits=self.planet, scale=Scale.STATION
+        )
         self.universe = UniverseGraph.get_instance()
         self.universe.rebuild_graph()
 
     def test_get_neighbors_returns_empty_for_deleted_location(self):
         # Cover the "graph might be stale" branch: create a new node after the graph
         # was built; get_neighbors should rebuild and then return correct neighbors.
-        new_station = Station.objects.create(name="UStation2", orbits=self.planet, scale=Scale.STATION)
+        new_station = Station.objects.create(
+            name="UStation2", orbits=self.planet, scale=Scale.STATION
+        )
         neighbors = self.universe.get_neighbors(new_station)
         assert {n.name for n in neighbors} == {"UPlanet"}
 
@@ -283,4 +310,3 @@ class TestControlStationKeywordHelpers(TestCase):
         assert _is_control_station("Luna Orbital Control") is True
         assert _is_control_station("Freight Dispatch") is True
         assert _is_control_station("Research Platform") is False
-

@@ -7,6 +7,7 @@ from mysite.universe.export_xml import UniverseExporter
 from mysite.universe.models.celestial import Moon, Planet, Star, StarSystem, Galaxy
 from mysite.universe.models.station import Station
 
+
 class ImportExportTest(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -40,8 +41,12 @@ class ImportExportTest(TestCase):
             "moons": Moon.objects.count(),
             "stations": Station.objects.count(),
         }
-        pprint(counts)        # Optionally, you can also assert at least one system is imported.
-        self.assertGreater(StarSystem.objects.count(), 0, "Expected at least one star system.")
+        pprint(
+            counts
+        )  # Optionally, you can also assert at least one system is imported.
+        self.assertGreater(
+            StarSystem.objects.count(), 0, "Expected at least one star system."
+        )
         self.assertGreater(Planet.objects.count(), 0, "Expected at least one planet.")
         self.assertGreater(Moon.objects.count(), 0, "Expected at least one moon.")
 
@@ -63,7 +68,7 @@ class ImportExportTest(TestCase):
         exporter = UniverseExporter()
         xml_content = exporter.export_universe()
         with open(output_file, "w", encoding="utf-8") as f:
-                f.write(xml_content)
+            f.write(xml_content)
 
         import math
         import xml.etree.ElementTree as ET
@@ -87,7 +92,9 @@ class ImportExportTest(TestCase):
                 return False
             return text.lower() in {"true", "false"}
 
-        def _assert_leaf_equal(a_text: str | None, b_text: str | None, *, context: str) -> None:
+        def _assert_leaf_equal(
+            a_text: str | None, b_text: str | None, *, context: str
+        ) -> None:
             a = _norm_text(a_text)
             b = _norm_text(b_text)
             if a == b:
@@ -103,7 +110,9 @@ class ImportExportTest(TestCase):
             bf = _as_float(b)
             if af is not None and bf is not None:
                 if not math.isclose(af, bf, rel_tol=1e-10, abs_tol=1e-12):
-                    self.fail(f"{context}\nExpected: {af} (from {a})\nGot:      {bf} (from {b})")
+                    self.fail(
+                        f"{context}\nExpected: {af} (from {a})\nGot:      {bf} (from {b})"
+                    )
                 return
 
             self.fail(f"{context}\nExpected: {a}\nGot:      {b}")
@@ -124,14 +133,18 @@ class ImportExportTest(TestCase):
             name = _norm_text(name)
             return (elem.tag, name)
 
-        def _children_by_id(elem: ET.Element) -> dict[tuple[str, str | None], list[ET.Element]]:
+        def _children_by_id(
+            elem: ET.Element,
+        ) -> dict[tuple[str, str | None], list[ET.Element]]:
             grouped: dict[tuple[str, str | None], list[ET.Element]] = {}
             for child in list(elem):
                 key = _element_id(child)
                 grouped.setdefault(key, []).append(child)
             return grouped
 
-        def _compare_elements_subset(expected: ET.Element, actual: ET.Element, *, path: str) -> None:
+        def _compare_elements_subset(
+            expected: ET.Element, actual: ET.Element, *, path: str
+        ) -> None:
             """
             Require that everything in expected is present in actual and matches.
             Allow actual to include additional tags/fields not present in expected.
@@ -141,14 +154,19 @@ class ImportExportTest(TestCase):
             # Attributes: expected must be a subset of actual.
             for k, v in expected.attrib.items():
                 self.assertIn(k, actual.attrib, f"{path}: missing attribute {k}")
-                self.assertEqual(v, actual.attrib.get(k), f"{path}: attribute {k} mismatch")
+                self.assertEqual(
+                    v, actual.attrib.get(k), f"{path}: attribute {k} mismatch"
+                )
 
-            expected_children = [c for c in list(expected) if c.tag not in IGNORE_SUBTREES]
-            actual_children = [c for c in list(actual) if c.tag not in IGNORE_SUBTREES]
+            expected_children = [
+                c for c in list(expected) if c.tag not in IGNORE_SUBTREES
+            ]
 
             if not expected_children:
                 # Leaf (or container we intentionally ignore subtrees on)
-                _assert_leaf_equal(expected.text, actual.text, context=f"{path}: leaf text mismatch")
+                _assert_leaf_equal(
+                    expected.text, actual.text, context=f"{path}: leaf text mismatch"
+                )
                 return
 
             exp_grouped = _children_by_id(expected)
@@ -180,16 +198,18 @@ class ImportExportTest(TestCase):
                     _compare_elements_subset(ec, ac, path=f"{path}/{label}#{idx}")
 
             # Container text is typically whitespace; still require it to match when meaningful.
-            _assert_leaf_equal(expected.text, actual.text, context=f"{path}: container text mismatch")
+            _assert_leaf_equal(
+                expected.text, actual.text, context=f"{path}: container text mismatch"
+            )
 
         original_root = ET.parse(input_file).getroot()
         exported_root = ET.parse(output_file).getroot()
         _compare_elements_subset(original_root, exported_root, path="/universe")
-    
+
     # ============================================================================
     # Idempotent Import Tests
     # ============================================================================
-    
+
     def count_all_objects(self):
         """Count all universe objects."""
         return {
@@ -200,7 +220,7 @@ class ImportExportTest(TestCase):
             "moons": Moon.objects.count(),
             "stations": Station.objects.count(),
         }
-    
+
     def get_object_names(self):
         """Get all object names for comparison."""
         return {
@@ -211,11 +231,11 @@ class ImportExportTest(TestCase):
             "moons": list(Moon.objects.values_list("name", flat=True)),
             "stations": list(Station.objects.values_list("name", flat=True)),
         }
-    
+
     def test_import_twice_same_counts(self):
         """
         Test that importing the same universe twice produces the same object counts.
-        
+
         This is the basic idempotency test - running the import twice should not
         create duplicates.
         """
@@ -224,143 +244,143 @@ class ImportExportTest(TestCase):
         if not os.path.exists(xml_file):
             # Fallback to test_universe.xml if v2 doesn't exist
             xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
-        
+
         # First import
         importer1 = UniverseImporter(xml_file)
         importer1.import_universe()
-        
+
         counts_after_first = self.count_all_objects()
         names_after_first = self.get_object_names()
-        
+
         # Second import (should be idempotent)
         importer2 = UniverseImporter(xml_file)
         importer2.import_universe()
-        
+
         counts_after_second = self.count_all_objects()
         names_after_second = self.get_object_names()
-        
+
         # Verify counts are the same
         self.assertEqual(
             counts_after_first,
             counts_after_second,
-            "Object counts should be identical after second import (idempotency)"
+            "Object counts should be identical after second import (idempotency)",
         )
-        
+
         # Verify names are the same (no duplicates)
         for obj_type in names_after_first:
             self.assertEqual(
                 sorted(names_after_first[obj_type]),
                 sorted(names_after_second[obj_type]),
-                f"{obj_type} names should be identical after second import"
+                f"{obj_type} names should be identical after second import",
             )
-    
+
     def test_import_three_times(self):
         """
         Test that importing three times still produces the same result.
-        
+
         This ensures idempotency works beyond just two runs.
         """
         xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe_v2.xml")
         if not os.path.exists(xml_file):
             xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
-        
+
         counts_list = []
         names_list = []
-        
+
         # Import three times
         for i in range(3):
             importer = UniverseImporter(xml_file)
             importer.import_universe()
-            
+
             counts_list.append(self.count_all_objects())
             names_list.append(self.get_object_names())
-        
+
         # All three should be identical
         self.assertEqual(
             counts_list[0],
             counts_list[1],
-            "First and second import should produce same counts"
+            "First and second import should produce same counts",
         )
         self.assertEqual(
             counts_list[1],
             counts_list[2],
-            "Second and third import should produce same counts"
+            "Second and third import should produce same counts",
         )
-        
+
         # All names should be identical
         for obj_type in names_list[0]:
             self.assertEqual(
                 sorted(names_list[0][obj_type]),
                 sorted(names_list[1][obj_type]),
-                f"{obj_type} names should match between first and second import"
+                f"{obj_type} names should match between first and second import",
             )
             self.assertEqual(
                 sorted(names_list[1][obj_type]),
                 sorted(names_list[2][obj_type]),
-                f"{obj_type} names should match between second and third import"
+                f"{obj_type} names should match between second and third import",
             )
-    
+
     def test_import_preserves_properties(self):
         """
         Test that importing twice preserves object properties.
-        
+
         This ensures that re-importing doesn't just avoid duplicates,
         but also preserves the properties of existing objects.
         """
         xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe_v2.xml")
         if not os.path.exists(xml_file):
             xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
-        
+
         # First import
         importer1 = UniverseImporter(xml_file)
         importer1.import_universe()
-        
+
         # Get a sample of objects with their properties
         sample_star = Star.objects.first()
         sample_planet = Planet.objects.first()
         sample_moon = Moon.objects.first()
-        
+
         if sample_star:
             star_props = {
                 "name": sample_star.name,
                 "star_type": sample_star.star_type,
                 "star_magnitude": sample_star.star_magnitude,
             }
-        
+
         if sample_planet:
             planet_props = {
                 "name": sample_planet.name,
                 "planet_type": sample_planet.planet_type,
             }
-        
+
         if sample_moon:
             moon_props = {
                 "name": sample_moon.name,
                 "moon_type": sample_moon.moon_type,
             }
-        
+
         # Second import
         importer2 = UniverseImporter(xml_file)
         importer2.import_universe()
-        
+
         # Verify properties are preserved
         if sample_star:
             star_after = Star.objects.get(name=sample_star.name)
             self.assertEqual(star_after.star_type, star_props["star_type"])
             self.assertEqual(star_after.star_magnitude, star_props["star_magnitude"])
-        
+
         if sample_planet:
             planet_after = Planet.objects.get(name=sample_planet.name)
             self.assertEqual(planet_after.planet_type, planet_props["planet_type"])
-        
+
         if sample_moon:
             moon_after = Moon.objects.get(name=sample_moon.name)
             self.assertEqual(moon_after.moon_type, moon_props["moon_type"])
-    
+
     def test_import_with_procedural_generation(self):
         """
         Test that importing with procedural generation is idempotent.
-        
+
         This test verifies that when XML has missing properties and procedural
         generation fills them in, re-importing produces the same generated values
         (assuming the same seed is used).
@@ -368,23 +388,21 @@ class ImportExportTest(TestCase):
         xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe_v2.xml")
         if not os.path.exists(xml_file):
             xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
-        
+
         # This test assumes that procedural generation uses a seed based on
         # the object name or system, making it deterministic.
         # If procedural generation is called during import, we should get
         # the same values on re-import.
-        
+
         # First import
         importer1 = UniverseImporter(xml_file)
         importer1.import_universe()
-        
+
         # Get objects that might have procedurally generated properties
-        stars_with_props = Star.objects.exclude(
-            mass_kg__isnull=True
-        ).exclude(
+        stars_with_props = Star.objects.exclude(mass_kg__isnull=True).exclude(
             radius_km__isnull=True
         )
-        
+
         star_props = {}
         for star in stars_with_props[:5]:  # Sample first 5
             star_props[star.name] = {
@@ -392,11 +410,11 @@ class ImportExportTest(TestCase):
                 "radius_km": star.radius_km,
                 "temperature_k": star.temperature_k,
             }
-        
+
         # Second import
         importer2 = UniverseImporter(xml_file)
         importer2.import_universe()
-        
+
         # Verify procedurally generated properties are the same
         for star_name, props in star_props.items():
             star_after = Star.objects.get(name=star_name)
@@ -404,17 +422,17 @@ class ImportExportTest(TestCase):
                 self.assertEqual(
                     star_after.mass_kg,
                     props["mass_kg"],
-                    f"Star {star_name} mass should be identical after re-import"
+                    f"Star {star_name} mass should be identical after re-import",
                 )
             if star_after.radius_km:
                 self.assertEqual(
                     star_after.radius_km,
                     props["radius_km"],
-                    f"Star {star_name} radius should be identical after re-import"
+                    f"Star {star_name} radius should be identical after re-import",
                 )
             if star_after.temperature_k:
                 self.assertEqual(
                     star_after.temperature_k,
                     props["temperature_k"],
-                    f"Star {star_name} temperature should be identical after re-import"
+                    f"Star {star_name} temperature should be identical after re-import",
                 )

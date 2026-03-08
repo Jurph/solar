@@ -6,7 +6,7 @@ Edge-case coverage for:
 No mocking is needed: these are pure-Python computations and registry
 operations that can be exercised with carefully chosen inputs.
 """
-import pytest
+
 from django.test import TestCase
 
 from mysite.universe.services.maneuver_physics import (
@@ -15,7 +15,6 @@ from mysite.universe.services.maneuver_physics import (
     get_maneuver_physics_service,
 )
 from mysite.universe.services.dialogue.factory import ParticleFactory
-from mysite.universe.services.dialogue.base import DialogueParticle
 
 
 # ===========================================================================
@@ -50,7 +49,7 @@ class TestManeuverPhysicsEdgeCases(TestCase):
             atmospheric_height_km=100,
             planet_gravity_gees=1.0,
             planet_radius_km=6371,
-            rotation_period_seconds=0,   # triggers omega = 0 branch
+            rotation_period_seconds=0,  # triggers omega = 0 branch
         )
         self.assertGreater(duration, 0)
         self.assertNotEqual(duration, float("inf"))
@@ -66,13 +65,13 @@ class TestManeuverPhysicsEdgeCases(TestCase):
         """
         # Use a vehicle with near-zero thrust fraction so gravity wins
         weak_vehicle = VehicleParams(
-            max_proper_accel_gees=0.01,   # barely any thrust
+            max_proper_accel_gees=0.01,  # barely any thrust
             avg_vertical_thrust_frac=0.1,
         )
         svc = ManeuverPhysicsService(vehicle=weak_vehicle)
         duration = svc.calculate_launch_duration(
             atmospheric_height_km=100,
-            planet_gravity_gees=10.0,   # very high gravity
+            planet_gravity_gees=10.0,  # very high gravity
             planet_radius_km=6371,
             rotation_period_seconds=86400,
         )
@@ -112,7 +111,9 @@ class TestManeuverPhysicsEdgeCases(TestCase):
 
     def test_hyperspace_zero_velocity_returns_inf(self):
         """velocity_c=0 must return inf."""
-        duration = self.svc.calculate_hyperspace_duration(distance_ly=10.0, velocity_c=0)
+        duration = self.svc.calculate_hyperspace_duration(
+            distance_ly=10.0, velocity_c=0
+        )
         self.assertEqual(duration, float("inf"))
 
     # ------------------------------------------------------------------
@@ -228,12 +229,16 @@ class TestParticleFactoryEdgeCases(TestCase):
     def test_create_particle_empty_string_raises_value_error(self):
         """create_particle('') raises ValueError."""
         with self.assertRaises(ValueError):
-            ParticleFactory.create_particle("", actor=None, recipient="ATC", nav_context={})
+            ParticleFactory.create_particle(
+                "", actor=None, recipient="ATC", nav_context={}
+            )
 
     def test_create_particle_none_raises_value_error(self):
         """create_particle(None) raises ValueError."""
         with self.assertRaises(ValueError):
-            ParticleFactory.create_particle(None, actor=None, recipient="ATC", nav_context={})
+            ParticleFactory.create_particle(
+                None, actor=None, recipient="ATC", nav_context={}
+            )
 
     def test_register_request_particle_non_subclass_raises_type_error(self):
         """
@@ -257,6 +262,7 @@ class TestParticleFactoryEdgeCases(TestCase):
         without raising.
         """
         from mysite.universe.services.dialogue.particles import GenericRequest
+
         particle = ParticleFactory.create_particle(
             "completely_unknown_type",
             actor=None,

@@ -7,7 +7,6 @@ from unittest.mock import Mock, patch
 from django.test import TestCase
 
 from mysite.universe.models.actor import Controller, Pilot, Satellite
-from mysite.universe.models.base import Location
 from mysite.universe.models.celestial import Galaxy, Planet, Star, StarSystem
 from mysite.universe.models.navigation import ManeuverType, NavigationEvent
 from mysite.universe.models.ship import Ship
@@ -27,8 +26,12 @@ class TestScriptServiceNavBroadcast(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Sol", orbits=system, star_type="G")
-        self.planet = Planet.objects.create(name="Earth", orbits=star, planet_type="TE", orbital_distance_au=1.0)
-        self.station = Station.objects.create(name="Earth Orbital Control", orbits=self.planet)
+        self.planet = Planet.objects.create(
+            name="Earth", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
+        self.station = Station.objects.create(
+            name="Earth Orbital Control", orbits=self.planet
+        )
         self.satellite = Satellite.objects.create(name="Earth Navsat")
         self.llm = Mock(temperature=0.25)
         self.service = ScriptService(self.llm)
@@ -45,7 +48,9 @@ class TestScriptServiceNavBroadcast(TestCase):
             "create_particle",
             return_value=fake_particle,
         ):
-            events = self.service.generate_nav_broadcast_chain(self.satellite, base_timestamp=123.0)
+            events = self.service.generate_nav_broadcast_chain(
+                self.satellite, base_timestamp=123.0
+            )
 
         assert len(events) == 1
         ev = events[0]
@@ -58,7 +63,9 @@ class TestScriptServiceNavBroadcast(TestCase):
 
     def test_generate_nav_broadcast_chain_adds_gratitude_when_probability_hits(self):
         # Ship + pilot to serve as gratitude source
-        ship = Ship.objects.create(name="Test Ship", current_location=self.station, size="M", cargo="X")
+        ship = Ship.objects.create(
+            name="Test Ship", current_location=self.station, size="M", cargo="X"
+        )
         pilot = Pilot.objects.create(name="Test Pilot", ship=ship)
 
         fake_broadcast_particle = SimpleNamespace(
@@ -85,12 +92,22 @@ class TestScriptServiceNavBroadcast(TestCase):
             raise AssertionError(f"Unexpected particle_type={particle_type}")
 
         with (
-            patch.object(self.service.dialogue_service.particle_factory, "create_particle", side_effect=create_particle_side_effect),
+            patch.object(
+                self.service.dialogue_service.particle_factory,
+                "create_particle",
+                side_effect=create_particle_side_effect,
+            ),
             patch("random.random", return_value=0.0),
             patch("random.choice", return_value=ship),
-            patch.object(self.service.dialogue_service, "generate_chain_iteratively", return_value=[(gratitude_msg, 0.5)]),
+            patch.object(
+                self.service.dialogue_service,
+                "generate_chain_iteratively",
+                return_value=[(gratitude_msg, 0.5)],
+            ),
         ):
-            events = self.service.generate_nav_broadcast_chain(self.satellite, base_timestamp=10.0)
+            events = self.service.generate_nav_broadcast_chain(
+                self.satellite, base_timestamp=10.0
+            )
 
         assert len(events) == 2
         broadcast, gratitude = events
@@ -102,8 +119,12 @@ class TestScriptServiceNavBroadcast(TestCase):
         assert gratitude.metadata["ship_name"] == ship.name
         assert gratitude.metadata["pilot_name"] == pilot.name
 
-    def test_generate_nav_broadcast_chain_gratitude_failure_does_not_block_broadcast(self):
-        ship = Ship.objects.create(name="Test Ship", current_location=self.station, size="M", cargo="X")
+    def test_generate_nav_broadcast_chain_gratitude_failure_does_not_block_broadcast(
+        self,
+    ):
+        ship = Ship.objects.create(
+            name="Test Ship", current_location=self.station, size="M", cargo="X"
+        )
         Pilot.objects.create(name="Test Pilot", ship=ship)
 
         fake_broadcast_particle = SimpleNamespace(
@@ -114,15 +135,29 @@ class TestScriptServiceNavBroadcast(TestCase):
         fake_gratitude_particle = SimpleNamespace()
 
         def create_particle_side_effect(*, particle_type, **kwargs):
-            return fake_broadcast_particle if particle_type == "nav_broadcast" else fake_gratitude_particle
+            return (
+                fake_broadcast_particle
+                if particle_type == "nav_broadcast"
+                else fake_gratitude_particle
+            )
 
         with (
-            patch.object(self.service.dialogue_service.particle_factory, "create_particle", side_effect=create_particle_side_effect),
+            patch.object(
+                self.service.dialogue_service.particle_factory,
+                "create_particle",
+                side_effect=create_particle_side_effect,
+            ),
             patch("random.random", return_value=0.0),
             patch("random.choice", return_value=ship),
-            patch.object(self.service.dialogue_service, "generate_chain_iteratively", side_effect=RuntimeError("LLM down")),
+            patch.object(
+                self.service.dialogue_service,
+                "generate_chain_iteratively",
+                side_effect=RuntimeError("LLM down"),
+            ),
         ):
-            events = self.service.generate_nav_broadcast_chain(self.satellite, base_timestamp=10.0)
+            events = self.service.generate_nav_broadcast_chain(
+                self.satellite, base_timestamp=10.0
+            )
 
         assert len(events) == 1
         assert events[0].metadata["type"] == "nav_broadcast"
@@ -139,12 +174,20 @@ class TestScriptServiceNavigationChains(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Sol2", orbits=system, star_type="G")
-        self.planet = Planet.objects.create(name="Earth2", orbits=star, planet_type="TE", orbital_distance_au=1.0)
-        self.station = Station.objects.create(name="Earth2 Orbital Control", orbits=self.planet)
+        self.planet = Planet.objects.create(
+            name="Earth2", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
+        self.station = Station.objects.create(
+            name="Earth2 Orbital Control", orbits=self.planet
+        )
 
-        self.ship = Ship.objects.create(name="Ship", current_location=self.station, size="M", cargo="X")
+        self.ship = Ship.objects.create(
+            name="Ship", current_location=self.station, size="M", cargo="X"
+        )
         self.pilot = Pilot.objects.create(name="Pilot", ship=self.ship)
-        self.controller = Controller.objects.create(name="Earth2 Control", location=self.station)
+        self.controller = Controller.objects.create(
+            name="Earth2 Control", location=self.station
+        )
 
         self.llm = Mock(temperature=0.25)
         self.service = ScriptService(self.llm)
@@ -175,14 +218,19 @@ class TestScriptServiceNavigationChains(TestCase):
         assert self.service._get_controller(nav_event).name == self.controller.name
 
     def test_get_controller_raises_when_assigned_location_has_no_controller(self):
-        station2 = Station.objects.create(name="No Controller Station", orbits=self.planet)
+        station2 = Station.objects.create(
+            name="No Controller Station", orbits=self.planet
+        )
         nav_event = replace(self.nav_event, controller=station2)
         with self.assertRaises(ValueError):
             self.service._get_controller(nav_event)
 
     def test_get_controller_uses_effective_controller_when_unassigned(self):
         nav_event = replace(self.nav_event, controller=None)
-        with patch("mysite.universe.services.script_server.RouteService.effective_controller", return_value=self.controller):
+        with patch(
+            "mysite.universe.services.script_server.RouteService.effective_controller",
+            return_value=self.controller,
+        ):
             assert self.service._get_controller(nav_event) == self.controller
 
     def test_convert_messages_to_events_sets_actor_and_metadata(self):
@@ -208,8 +256,12 @@ class TestScriptServiceNavigationChains(TestCase):
             ),
         ]
 
-        with patch.object(self.service, "_get_controller", return_value=self.controller):
-            events = self.service._convert_messages_to_events(msgs, nav_event, self.ship)
+        with patch.object(
+            self.service, "_get_controller", return_value=self.controller
+        ):
+            events = self.service._convert_messages_to_events(
+                msgs, nav_event, self.ship
+            )
 
         assert [e.timestamp for e in events] == [0.0, 1.5]
         assert events[0].actor == self.pilot
@@ -218,21 +270,21 @@ class TestScriptServiceNavigationChains(TestCase):
         assert events[0].metadata["ship_name"] == self.ship.name.upper()
         assert "dialogue_message" in events[0].metadata
 
-    def test_iter_navigation_events_maps_relative_to_absolute_and_applies_physics_gaps(self):
+    def test_iter_navigation_events_maps_relative_to_absolute_and_applies_physics_gaps(
+        self,
+    ):
         nav1 = replace(self.nav_event, maneuver=ManeuverType.TRANSFER)
         nav2 = replace(self.nav_event, maneuver=ManeuverType.CIRCULARIZE)
-
-        # Each chain has two events at offsets 0.0 and 1.0 with duration 2.0 on last event
-        chain = [
-            SimpleNamespace(timestamp=0.0, duration=2.0),
-            SimpleNamespace(timestamp=1.0, duration=2.0),
-        ]
 
         def parse_nav_event(_nav, _ship):
             # Return fresh copies so mutation isn't shared
             return [
-                replace(Mock(spec=["timestamp", "duration"]), timestamp=0.0, duration=2.0),
-                replace(Mock(spec=["timestamp", "duration"]), timestamp=1.0, duration=2.0),
+                replace(
+                    Mock(spec=["timestamp", "duration"]), timestamp=0.0, duration=2.0
+                ),
+                replace(
+                    Mock(spec=["timestamp", "duration"]), timestamp=1.0, duration=2.0
+                ),
             ]
 
         # We need real DialogueEvent dataclasses yielded; easiest is to patch parse_navigation_event
@@ -240,15 +292,32 @@ class TestScriptServiceNavigationChains(TestCase):
         from mysite.universe.models.event import DialogueEvent as DialogueEventDC
 
         chain_events = [
-            DialogueEventDC(timestamp=0.0, actor=self.pilot, text="A", duration=2.0, metadata={}),
-            DialogueEventDC(timestamp=1.0, actor=self.controller, text="B", duration=2.0, metadata={}),
+            DialogueEventDC(
+                timestamp=0.0, actor=self.pilot, text="A", duration=2.0, metadata={}
+            ),
+            DialogueEventDC(
+                timestamp=1.0,
+                actor=self.controller,
+                text="B",
+                duration=2.0,
+                metadata={},
+            ),
         ]
 
         with (
-            patch.object(self.service, "parse_navigation_event", return_value=chain_events),
-            patch("mysite.universe.services.script_server.route_service.get_event_duration", return_value=10.0),
+            patch.object(
+                self.service, "parse_navigation_event", return_value=chain_events
+            ),
+            patch(
+                "mysite.universe.services.script_server.route_service.get_event_duration",
+                return_value=10.0,
+            ),
         ):
-            out = list(self.service.iter_navigation_events([nav1, nav2], self.ship, use_physics_delays=True))
+            out = list(
+                self.service.iter_navigation_events(
+                    [nav1, nav2], self.ship, use_physics_delays=True
+                )
+            )
 
         # First chain is 그대로: 0.0, 1.0
         assert out[0].timestamp == 0.0
@@ -263,8 +332,27 @@ class TestScriptServiceNavigationChains(TestCase):
 
         from mysite.universe.models.event import DialogueEvent as DialogueEventDC
 
-        with patch.object(self.service, "parse_navigation_event", side_effect=[[], [DialogueEventDC(timestamp=0.0, actor=self.pilot, text="A", duration=1.0, metadata={})]]):
-            out = list(self.service.iter_navigation_events([nav1, nav2], self.ship, use_physics_delays=False))
+        with patch.object(
+            self.service,
+            "parse_navigation_event",
+            side_effect=[
+                [],
+                [
+                    DialogueEventDC(
+                        timestamp=0.0,
+                        actor=self.pilot,
+                        text="A",
+                        duration=1.0,
+                        metadata={},
+                    )
+                ],
+            ],
+        ):
+            out = list(
+                self.service.iter_navigation_events(
+                    [nav1, nav2], self.ship, use_physics_delays=False
+                )
+            )
 
         # Empty chain advances start by 2.0, so next chain's event at 0.0 becomes 2.0
         assert len(out) == 1
@@ -282,11 +370,19 @@ class TestScriptServiceSingletonAndParsing(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Sol3", orbits=system, star_type="G")
-        self.planet = Planet.objects.create(name="Earth3", orbits=star, planet_type="TE", orbital_distance_au=1.0)
-        self.station = Station.objects.create(name="Earth3 Orbital Control", orbits=self.planet)
-        self.ship = Ship.objects.create(name="Ship3", current_location=self.station, size="M", cargo="X")
+        self.planet = Planet.objects.create(
+            name="Earth3", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
+        self.station = Station.objects.create(
+            name="Earth3 Orbital Control", orbits=self.planet
+        )
+        self.ship = Ship.objects.create(
+            name="Ship3", current_location=self.station, size="M", cargo="X"
+        )
         self.pilot = Pilot.objects.create(name="Pilot3", ship=self.ship)
-        self.controller = Controller.objects.create(name="Earth3 Control", location=self.station)
+        self.controller = Controller.objects.create(
+            name="Earth3 Control", location=self.station
+        )
 
         self.nav_event = NavigationEvent(
             origin=self.station,
@@ -316,7 +412,9 @@ class TestScriptServiceSingletonAndParsing(TestCase):
         assert s4 is not s1
 
     def test_parse_navigation_event_raises_without_pilot(self):
-        ship = Ship.objects.create(name="NoPilot", current_location=self.station, size="M", cargo="X")
+        ship = Ship.objects.create(
+            name="NoPilot", current_location=self.station, size="M", cargo="X"
+        )
         service = ScriptService(Mock())
         with self.assertRaises(ValueError):
             service.parse_navigation_event(self.nav_event, ship)
@@ -339,8 +437,16 @@ class TestScriptServiceSingletonAndParsing(TestCase):
 
         with (
             patch.object(service, "_get_controller", return_value=self.controller),
-            patch.object(service, "_build_nav_context", return_value={"ship_name": self.ship.name.upper()}),
-            patch.object(service.dialogue_service, "generate_chain_from_nav_event", return_value=[(msg1, 0.0), (msg2, 1.0)]),
+            patch.object(
+                service,
+                "_build_nav_context",
+                return_value={"ship_name": self.ship.name.upper()},
+            ),
+            patch.object(
+                service.dialogue_service,
+                "generate_chain_from_nav_event",
+                return_value=[(msg1, 0.0), (msg2, 1.0)],
+            ),
         ):
             events = service.parse_navigation_event(self.nav_event, self.ship)
 
@@ -361,10 +467,14 @@ class TestScriptServiceCommsCheck(TestCase):
             galactic_z_ly=0.0,
         )
         star = Star.objects.create(name="Sol4", orbits=system, star_type="G")
-        planet = Planet.objects.create(name="Earth4", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        planet = Planet.objects.create(
+            name="Earth4", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
         station = Station.objects.create(name="Earth4 Orbital Control", orbits=planet)
 
-        self.ship = Ship.objects.create(name="Ship4", current_location=station, size="M", cargo="X")
+        self.ship = Ship.objects.create(
+            name="Ship4", current_location=station, size="M", cargo="X"
+        )
         self.pilot = Pilot.objects.create(name="Pilot4", ship=self.ship)
         self.satellite = Satellite.objects.create(name="Earth4 Navsat")
         self.service = ScriptService(Mock(temperature=0.25))
@@ -385,8 +495,16 @@ class TestScriptServiceCommsCheck(TestCase):
         )
 
         with (
-            patch.object(self.service.dialogue_service.particle_factory, "create_particle", return_value=initial_particle),
-            patch.object(self.service.dialogue_service, "generate_chain_iteratively", return_value=[(msg_pilot, 0.0), (msg_sat, 1.0)]),
+            patch.object(
+                self.service.dialogue_service.particle_factory,
+                "create_particle",
+                return_value=initial_particle,
+            ),
+            patch.object(
+                self.service.dialogue_service,
+                "generate_chain_iteratively",
+                return_value=[(msg_pilot, 0.0), (msg_sat, 1.0)],
+            ),
         ):
             events = self.service.generate_comms_check_chain(
                 pilot=self.pilot,
@@ -402,4 +520,3 @@ class TestScriptServiceCommsCheck(TestCase):
         assert events[1].actor == self.satellite
         assert events[0].metadata["type"] == "comms_check"
         assert events[1].metadata["type"] == "satellite_response"
-
