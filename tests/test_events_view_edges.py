@@ -139,6 +139,25 @@ class TestSentenceCase(TestCase):
         # Should find 'h' and capitalize it
         self.assertIn("H", result)
 
+    def test_no_alpha_chars_returns_string_unchanged(self):
+        """String with no alphabetic characters falls through to `return t` (line 111)."""
+        result = _sentence_case("123 456!")
+        self.assertEqual(result, "123 456!")
+
+
+class TestScrollerViews(TestCase):
+    """Tests for event_scroller and event_scroller_wrapper views (lines 312, 319)."""
+
+    def test_event_scroller_returns_200(self):
+        """GET /events/scroller/ renders the iframe content template."""
+        response = self.client.get("/events/scroller/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_event_scroller_wrapper_returns_200(self):
+        """GET /events/ renders the wrapper page template."""
+        response = self.client.get("/events/")
+        self.assertEqual(response.status_code, 200)
+
 
 class TestEventFeedCursorValidation(TestCase):
     """Tests for cursor parameter validation in event_feed."""

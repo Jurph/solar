@@ -4,6 +4,7 @@ Display helper function tests.
 Tests formatting and calculation utilities for displaying
 physical and astronomical data in the UI.
 """
+
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
@@ -104,7 +105,9 @@ class TestDisplayAtmosphereData(TestCase):
         galaxy = Galaxy.objects.create(name="G", galaxy_type="SP", galaxy_size="L")
         system = StarSystem.objects.create(name="S", orbits=galaxy)
         star = Star.objects.create(name="Star", orbits=system, star_type="G")
-        planet = Planet.objects.create(name="P", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        planet = Planet.objects.create(
+            name="P", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
 
         data = get_atmosphere_data(planet, Planet)
         assert data["has_atmosphere"] is False
@@ -114,7 +117,9 @@ class TestDisplayAtmosphereData(TestCase):
         galaxy = Galaxy.objects.create(name="G2", galaxy_type="SP", galaxy_size="L")
         system = StarSystem.objects.create(name="S2", orbits=galaxy)
         star = Star.objects.create(name="Star2", orbits=system, star_type="G")
-        planet = Planet.objects.create(name="P2", orbits=star, planet_type="TE", orbital_distance_au=1.0)
+        planet = Planet.objects.create(
+            name="P2", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
 
         ct = ContentType.objects.get_for_model(Planet)
         Atmosphere.objects.create(
@@ -131,6 +136,24 @@ class TestDisplayAtmosphereData(TestCase):
         assert data["atmosphere_type"] == Atmosphere.AtmosphereType.N2_O2
         assert data["atmosphere_height_km"] == 100.0
 
+    def test_atmosphere_str_includes_type_and_parent_body(self):
+        """Atmosphere.__str__ returns a readable representation (physics.py line 57)."""
+        galaxy = Galaxy.objects.create(name="G3", galaxy_type="SP", galaxy_size="L")
+        system = StarSystem.objects.create(name="S3", orbits=galaxy)
+        star = Star.objects.create(name="Star3", orbits=system, star_type="G")
+        planet = Planet.objects.create(
+            name="P3", orbits=star, planet_type="TE", orbital_distance_au=1.0
+        )
+        ct = ContentType.objects.get_for_model(Planet)
+        atm = Atmosphere.objects.create(
+            content_type=ct,
+            object_id=planet.id,
+            atmosphere_type=Atmosphere.AtmosphereType.CO2_THIN,
+        )
+        result = str(atm)
+        self.assertIn("CO2_THIN", result)
+        self.assertIn("P3", result)
+
 
 class TestDisplaySurfaceComposition(TestCase):
     """Test surface composition hint generation."""
@@ -140,16 +163,39 @@ class TestDisplaySurfaceComposition(TestCase):
         assert get_surface_composition_hint(planet_type="AB") == "Rocky fragments"
         assert get_surface_composition_hint(planet_type="CT") == "Exposed rocky core"
         assert get_surface_composition_hint(planet_type="MP") == "Small rocky body"
-        assert get_surface_composition_hint(planet_type="TE", density_kg_m3=6000) == "Dense rocky surface"
-        assert get_surface_composition_hint(planet_type="TE", density_kg_m3=4000) == "Rocky surface"
-        assert get_surface_composition_hint(planet_type="TE", density_kg_m3=2000) == "Light rocky/icy surface"
+        assert (
+            get_surface_composition_hint(planet_type="TE", density_kg_m3=6000)
+            == "Dense rocky surface"
+        )
+        assert (
+            get_surface_composition_hint(planet_type="TE", density_kg_m3=4000)
+            == "Rocky surface"
+        )
+        assert (
+            get_surface_composition_hint(planet_type="TE", density_kg_m3=2000)
+            == "Light rocky/icy surface"
+        )
         assert get_surface_composition_hint(planet_type="TE") == "Rocky surface"
         assert get_surface_composition_hint(moon_type="I") == "Ice/water surface"
-        assert get_surface_composition_hint(moon_type="O", density_kg_m3=1500) == "Ice/water surface with organic compounds"
-        assert get_surface_composition_hint(moon_type="O", density_kg_m3=3000) == "Organic-rich surface"
-        assert get_surface_composition_hint(moon_type="T") == "Earth-like surface (potentially habitable)"
-        assert get_surface_composition_hint(moon_type="R", density_kg_m3=4500) == "Dense rocky surface"
-        assert get_surface_composition_hint(moon_type="R", density_kg_m3=3500) == "Rocky surface"
+        assert (
+            get_surface_composition_hint(moon_type="O", density_kg_m3=1500)
+            == "Ice/water surface with organic compounds"
+        )
+        assert (
+            get_surface_composition_hint(moon_type="O", density_kg_m3=3000)
+            == "Organic-rich surface"
+        )
+        assert (
+            get_surface_composition_hint(moon_type="T")
+            == "Earth-like surface (potentially habitable)"
+        )
+        assert (
+            get_surface_composition_hint(moon_type="R", density_kg_m3=4500)
+            == "Dense rocky surface"
+        )
+        assert (
+            get_surface_composition_hint(moon_type="R", density_kg_m3=3500)
+            == "Rocky surface"
+        )
         assert get_surface_composition_hint(moon_type="R") == "Rocky surface"
         assert get_surface_composition_hint() is None
-

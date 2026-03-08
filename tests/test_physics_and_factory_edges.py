@@ -363,3 +363,17 @@ class TestActorServiceControllerName(TestCase):
         )
         name = ActorService._generate_controller_name(ctrl_station)
         self.assertEqual(name, "Mars Orbital Control")
+
+    def test_deploy_controllers_categorises_plain_station_as_regular(self):
+        """
+        deploy_controllers() appends plain stations (no Control/Dispatch in name)
+        to 'regular_stations' — covers actor_server.py line 95.
+        """
+        from mysite.universe.services.actor_server import ActorService
+
+        results = ActorService.deploy_controllers()
+        regular_names = [c.name for c in results["regular_stations"]]
+        self.assertTrue(
+            any("Waypoint Alpha" in n for n in regular_names),
+            f"Expected 'Waypoint Alpha' in regular_stations, got: {regular_names}",
+        )
