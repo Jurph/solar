@@ -420,3 +420,130 @@ class TestSentenceCaseFunction(TestCase):
         """ALL-CAPS text with numbers is still lowercased + first-alpha cap."""
         result = self._sc("RELAY 42 ALPHA")
         self.assertEqual(result, "Relay 42 alpha")
+
+    def test_no_alpha_chars_returns_unchanged(self):
+        """String with no alpha characters returns unchanged (line 254 fallback)."""
+        self.assertEqual(self._sc("1234"), "1234")
+
+
+class TestAudioPlanMissingProfileControllerAndSatellite(TestCase):
+    """
+    The AudioProfile.DoesNotExist and incomplete-profile branches for
+    Controller and Satellite actors (lines 86-89, 97-103, 219-221).
+
+    TestAudioPlanMissingProfileOnDemand covers the Pilot case;
+    this class covers Controller and Satellite.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from mysite.universe.models.actor import Controller, Satellite
+
+        cls.location = Location.objects.create(
+            name="Missing Profile Station", scale=Scale.STATION
+        )
+        cls.controller = Controller.create(location=cls.location)
+        cls.controller.name = "Missing Profile Controller"
+        cls.controller.save()
+        cls.satellite = Satellite.objects.create(name="Missing Profile Navsat")
+
+    def test_controller_without_profile_gets_plan(self):
+        """
+        Controller with no AudioProfile: plan builder assigns one on-demand
+        and returns a plan with quindars (DoesNotExist branch lines 97-98).
+        """
+        from mysite.universe.models.audio_profile import AudioProfile
+
+        AudioProfile.objects.filter(actor=self.controller).delete()
+        self.assertFalse(AudioProfile.objects.filter(actor=self.controller).exists())
+
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=self.controller,
+            text="Cleared for departure.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        self.assertIn("quindar_end", presets)
+
+    def test_satellite_without_profile_gets_modem_noise(self):
+        """
+        Satellite with no AudioProfile: plan builder assigns one on-demand
+        and returns modem noise (DoesNotExist branch lines 99-100; modem
+        fallback lines 219-221 when no satellite voice WAV files exist in CI).
+        """
+        from mysite.universe.models.audio_profile import AudioProfile
+
+        AudioProfile.objects.filter(actor=self.satellite).delete()
+        self.assertFalse(AudioProfile.objects.filter(actor=self.satellite).exists())
+
+        event = DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=self.satellite,
+            text="ALL SOL TRAFFIC THIS IS SOL NAVSAT.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        modem_actions = [a for a in plan if "modem_noise" in a.get("preset", "")]
+        self.assertGreater(
+            len(modem_actions), 0, "Satellite should always get modem noise"
+        )
+
+    def test_controller_with_incomplete_profile_gets_reassigned(self):
+        """
+        Controller whose AudioProfile has no voice_template triggers reassignment
+        (incomplete-profile branch lines 86-88).
+        """
+        from mysite.universe.models.audio_profile import AudioProfile
+
+        AudioProfile.objects.filter(actor=self.controller).delete()
+        AudioProfile.objects.create(
+            actor=self.controller,
+            params={
+                "voiceprint": {},  # no voice_template → triggers reassignment
+                "quindar": {},
+                "room_tone": {"enabled": False},
+                "static": {"intensity": 0.0},
+            },
+        )
+        event = DialogueEventLog.objects.create(
+            timestamp=200.0,
+            actor=self.controller,
+            text="Roger that.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        self.assertIn("quindar_end", presets)
+
+    def test_satellite_with_incomplete_profile_gets_modem_noise(self):
+        """
+        Satellite whose AudioProfile has no voice_template triggers reassignment
+        (incomplete-profile branch lines 88-89; modem fallback 219-221).
+        """
+        from mysite.universe.models.audio_profile import AudioProfile
+
+        AudioProfile.objects.filter(actor=self.satellite).delete()
+        AudioProfile.objects.create(
+            actor=self.satellite,
+            params={
+                "voiceprint": {},  # no voice_template → triggers reassignment
+                "quindar": {},
+                "room_tone": {"enabled": False},
+                "static": {"intensity": 0.0},
+            },
+        )
+        event = DialogueEventLog.objects.create(
+            timestamp=200.0,
+            actor=self.satellite,
+            text="ALPHA NAVSAT BROADCAST.",
+        )
+        plan = build_audio_plan_for_dialogue_event(event)
+        presets = [a.get("preset", "") for a in plan]
+        self.assertIn("quindar_start", presets)
+        modem_actions = [a for a in plan if "modem_noise" in a.get("preset", "")]
+        self.assertGreater(
+            len(modem_actions), 0, "Satellite should always get modem noise"
+        )

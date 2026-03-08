@@ -12,7 +12,9 @@ class TestSimulationViews(TestCase):
     def setUp(self):
         SimulationState.objects.all().delete()
         DialogueEventLog.objects.all().delete()
-        SimulationState.objects.create(pk=1, anchor_sim_time=1000.0, anchor_wall_clock=0.0, time_scale=0.0)
+        SimulationState.objects.create(
+            pk=1, anchor_sim_time=1000.0, anchor_wall_clock=0.0, time_scale=0.0
+        )
 
     def test_get_simulation_status_shape(self):
         url = reverse("simulation_status")
@@ -32,13 +34,17 @@ class TestSimulationViews(TestCase):
 
     def test_set_time_scale_rejects_non_positive(self):
         url = reverse("set_time_scale")
-        resp = self.client.post(url, data=json.dumps({"time_scale": 0}), content_type="application/json")
+        resp = self.client.post(
+            url, data=json.dumps({"time_scale": 0}), content_type="application/json"
+        )
         assert resp.status_code == 400
         assert "must be positive" in resp.json()["message"]
 
     def test_set_time_scale_updates_state(self):
         url = reverse("set_time_scale")
-        resp = self.client.post(url, data=json.dumps({"time_scale": 5.0}), content_type="application/json")
+        resp = self.client.post(
+            url, data=json.dumps({"time_scale": 5.0}), content_type="application/json"
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
@@ -81,7 +87,9 @@ class TestHealthCheckView(TestCase):
     def setUp(self):
         SimulationState.objects.all().delete()
         DialogueEventLog.objects.all().delete()
-        SimulationState.objects.create(pk=1, anchor_sim_time=0.0, anchor_wall_clock=0.0, time_scale=0.0)
+        SimulationState.objects.create(
+            pk=1, anchor_sim_time=0.0, anchor_wall_clock=0.0, time_scale=0.0
+        )
 
     def test_health_check_returns_200_json(self):
         """Endpoint always returns 200 with a JSON body."""
@@ -95,8 +103,12 @@ class TestHealthCheckView(TestCase):
     def test_llm_connection_error_yields_error_status(self):
         """When localhost:11434 is unreachable the llm key reports 'error'."""
         import requests as req_module
+
         url = reverse("health_check")
-        with patch("requests.get", side_effect=req_module.exceptions.ConnectionError("no server")):
+        with patch(
+            "requests.get",
+            side_effect=req_module.exceptions.ConnectionError("no server"),
+        ):
             resp = self.client.get(url)
         data = resp.json()
         self.assertEqual(data["llm"]["status"], "error")
@@ -142,3 +154,18 @@ class TestHealthCheckView(TestCase):
         data = resp.json()
         self.assertEqual(data["audio_worker"]["status"], "warning")
 
+    def test_audio_worker_ok_when_recent_generation(self):
+        """Events with audio_rendered_at within last 2 minutes → 'ok' status (line 201)."""
+        from django.utils import timezone
+
+        DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor_name="Test Pilot",
+            text="Audio recently generated.",
+            audio_rendered_at=timezone.now(),
+        )
+        url = reverse("health_check")
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            resp = self.client.get(url)
+        data = resp.json()
+        self.assertEqual(data["audio_worker"]["status"], "ok")
