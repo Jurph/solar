@@ -66,7 +66,7 @@ jobs:
           command: |
             curl -Os https://cli.codecov.io/latest/linux/codecov
             chmod +x codecov
-            ./codecov send-notifications --token=$CODECOV_TOKEN --auto-load-params-from CircleCI
+            ./codecov send-notifications --token=$CODECOV_TOKEN
 
 workflows:
   test-workflow:
