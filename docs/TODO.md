@@ -12,7 +12,7 @@ The grimy cluttered controls of a real commercial aircraft, of the interior of t
 - Project infrastructure 
     - "Installer" scripts that make deploying straight from Git reliable ✓
     - Unit Tests that Always Pass (doo-dah, doo-dah) ✓
-    - Maybe some kind of CI/CD setup 
+    - Maybe some kind of CI/CD setup ✓ [![CircleCI](https://dl.circleci.com/status-badge/img/gh/Jurph/solar/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/Jurph/solar/tree/main) [![codecov](https://codecov.io/gh/Jurph/solar/branch/main/graph/badge.svg)](https://codecov.io/gh/Jurph/solar)
     - Figure out how to interact with Django and the sqlite DB for testing ✓
 
 - Realistic stars, planets, moons, and space stations 
