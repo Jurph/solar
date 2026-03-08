@@ -9,6 +9,7 @@ Covers:
 - logs_view: ?min_level= filters returned records
 - logs_view: ?n= limits tail length
 """
+
 import logging
 
 from django.test import Client, TestCase
@@ -20,6 +21,7 @@ from mysite.universe.services.log_buffer import InMemoryLogHandler, get_log_hand
 # ---------------------------------------------------------------------------
 # InMemoryLogHandler unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestInMemoryLogHandlerFilters(TestCase):
     """Direct unit tests for InMemoryLogHandler.emit() filter rules."""
@@ -62,7 +64,11 @@ class TestInMemoryLogHandlerFilters(TestCase):
     def test_favicon_messages_are_filtered_at_any_level(self):
         """Records whose message contains 'favicon.ico' are silently dropped."""
         h = self._make_handler()
-        h.emit(self._record("django.request", logging.WARNING, "GET /favicon.ico returned 404"))
+        h.emit(
+            self._record(
+                "django.request", logging.WARNING, "GET /favicon.ico returned 404"
+            )
+        )
         self.assertEqual(len(h.tail()), 0)
 
     def test_numba_info_logs_are_kept(self):
@@ -109,6 +115,7 @@ class TestInMemoryLogHandlerFilters(TestCase):
 # ---------------------------------------------------------------------------
 # logs_view endpoint tests
 # ---------------------------------------------------------------------------
+
 
 class TestLogsView(TestCase):
     """Tests for the GET /api/logs/ endpoint."""
@@ -191,3 +198,11 @@ class TestLogsView(TestCase):
         url = reverse("logs_view")
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, 405)
+
+    def test_invalid_level_param_does_not_crash(self):
+        """?level=INVALID_NONSENSE triggers the except-pass branch and still returns 200."""
+        url = reverse("logs_view")
+        resp = self.client.get(url, {"level": "INVALID_NONSENSE"})
+        self.assertEqual(resp.status_code, 200)
+        # Response should still have the logs key
+        self.assertIn("logs", resp.json())

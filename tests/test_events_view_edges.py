@@ -192,3 +192,72 @@ class TestEventFeedCursorValidation(TestCase):
         response = self.client.get("/api/events/?limit=2")
         data = response.json()
         self.assertLessEqual(len(data["events"]), 2)
+
+
+# ---------------------------------------------------------------------------
+# DialogueEvent dataclass validation
+# ---------------------------------------------------------------------------
+
+
+class TestDialogueEventValidation(TestCase):
+    """
+    Tests for DialogueEvent.__post_init__() validation (models/event.py lines 76, 78).
+
+    DialogueEvent is a frozen dataclass; __post_init__ raises ValueError for
+    missing actors and actors without an id attribute.
+    """
+
+    def test_dialogue_event_raises_when_actor_is_none(self):
+        """Constructing a DialogueEvent with actor=None raises ValueError (line 76)."""
+        from mysite.universe.models.event import DialogueEvent
+
+        with self.assertRaises(ValueError, msg="DialogueEvent requires an actor"):
+            DialogueEvent(timestamp=0.0, actor=None, text="hello")
+
+    def test_dialogue_event_raises_when_actor_has_no_id(self):
+        """Constructing a DialogueEvent with an actor lacking 'id' raises ValueError (line 78)."""
+        from mysite.universe.models.event import DialogueEvent
+
+        class NoIdActor:
+            """Stub actor with no id attribute."""
+
+        with self.assertRaises(ValueError):
+            DialogueEvent(timestamp=0.0, actor=NoIdActor(), text="hello")
+
+    def test_dialogue_event_succeeds_with_valid_actor(self):
+        """A DialogueEvent with a proper actor (has id) constructs without error."""
+        from mysite.universe.models.event import DialogueEvent
+
+        class MinimalActor:
+            id = 42
+
+        event = DialogueEvent(timestamp=10.0, actor=MinimalActor(), text="Roger that.")
+        self.assertEqual(event.text, "Roger that.")
+
+
+# ---------------------------------------------------------------------------
+# DialogueEventLog.save() metadata=None branch
+# ---------------------------------------------------------------------------
+
+
+class TestDialogueEventLogSave(TestCase):
+    """
+    Tests for DialogueEventLog.save() metadata handling (models/event.py line 157).
+
+    When metadata is None at save time it must be normalised to {}.
+    """
+
+    def test_save_with_none_metadata_normalises_to_empty_dict(self):
+        """
+        Explicitly setting metadata=None before save() triggers the
+        `if self.metadata is None: self.metadata = {}` branch (line 157).
+        """
+        event = DialogueEventLog(
+            timestamp=0.0,
+            actor_name="Ghost",
+            text="Signal lost.",
+            metadata=None,
+        )
+        event.save()
+        event.refresh_from_db()
+        self.assertEqual(event.metadata, {})

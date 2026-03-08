@@ -270,3 +270,96 @@ class TestParticleFactoryEdgeCases(TestCase):
             nav_context={},
         )
         self.assertIsInstance(particle, GenericRequest)
+
+    def test_register_request_particle_success(self):
+        """
+        register_request_particle with a valid DialogueParticle subclass
+        adds the mapping to REQUEST_PARTICLE_MAP (line 147 of factory.py).
+        """
+        from mysite.universe.services.dialogue.particles import GenericRequest
+
+        # Use a unique key so we don't clobber real entries
+        ParticleFactory.register_request_particle("test_maneuver_xyz", GenericRequest)
+        self.assertIn("test_maneuver_xyz", ParticleFactory.REQUEST_PARTICLE_MAP)
+        self.assertIs(
+            ParticleFactory.REQUEST_PARTICLE_MAP["test_maneuver_xyz"], GenericRequest
+        )
+        # Clean up so we don't pollute other tests
+        del ParticleFactory.REQUEST_PARTICLE_MAP["test_maneuver_xyz"]
+
+    def test_register_particle_success(self):
+        """
+        register_particle with a valid DialogueParticle subclass
+        adds the mapping to PARTICLE_MAP (line 170 of factory.py).
+        """
+        from mysite.universe.services.dialogue.particles import GenericRequest
+
+        ParticleFactory.register_particle("test_type_xyz", GenericRequest)
+        self.assertIn("test_type_xyz", ParticleFactory.PARTICLE_MAP)
+        self.assertIs(ParticleFactory.PARTICLE_MAP["test_type_xyz"], GenericRequest)
+        del ParticleFactory.PARTICLE_MAP["test_type_xyz"]
+
+
+# ===========================================================================
+# ActorService._generate_controller_name edge cases
+# ===========================================================================
+
+
+class TestActorServiceControllerName(TestCase):
+    """
+    Covers the random-suffix branch in ActorService._generate_controller_name
+    (lines 42-43 of actor_server.py).
+
+    Stations whose name contains neither "Control" nor "Dispatch", and that
+    have no planet/moon back-reference, receive a random traffic suffix.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from mysite.universe.models.celestial import Galaxy, StarSystem, Star
+
+        cls.galaxy = Galaxy.objects.create(
+            name="ActorSvc Galaxy", galaxy_type="SP", galaxy_size="S"
+        )
+        cls.system = StarSystem.objects.create(
+            name="ActorSvc System",
+            orbits=cls.galaxy,
+            galactic_x_ly=0.0,
+            galactic_y_ly=0.0,
+            galactic_z_ly=0.0,
+        )
+        cls.star = Star.objects.create(
+            name="ActorSvc Star", orbits=cls.system, star_type="G"
+        )
+        from mysite.universe.models.station import Station
+
+        cls.plain_station = Station.objects.create(
+            name="Waypoint Alpha",  # no "Control" or "Dispatch"
+            orbits=cls.star,
+        )
+
+    def test_plain_station_gets_traffic_suffix(self):
+        """
+        A station whose name has no "Control"/"Dispatch" keyword and no
+        planet/moon back-ref gets a name ending with one of the TRAFFIC_SUFFIXES.
+        """
+        from mysite.universe.services.actor_server import ActorService
+
+        name = ActorService._generate_controller_name(self.plain_station)
+        self.assertTrue(
+            any(name.endswith(suffix) for suffix in ActorService.TRAFFIC_SUFFIXES),
+            f"Expected a traffic suffix but got: {name!r}",
+        )
+        self.assertTrue(name.startswith(self.plain_station.name))
+
+    def test_control_station_returns_name_unchanged(self):
+        """A station whose name contains 'Control' is returned as-is."""
+        from mysite.universe.services.actor_server import ActorService
+        from mysite.universe.models.station import Station
+
+        ctrl_station = Station.objects.create(
+            name="Mars Orbital Control",
+            orbits=self.star,
+        )
+        name = ActorService._generate_controller_name(ctrl_station)
+        self.assertEqual(name, "Mars Orbital Control")

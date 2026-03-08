@@ -10,15 +10,21 @@ Covers without GPU/model files:
 - get_tts_service(): singleton pattern
 - warm_tts_service(): swallows errors
 """
+
 import io
 import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import torch
 
-from mysite.universe.services.tts_service import (
+# Skip this entire file gracefully when torch is not installed (e.g. in CI,
+# which installs requirements.txt but not requirements-ml.txt).  Tests here
+# are mock-based and need no GPU, but tts_service.py imports torch at module
+# level so torch must at least be importable.
+torch = pytest.importorskip("torch")
+
+from mysite.universe.services.tts_service import (  # noqa: E402  # torch guard above
     ChatterboxTTSService,
     get_tts_service,
     warm_tts_service,
@@ -29,6 +35,7 @@ from mysite.universe.services.tts_service import (
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _parse_wav(wav_bytes: bytes) -> wave.Wave_read:
     return wave.open(io.BytesIO(wav_bytes))
 
@@ -36,6 +43,7 @@ def _parse_wav(wav_bytes: bytes) -> wave.Wave_read:
 # ---------------------------------------------------------------------------
 # _generate_silence()
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateSilence:
     """_generate_silence() returns valid WAV bytes without touching the model."""
@@ -64,6 +72,7 @@ class TestGenerateSilence:
 # ---------------------------------------------------------------------------
 # _get_cache_key()
 # ---------------------------------------------------------------------------
+
 
 class TestGetCacheKey:
     """_get_cache_key() is deterministic and input-sensitive."""
@@ -100,6 +109,7 @@ class TestGetCacheKey:
 # ---------------------------------------------------------------------------
 # _wav_to_bytes()
 # ---------------------------------------------------------------------------
+
 
 class TestWavToBytes:
     """_wav_to_bytes() converts PyTorch tensors to valid WAV bytes."""
@@ -138,6 +148,7 @@ class TestWavToBytes:
 # _get_voice_path()
 # ---------------------------------------------------------------------------
 
+
 class TestGetVoicePath:
     """_get_voice_path() fallback chain without touching the filesystem."""
 
@@ -146,7 +157,11 @@ class TestGetVoicePath:
 
     def test_custom_voice_returned_directly(self):
         custom = Path("/fake/my_voice.wav")
-        with patch.object(self.svc, "_find_voice_file", side_effect=lambda v: custom if v == "my_voice" else None):
+        with patch.object(
+            self.svc,
+            "_find_voice_file",
+            side_effect=lambda v: custom if v == "my_voice" else None,
+        ):
             assert self.svc._get_voice_path("my_voice") == custom
 
     def test_pilot_prefix_falls_back_to_pilot_default(self):
@@ -189,6 +204,7 @@ class TestGetVoicePath:
 # generate()
 # ---------------------------------------------------------------------------
 
+
 class TestGenerate:
     """generate() branches: cache hit, model failure, no voice, exception→silence."""
 
@@ -205,7 +221,9 @@ class TestGenerate:
     def test_model_load_failure_raises_runtime_error(self):
         with patch("mysite.universe.services.tts_service.cache") as mock_cache:
             mock_cache.get.return_value = None
-            with patch.object(self.svc, "_load_model", side_effect=Exception("GPU OOM")):
+            with patch.object(
+                self.svc, "_load_model", side_effect=Exception("GPU OOM")
+            ):
                 with pytest.raises(RuntimeError, match="Failed to load TTS model"):
                     self.svc.generate("hello", "pilot_default")
 
@@ -256,11 +274,13 @@ class TestGenerate:
 # get_tts_service() singleton
 # ---------------------------------------------------------------------------
 
+
 class TestGetTTSServiceSingleton:
     """get_tts_service() returns the same instance on repeated calls."""
 
     def test_same_instance_returned_twice(self):
         import mysite.universe.services.tts_service as tts_module
+
         original = tts_module._tts_service
         try:
             tts_module._tts_service = None
@@ -272,6 +292,7 @@ class TestGetTTSServiceSingleton:
 
     def test_returns_chatterbox_instance(self):
         import mysite.universe.services.tts_service as tts_module
+
         original = tts_module._tts_service
         try:
             tts_module._tts_service = None
@@ -285,11 +306,13 @@ class TestGetTTSServiceSingleton:
 # warm_tts_service()
 # ---------------------------------------------------------------------------
 
+
 class TestWarmTTSService:
     """warm_tts_service() is best-effort and never raises."""
 
     def test_failure_is_swallowed(self):
         import mysite.universe.services.tts_service as tts_module
+
         original = tts_module._tts_service
         try:
             mock_svc = MagicMock()
@@ -301,12 +324,15 @@ class TestWarmTTSService:
 
     def test_calls_generate_with_defaults(self):
         import mysite.universe.services.tts_service as tts_module
+
         original = tts_module._tts_service
         try:
             mock_svc = MagicMock()
             mock_svc.generate.return_value = b"ok"
             tts_module._tts_service = mock_svc
             warm_tts_service()
-            mock_svc.generate.assert_called_once_with(text="check", voice_id="pilot_default")
+            mock_svc.generate.assert_called_once_with(
+                text="check", voice_id="pilot_default"
+            )
         finally:
             tts_module._tts_service = original

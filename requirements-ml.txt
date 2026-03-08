@@ -1,0 +1,23 @@
+# requirements-ml.txt — GPU / ML dependencies
+#
+# Install this IN ADDITION TO requirements.txt when you need real TTS
+# generation or are running the @slow test suite on a GPU machine:
+#
+#   pip install -r requirements.txt -r requirements-ml.txt
+#
+# WHY THESE ARE SEPARATE:
+# torch and torchaudio together are 2–3 GB. The CI fast suite
+# (`pytest -m "not slow"`) never does GPU inference, so there is no reason
+# to pay that install cost in CI. Tests that import torch are guarded with
+# pytest.importorskip("torch") and are skipped automatically when torch is
+# absent. numpy is included here because chatterbox-tts depends on it and
+# numpy without torch is not a useful combination in this project.
+#
+# These are kept as loose pins (not compiled into the lockfile) because GPU
+# driver compatibility often dictates the exact torch version, and that
+# constraint is better managed locally than frozen in a CI lockfile.
+
+torch>=2.0.0
+torchaudio>=2.0.0
+chatterbox-tts==0.1.6
+numpy>=1.23

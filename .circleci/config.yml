@@ -11,8 +11,8 @@ jobs:
 
       - restore_cache:
           keys:
-            - venv-v1-{{ checksum "requirements.txt" }}
-            - venv-v1-
+            - venv-v2-{{ checksum "requirements.txt" }}
+            - venv-v2-
 
       - run:
           name: Install dependencies
@@ -20,10 +20,9 @@ jobs:
             python -m venv venv
             venv/bin/pip install --upgrade pip
             venv/bin/pip install -r requirements.txt
-            venv/bin/pip install codecov-cli
 
       - save_cache:
-          key: venv-v1-{{ checksum "requirements.txt" }}
+          key: venv-v2-{{ checksum "requirements.txt" }}
           paths:
             - venv
 
