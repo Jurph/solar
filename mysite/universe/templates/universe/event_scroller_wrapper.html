@@ -138,6 +138,109 @@
             return url;
         }
 
+        function audioRequired() {
+            return audioPlayer.isEnabled() && !audioPlayer.isMuted();
+        }
+
+        function moveEventToWaitingAudio(event, reason, { requeue = false } = {}) {
+            console.warn(
+                `[WAITING] Event ${event.id} moved to waitingAudio: ${reason} ` +
+                `(audio_url=${!!event.audio_url}, audio_ready=${event.audio_ready})`
+            );
+            waitingAudio.set(event.id, { event: event, addedAt: Date.now() });
+            if (requeue) {
+                eventQueue.unshift(event);
+            }
+        }
+
+        function findNextWaitingAudioCandidate(now = Date.now()) {
+            let nextEvent = null;
+            let nextEventId = null;
+
+            for (const [id, waitingData] of waitingAudio.entries()) {
+                const ev = waitingData.event;
+                const waitTime = now - waitingData.addedAt;
+
+                if (!nextEvent || ev.timestamp < nextEvent.timestamp) {
+                    nextEvent = ev;
+                    nextEventId = id;
+                }
+
+                if (!ev.audio_ready && waitTime > 10000 && waitTime % 5000 < 100) {
+                    console.warn(
+                        `[WAITING] Event ${id} still waiting for audio after ${Math.floor(waitTime / 1000)}s`
+                    );
+                }
+            }
+
+            return { nextEvent, nextEventId };
+        }
+
+        function resetClientEventState({ keepDisplay = false, catchUpFromCurrentTime = true } = {}) {
+            if (!keepDisplay) {
+                eventLog.innerHTML = '';
+                eventContainer.scrollTop = 0;
+            }
+
+            eventQueue = [];
+            displayedEventIds.clear();
+            lastEventCursor = null;
+            waitingAudio.clear();
+            lastAudioCheck.clear();
+            inflightAudioChecks.clear();
+            isTyping = false;
+            isFetching = false;
+
+            pageLoadSimTime = currentSimTime;
+            catchUpComplete = catchUpFromCurrentTime;
+        }
+
+        function updateHealthIndicator(element, label, service) {
+            if (!service) {
+                element.textContent = '❓';
+                element.title = `${label}: no health data`;
+                return;
+            }
+
+            if (service.status === 'ok') {
+                element.textContent = '🟢';
+            } else if (service.status === 'idle') {
+                element.textContent = '🟡';
+            } else {
+                element.textContent = '🔴';
+            }
+
+            element.title = `${label}: ${service.message}`;
+        }
+
+        async function triggerMissionSpawn(button, { missionType, idleLabel, busyLabel, noun }) {
+            button.disabled = true;
+            button.textContent = busyLabel;
+
+            try {
+                const response = await fetch(`{% url "spawn_mission" %}?mission_type=${encodeURIComponent(missionType)}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `Failed to spawn ${noun}`);
+                }
+
+                const data = await response.json();
+                console.log(`${noun} spawned:`, data.message);
+            } catch (error) {
+                console.error(`Error spawning ${noun}:`, error);
+                alert(`Failed to spawn ${noun}. Check console for details.`);
+            } finally {
+                button.disabled = false;
+                button.textContent = idleLabel;
+            }
+        }
+
         async function enqueueEventAudio(event, useFastMode) {
             console.log(`[AUDIO] enqueueEventAudio called: event=${event.id}, useFastMode=${useFastMode}, audio_ready=${event.audio_ready}`);
             
@@ -146,7 +249,7 @@
                 return true; // Fast mode - allow text (historical events)
             }
             
-            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) {
+            if (!audioRequired()) {
                 console.log(`[AUDIO] Audio disabled/muted - allowing text without audio`);
                 return true; // Audio disabled/muted - allow text
             }
@@ -229,7 +332,7 @@
          */
         function enqueueAudioForTrigger(event, trigger, useFastMode) {
             if (useFastMode) return;
-            if (!audioPlayer.isEnabled() || audioPlayer.isMuted()) return;
+            if (!audioRequired()) return;
             if (!event || !Array.isArray(event.audio_plan)) return;
 
             for (const action of event.audio_plan) {
@@ -410,12 +513,9 @@
 
             // CRITICAL: If audio is enabled and not muted, events MUST have audio_url AND audio_ready=true
             // No legacy beep path - if TTS isn't ready, we wait.
-            if (audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
+            if (audioRequired()) {
                 if (!event.audio_url || !event.audio_ready) {
-                    // Audio required but not ready - put back in waitingAudio, don't process
-                    console.warn(`[PROCESS] Event ${event.id} lacks required audio (audio_url=${!!event.audio_url}, audio_ready=${event.audio_ready}), moving to waitingAudio`);
-                    waitingAudio.set(event.id, {event: event, addedAt: Date.now()});
-                    eventQueue.unshift(event); // Put back in queue for retry
+                    moveEventToWaitingAudio(event, 'processNextEvent requires ready audio', { requeue: true });
                     isTyping = false;
                     setTimeout(processNextEvent, 200);
                     return; // Do NOT display text without TTS
@@ -424,10 +524,7 @@
                 // Enqueue fully-mixed audio (server returns quindars + TTS + room tone + modem noise all mixed)
                 const audioEnqueued = await enqueueEventAudio(event, useFastMode);
                 if (!audioEnqueued) {
-                    // Audio was evicted or failed - put back in waitingAudio, don't display text
-                    console.warn(`[PROCESS] Event ${event.id} audio enqueue failed (evicted?), moving to waitingAudio`);
-                    waitingAudio.set(event.id, {event: event, addedAt: Date.now()});
-                    eventQueue.unshift(event); // Put back in queue for retry
+                    moveEventToWaitingAudio(event, 'audio enqueue failed', { requeue: true });
                     isTyping = false;
                     setTimeout(processNextEvent, 200);
                     return; // Do NOT display text without TTS
@@ -474,15 +571,10 @@
             // CRITICAL: If audio is enabled and not muted, events MUST have audio_url AND audio_ready=true
             // No legacy beep path - if TTS isn't ready, we wait.
             for (const ev of newEvents) {
-                if (audioPlayer.isEnabled() && !audioPlayer.isMuted()) {
+                if (audioRequired()) {
                     // Audio is enabled - require both audio_url and audio_ready
                     if (!ev.audio_url || !ev.audio_ready) {
-                        waitingAudio.set(ev.id, {event: ev, addedAt: Date.now()});
-                        console.log(`[APPEND] Event ${ev.id} held in waitingAudio (audio_url=${!!ev.audio_url}, audio_ready=${ev.audio_ready})`);
-                        
-                        // Don't spam HEAD requests on append - let polling handle it
-                        // The fetchEvents() finally block will check audio readiness periodically
-                        
+                        moveEventToWaitingAudio(ev, 'appendEvents received event before audio was ready');
                         continue; // Do NOT add to eventQueue - wait for TTS
                     } else {
                         waitingAudio.delete(ev.id);
@@ -579,25 +671,7 @@
                 // CRITICAL: Process in queue order - check ONLY the next (earliest) event
                 if (waitingAudio.size > 0) {
                     const now = Date.now();
-                    
-                    // Find the event with the earliest timestamp (front of queue)
-                    let nextEvent = null;
-                    let nextEventId = null;
-                    
-                    for (const [id, waitingData] of waitingAudio.entries()) {
-                        const ev = waitingData.event;
-                        const waitTime = now - waitingData.addedAt;
-                        
-                        if (!nextEvent || ev.timestamp < nextEvent.timestamp) {
-                            nextEvent = ev;
-                            nextEventId = id;
-                        }
-                        
-                        // Log if waiting a long time
-                        if (!ev.audio_ready && waitTime > 10000 && waitTime % 5000 < 100) {
-                            console.warn(`[WAITING] Event ${id} still waiting for audio after ${Math.floor(waitTime/1000)}s`);
-                        }
-                    }
+                    const { nextEvent, nextEventId } = findNextWaitingAudioCandidate(now);
                     
                     // For the NEXT event in queue, check if audio is ready
                     if (nextEvent && nextEvent.audio_url && !nextEvent.audio_ready) {
@@ -703,36 +777,14 @@
                 const response = await fetch(HEALTH_ENDPOINT);
                 if (!response.ok) {
                     llmStatusDisplay.textContent = '❓';
-                    workerStatusDisplay.textContent = '❓';
+                    ttsStatusDisplay.textContent = '❓';
                     return;
                 }
                 
                 const health = await response.json();
-                
-                // Update LLM status
-                if (health.llm) {
-                    if (health.llm.status === 'ok') {
-                        llmStatusDisplay.textContent = '🟢';
-                        llmStatusDisplay.title = 'LLM: ' + health.llm.message;
-                    } else {
-                        llmStatusDisplay.textContent = '🔴';
-                        llmStatusDisplay.title = 'LLM: ' + health.llm.message;
-                    }
-                }
-                
-                // Update TTS worker status
-                if (health.audio_worker) {
-                    if (health.audio_worker.status === 'ok') {
-                        ttsStatusDisplay.textContent = '🟢';
-                        ttsStatusDisplay.title = 'TTS: ' + health.audio_worker.message;
-                    } else if (health.audio_worker.status === 'idle') {
-                        ttsStatusDisplay.textContent = '🟡';
-                        ttsStatusDisplay.title = 'TTS: ' + health.audio_worker.message;
-                    } else {
-                        ttsStatusDisplay.textContent = '🔴';
-                        ttsStatusDisplay.title = 'TTS: ' + health.audio_worker.message;
-                    }
-                }
+
+                updateHealthIndicator(llmStatusDisplay, 'LLM', health.llm);
+                updateHealthIndicator(ttsStatusDisplay, 'TTS', health.audio_worker);
             } catch (error) {
                 console.error('Error fetching health:', error);
                 llmStatusDisplay.textContent = '❓';
@@ -823,16 +875,7 @@
          * Clear the display only (keeps database events)
          */
         clearDisplayButton.addEventListener('click', () => {
-            // Clear all events from the display (like a terminal clear command)
-            eventLog.innerHTML = '';
-            eventQueue = []; // Clear pending events too
-            displayedEventIds.clear(); // Allow re-display if events are re-fetched
-            lastEventCursor = null; // Reset so we can re-fetch from start
-            // Reset catch-up state - old events will display rapidly again
-            pageLoadSimTime = currentSimTime;
-            catchUpComplete = false;
-            // Reset scroll position
-            eventContainer.scrollTop = 0;
+            resetClientEventState({ keepDisplay: false, catchUpFromCurrentTime: false });
         });
         
         /**
@@ -857,19 +900,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     console.log('Events cleared:', data.message);
-                    // Clear ALL state - display, queues, and audio tracking
-                    eventLog.innerHTML = '';
-                    eventQueue = [];
-                    displayedEventIds.clear();
-                    lastEventCursor = null;
-                    // Clear audio waiting state
-                    waitingAudio.clear();
-                    lastAudioCheck.clear();
-                    inflightAudioChecks.clear();
-                    // Reset catch-up state
-                    pageLoadSimTime = currentSimTime;
-                    catchUpComplete = true;
-                    eventContainer.scrollTop = 0;
+                    resetClientEventState({ keepDisplay: false, catchUpFromCurrentTime: true });
                     console.log('All client state cleared - ready for new events');
                 } else {
                     throw new Error('Failed to clear events');
@@ -887,68 +918,24 @@
          * Spawn a cargo mission (ship + cargo + journey)
          */
         spawnCargoShipButton.addEventListener('click', async () => {
-            spawnCargoShipButton.disabled = true;
-            spawnCargoShipButton.textContent = 'Generating route & dialogue...';
-            
-            try {
-                const response = await fetch('{% url "spawn_mission" %}?mission_type=cargo', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Cargo mission spawned:', data.message);
-                    // Note: Mission generates in background, events will appear in ~3-10 seconds
-                    // The polling interval will pick them up automatically
-                    spawnCargoShipButton.textContent = 'Spawn Cargo Ship';
-                } else {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Failed to spawn cargo mission');
-                }
-            } catch (error) {
-                console.error('Error spawning cargo mission:', error);
-                alert('Failed to spawn cargo mission. Check console for details.');
-            } finally {
-                spawnCargoShipButton.disabled = false;
-                spawnCargoShipButton.textContent = 'Spawn Cargo Ship';
-            }
+            await triggerMissionSpawn(spawnCargoShipButton, {
+                missionType: 'cargo',
+                idleLabel: 'Spawn Cargo Ship',
+                busyLabel: 'Generating route & dialogue...',
+                noun: 'cargo mission',
+            });
         });
         
         /**
          * Spawn a nav broadcast mission (satellite navigation update)
          */
         spawnNavsatButton.addEventListener('click', async () => {
-            spawnNavsatButton.disabled = true;
-            spawnNavsatButton.textContent = 'Generating nav broadcast...';
-            
-            try {
-                const response = await fetch('{% url "spawn_mission" %}?mission_type=nav_broadcast', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Nav broadcast spawned:', data.message);
-                    // Note: Broadcast generates in background, events will appear shortly
-                    // The polling interval will pick them up automatically
-                    spawnNavsatButton.textContent = 'Spawn Navsat';
-                } else {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Failed to spawn nav broadcast');
-                }
-            } catch (error) {
-                console.error('Error spawning nav broadcast:', error);
-                alert('Failed to spawn nav broadcast. Check console for details.');
-            } finally {
-                spawnNavsatButton.disabled = false;
-                spawnNavsatButton.textContent = 'Spawn Navsat';
-            }
+            await triggerMissionSpawn(spawnNavsatButton, {
+                missionType: 'nav_broadcast',
+                idleLabel: 'Spawn Navsat',
+                busyLabel: 'Generating nav broadcast...',
+                noun: 'nav broadcast',
+            });
         });
         
         /**
