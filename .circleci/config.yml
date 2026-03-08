@@ -44,7 +44,7 @@ jobs:
           name: Upload partial coverage to Codecov
           command: |
             source venv/bin/activate
-            codecovCLI upload-process \
+            codecovcli upload-process \
               --token=$CODECOV_TOKEN \
               --flag parallel \
               --plugin pycoverage \
@@ -56,24 +56,17 @@ jobs:
       - store_artifacts:
           path: coverage.xml
 
-  # TODO: this job spins up a full cimg/python:3.10 container just to run one
-  # CLI command. Consider switching to cimg/base and using the Codecov orb
-  # (https://circleci.com/developer/orbs/orb/codecov/codecov) to skip the
-  # pip install entirely and shave ~60s off this job's cold start.
   notify-codecov:
     docker:
-      - image: cimg/python:3.10
+      - image: cimg/base:stable
 
     steps:
       - run:
-          name: Install codecov-cli
-          command: pip install codecov-cli
-
-      - run:
           name: Notify Codecov to merge parallel uploads
           command: |
-            export PATH="$(python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH"
-            codecovCLI send-notifications --token=$CODECOV_TOKEN
+            curl -Os https://cli.codecov.io/latest/linux/codecov
+            chmod +x codecov
+            ./codecov send-notifications --token=$CODECOV_TOKEN --auto-load-params-from CircleCI
 
 workflows:
   test-workflow:
