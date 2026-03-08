@@ -1116,3 +1116,82 @@ class TestGratitudeParticleDetails(DialogueParticleTest):
             previous_dialogue="Prior broadcast."
         )
         self.assertIsInstance(result, UserPromptData)
+
+
+class TestDialogueParticleBaseBranches(DialogueParticleTest):
+    """
+    Cover uncovered branches in DialogueParticle base class methods.
+
+    - format_user_prompt: optional altitude/inclination/speed fields (lines 384-388)
+    - format_user_prompt: add_example() early-return on empty text (line 404)
+    - get_role(): default PILOT return for unknown actor type (line 297)
+    """
+
+    def _make_particle(self):
+        return LaunchRequest(
+            actor=self.pilot, recipient="EARTH CONTROL", nav_context={}
+        )
+
+    def test_format_user_prompt_includes_optional_altitude_inclination_speed(self):
+        """
+        format_user_prompt adds altitude, inclination, and speed lines when they
+        are provided in UserPromptData (base.py lines 384, 386, 388).
+        """
+        from mysite.universe.services.dialogue.base import UserPromptData
+
+        data = UserPromptData(
+            role="pilot",
+            situation="departing orbit",
+            sender="ARES IV",
+            recipient="EARTH CONTROL",
+            example1="Ready for departure.",
+            example2="Requesting clearance.",
+            example3="Standing by.",
+            altitude="450 km",
+            inclination="28.5 degrees",
+            speed="7.8 km/s",
+        )
+        prompt = self._make_particle().format_user_prompt(data)
+        self.assertIn("altitude: 450 km", prompt)
+        self.assertIn("inclination: 28.5 degrees", prompt)
+        self.assertIn("speed: 7.8 km/s", prompt)
+
+    def test_format_user_prompt_add_example_skips_empty_text(self):
+        """
+        When last_dialogue_line is set and an example is empty, add_example()
+        returns early without adding that example (base.py line 404).
+        """
+        from mysite.universe.services.dialogue.base import UserPromptData
+
+        data = UserPromptData(
+            role="pilot",
+            situation="requesting clearance",
+            sender="ARES IV",
+            recipient="EARTH CONTROL",
+            example1="Cleared for departure.",
+            example2="",  # empty → skipped by add_example()
+            example3="Ready when you are.",
+            last_dialogue_line="Ares IV, cleared to proceed.",
+        )
+        prompt = self._make_particle().format_user_prompt(data)
+        # example1 and example3 should appear; example2 should not
+        self.assertIn("example1", prompt)
+        self.assertIn("example3", prompt)
+        # The empty example2 should not appear in the last_dialogue_line block
+        self.assertNotIn("example2:", prompt)
+
+    def test_get_role_returns_pilot_for_unknown_actor_type(self):
+        """
+        get_role() falls back to Role.PILOT when actor is a plain Actor
+        (not Pilot, Controller, or Satellite) — base.py line 297.
+        """
+        from mysite.universe.models.actor import Actor
+        from mysite.universe.schemas.dialogue_schema import Role
+
+        # Create a plain Actor (base class, not a subclass)
+        plain_actor = Actor.objects.create(name="Mystery Actor")
+        particle = LaunchRequest(
+            actor=plain_actor, recipient="EARTH CONTROL", nav_context={}
+        )
+        role = particle.get_role()
+        self.assertEqual(role, Role.PILOT)
