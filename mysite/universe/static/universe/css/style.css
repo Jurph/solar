@@ -148,6 +148,14 @@ body {
     letter-spacing: 0.5px;
 }
 
+#card-globe {
+    display: block;
+    margin: 0 auto 8px auto;
+    border-radius: 50%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
 .card-body {
     font-size: 14px;
     color: #ffffff !important;

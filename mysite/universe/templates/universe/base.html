@@ -9,6 +9,7 @@
     {% block content %}
     {% endblock %}
 
+    <script src="{% static 'universe/js/planet_globe.js' %}"></script>
     <script>
     function toggleNode(button) {
         const content = button.parentElement.querySelector('.tree-content');
@@ -27,6 +28,10 @@
         const cardName = document.getElementById('card-name');
         const cardType = document.getElementById('card-type');
         const cardBody = document.getElementById('card-body');
+
+        // Globe setup (canvas may not exist on every page)
+        const globeCanvas = document.getElementById('card-globe');
+        const globe = globeCanvas && window.PlanetGlobe ? new window.PlanetGlobe(globeCanvas) : null;
         
         // Add click handlers to all items with data attributes
         document.querySelectorAll('.item-name[data-object-type][data-object-id]').forEach(function(item) {
@@ -110,6 +115,20 @@
                 console.log('displayCard called with data:', data);
                 cardName.textContent = data.name.toUpperCase();
                 cardType.textContent = data.type;
+
+                // Globe: show for planets, moons, and stars; hide for everything else
+                if (globeCanvas && globe) {
+                    const tc = (data.type_code || '').toLowerCase();
+                    if (tc === 'planet' || tc === 'moon' || tc === 'star') {
+                        globeCanvas.style.display = 'block';
+                        globe.stopAnimation();
+                        globe.setObject(data);
+                        globe.startAnimation();
+                    } else {
+                        globeCanvas.style.display = 'none';
+                        globe.stopAnimation();
+                    }
+                }
                 
                 let html = '<div class="card-properties">';
                 
