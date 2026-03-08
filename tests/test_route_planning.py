@@ -1017,6 +1017,50 @@ class TestRouteServerFacadeMethods(TestCase):
                 self.assertIsInstance(ctx, dict)
                 break
 
+    def test_determine_maneuvers_via_facade(self):
+        """_determine_maneuvers() facade (line 63) delegates to route_plan and returns events."""
+        universe = UniverseGraph.get_instance()
+        path = universe.get_path(self.earth, self.luna)
+        scale_path = self.svc._build_scale_path(path)
+        transfer_plan = self.svc._determine_transfer_plan(scale_path)
+        compressed = self.svc._compress_location_path(path)
+        events = self.svc._determine_maneuvers(
+            transfer_plan, compressed, max(scale_path)
+        )
+        self.assertIsInstance(events, list)
+        self.assertGreater(len(events), 0)
+
+    def test_enhance_with_controllers_via_facade(self):
+        """_enhance_with_controllers() facade (line 66) delegates to route_controllers."""
+        universe = UniverseGraph.get_instance()
+        path = universe.get_path(self.earth, self.luna)
+        scale_path = self.svc._build_scale_path(path)
+        transfer_plan = self.svc._determine_transfer_plan(scale_path)
+        compressed = self.svc._compress_location_path(path)
+        raw_events = self.svc._determine_maneuvers(
+            transfer_plan, compressed, max(scale_path)
+        )
+        enhanced = self.svc._enhance_with_controllers(raw_events)
+        self.assertIsInstance(enhanced, list)
+        self.assertEqual(len(enhanced), len(raw_events))
+
+    def test_pick_random_destination_via_facade(self):
+        """pick_random_destination() facade (line 77) returns a Location different from excluding."""
+        result = self.svc.pick_random_destination(excluding=self.earth)
+        self.assertIsInstance(result, Location)
+        self.assertNotEqual(result.id, self.earth.id)
+
+    def test_random_journey_via_facade(self):
+        """random_journey() facade (line 85) returns a non-empty NavigationEvent list."""
+        from mysite.universe.models.ship import Ship
+        from mysite.universe.models.navigation import NavigationEvent
+
+        ship = Ship.objects.create(name="FACADE TEST SHIP", current_location=self.earth)
+        events = self.svc.random_journey(ship)
+        self.assertIsInstance(events, list)
+        self.assertGreater(len(events), 0)
+        self.assertIsInstance(events[0], NavigationEvent)
+
 
 class TestRoutePlanEdgeCases(TestCase):
     """
