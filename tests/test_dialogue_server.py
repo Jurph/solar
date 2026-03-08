@@ -221,6 +221,71 @@ class TestGenerateDialogueRetries(DialogueServiceTestBase):
         self.assertEqual(mock_llm.chat.call_count, 2)
 
 
+class TestGenerateDialogueBadContentDetection(DialogueServiceTestBase):
+    """generate_dialogue() retries and raises when LLM returns bad content patterns."""
+
+    def _particle(self):
+        return LaunchRequest(
+            actor=self.pilot,
+            recipient="HUB CONTROL",
+            nav_context=self.base_nav_context,
+        )
+
+    def test_retries_on_template_variable_leakage(self):
+        """If LLM returns a ${...} template variable, retry with next attempt."""
+        mock_llm = MagicMock(spec=LLMService)
+        mock_llm.chat.side_effect = [
+            '{"message": "requesting clearance for ${current_situation.maneuver_type}"}',
+            '{"message": "requesting clearance for launch"}',
+        ]
+        service = DialogueService(llm_service=mock_llm)
+        result = service.generate_dialogue(self._particle(), max_retries=2)
+        self.assertEqual(mock_llm.chat.call_count, 2)
+        self.assertNotIn("${", result.message)
+
+    def test_retries_on_json_fragment_leakage(self):
+        """If LLM response contains a leaked JSON fragment, retry."""
+        mock_llm = MagicMock(spec=LLMService)
+        mock_llm.chat.side_effect = [
+            '{"message": \'{ "role": "CONTROLLER", "message": "cleared"}\'}',
+            '{"message": "cleared for departure"}',
+        ]
+        service = DialogueService(llm_service=mock_llm)
+        result = service.generate_dialogue(self._particle(), max_retries=2)
+        self.assertEqual(mock_llm.chat.call_count, 2)
+        self.assertIn("cleared for departure", result.message)
+
+    def test_retries_on_error_in_communication_fallback(self):
+        """If LLM returns an 'Error in communication' fallback, retry."""
+        mock_llm = MagicMock(spec=LLMService)
+        mock_llm.chat.side_effect = [
+            '{"message": "Error in communication, please stand by"}',
+            '{"message": "standing by for your transmission"}',
+        ]
+        service = DialogueService(llm_service=mock_llm)
+        result = service.generate_dialogue(self._particle(), max_retries=2)
+        self.assertEqual(mock_llm.chat.call_count, 2)
+        self.assertIn("standing by", result.message)
+
+    def test_raises_after_exhausting_retries_on_bad_content(self):
+        """If all attempts return bad content, raises ValueError after max_retries+1 tries."""
+        mock_llm = MagicMock(spec=LLMService)
+        mock_llm.chat.return_value = '{"message": "${current_situation.maneuver_type}"}'
+        service = DialogueService(llm_service=mock_llm)
+        with self.assertRaises(ValueError):
+            service.generate_dialogue(self._particle(), max_retries=1)
+        self.assertEqual(mock_llm.chat.call_count, 2)
+
+    def test_clean_content_on_first_attempt_does_not_retry(self):
+        """A valid clean response succeeds immediately with a single LLM call."""
+        mock_llm = MagicMock(spec=LLMService)
+        mock_llm.chat.return_value = '{"message": "cleared for takeoff"}'
+        service = DialogueService(llm_service=mock_llm)
+        result = service.generate_dialogue(self._particle(), max_retries=3)
+        self.assertEqual(mock_llm.chat.call_count, 1)
+        self.assertIn("cleared for takeoff", result.message)
+
+
 class TestSelectNextParticleType(DialogueServiceTestBase):
     """_select_next_particle_type() edge cases."""
 
