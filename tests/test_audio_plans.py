@@ -304,26 +304,18 @@ class TestAudioPlanStaticLayer(TestCase):
 
 
 class TestAudioPlanActorlessFallback(TestCase):
-    """Test fallback behavior when event has no actor reference."""
+    """Actor-less events are a critical invariant violation; the plan builder must raise."""
 
-    def test_actorless_event_returns_minimal_plan(self):
-        """Event with no actor FK returns minimal plan with quindars only."""
+    def test_actorless_event_raises_value_error(self):
+        """build_audio_plan_for_dialogue_event() must raise ValueError for actor-less events."""
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
             actor=None,
             actor_name="Ghost Speaker",
             text="Hello, is anyone there?",
         )
-        plan = build_audio_plan_for_dialogue_event(event)
-        # Should have exactly quindar_start and quindar_end
-        presets = [a.get("preset") for a in plan]
-        self.assertIn("quindar_start", presets)
-        self.assertIn("quindar_end", presets)
-        # Should NOT have room tone, TTS, or modem noise
-        self.assertNotIn("room_tone", [a.get("type") for a in plan])
-        self.assertNotIn("modem_noise_example", presets)
-        tts_actions = [a for a in plan if a.get("action") == "tts"]
-        self.assertEqual(len(tts_actions), 0)
+        with self.assertRaises(ValueError):
+            build_audio_plan_for_dialogue_event(event)
 
 
 class TestAudioPlanMissingProfileOnDemand(TestCase):
