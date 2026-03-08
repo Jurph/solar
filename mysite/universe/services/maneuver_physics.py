@@ -272,9 +272,6 @@ class ManeuverPhysicsService:
         # Entry interface in meters
         h = entry_interface_km * 1000
         
-        # Surface gravity
-        g = planet_gravity_gees * EARTH_G
-        
         if has_atmosphere:
             # Atmospheric entry: longer due to aerobraking and parachute descent
             # Rough approximation: 10-15 minutes for Earth-like

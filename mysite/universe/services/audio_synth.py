@@ -572,7 +572,7 @@ def _mix_looped_audio_fragment(mix: list[float], fragment: LoopedAudioFragment, 
 
     try:
         src_sr, loop_samples = _read_wav_mono_float(fragment.path)
-    except (ValueError, FileNotFoundError) as e:
+    except (ValueError, FileNotFoundError):
         # Graceful degradation: if WAV read fails, skip this fragment
         # (In production, we'd log this, but for dev tooling we just skip)
         return

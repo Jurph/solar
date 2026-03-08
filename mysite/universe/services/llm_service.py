@@ -141,10 +141,10 @@ The JSON must match this exact schema:
             import logging
             logger = logging.getLogger(__name__)
             logger.setLevel(logging.INFO)
-            logger.debug(f"=== PROMPT SENT TO LLM API ===")
+            logger.debug("=== PROMPT SENT TO LLM API ===")
             logger.debug(f"SYSTEM MESSAGE:\n{system_msg}")
             logger.debug(f"USER MESSAGE:\n{user_msg}")
-            logger.debug(f"=== END PROMPT ===\n")
+            logger.debug("=== END PROMPT ===\n")
 
             # Use structured outputs if format schema is provided
             if use_structured_output and format is not None:
@@ -198,11 +198,11 @@ The JSON must match this exact schema:
                 response = completion.choices[0].text.strip()
             
             # Log to a file for later analysis; no STDOUT
-            logger.debug(f"=== LLM CALL ===")
+            logger.debug("=== LLM CALL ===")
             logger.debug(f"SYSTEM: {system_msg}")
             logger.debug(f"USER: {user_msg}")
             logger.debug(f"RESPONSE: {response}")
-            logger.debug(f"=== END CALL ===\n")
+            logger.debug("=== END CALL ===\n")
 
             # If JSON mode, extract and validate JSON
             if is_json_mode:
@@ -241,7 +241,7 @@ The JSON must match this exact schema:
                             # This allows us to bypass validation for messages that are close but not perfect
                             if not self.quiet_mode:
                                 print(f"Warning: DialogueMessage validation failed: {validation_error}")
-                                print(f"Attempting to construct message with model_construct (bypassing validation)...")
+                                print("Attempting to construct message with model_construct (bypassing validation)...")
                             
                             # Use model_construct to bypass validation - this is acceptable for LLM-generated content
                             # that might have minor validation issues but is otherwise valid
@@ -253,7 +253,9 @@ The JSON must match this exact schema:
                                 # If even model_construct fails, raise the original validation error
                                 if not self.quiet_mode:
                                     print(f"Error: Could not construct DialogueMessage even with model_construct: {construct_error}")
-                                raise ValueError(f"LLM failed to generate valid DialogueMessage: {validation_error}")
+                                raise ValueError(
+                                    f"LLM failed to generate valid DialogueMessage: {validation_error}"
+                                ) from construct_error
                     else:
                         raise ValueError("No JSON object found in response")
 
@@ -261,14 +263,14 @@ The JSON must match this exact schema:
                     if not self.quiet_mode:
                         print(f"Warning: LLM response was not valid JSON: {e}")
                         print(f"Raw response: {response}")
-                    raise ValueError(f"LLM failed to generate valid JSON: {e}")
+                    raise ValueError(f"LLM failed to generate valid JSON: {e}") from e
             else:
                 # Plain text mode - return as-is
                 return response
 
         except Exception as e:
             if is_json_mode:
-                raise ValueError(f"Error communicating with LLM: {str(e)}")
+                raise ValueError(f"Error communicating with LLM: {str(e)}") from e
             else:
                 return f"Error communicating with LLM: {str(e)}"
 

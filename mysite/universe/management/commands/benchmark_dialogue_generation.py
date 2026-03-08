@@ -54,7 +54,7 @@ class Command(BaseCommand):
         script_service = ScriptService(llm=llm)
 
         ship = Ship.create(location=origin)
-        pilot = Pilot.create(ship=ship)
+        Pilot.create(ship=ship)
 
         self.stdout.write(self.style.SUCCESS("Benchmark: Dialogue generation"))
         self.stdout.write(f"- Origin: {origin.name}")
@@ -108,6 +108,6 @@ class Command(BaseCommand):
         try:
             return Location.objects.get(name=name)
         except Location.DoesNotExist:
-            raise SystemExit(f"Location '{name}' not found. Have you imported universe XML?")
+            raise SystemExit(f"Location '{name}' not found. Have you imported universe XML?") from None
 
 

@@ -202,16 +202,16 @@ class ChatterboxTTSService(TTSService):
             logger.info(f"TTS cache hit for voice={voice_id}, text_length={len(text)}")
             return cached
         
-        logger.info(f"TTS cache miss, generating new audio...")
+        logger.info("TTS cache miss, generating new audio...")
         
         # Load model if needed
         try:
-            logger.info(f"Loading TTS model...")
+            logger.info("Loading TTS model...")
             self._load_model()
-            logger.info(f"TTS model loaded successfully")
+            logger.info("TTS model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load TTS model: {e}", exc_info=True)
-            raise RuntimeError(f"Failed to load TTS model: {e}")
+            raise RuntimeError(f"Failed to load TTS model: {e}") from e
         
         # Find voice reference clip (with fallback)
         logger.info(f"Looking up voice path for: {voice_id}")
@@ -229,14 +229,14 @@ class ChatterboxTTSService(TTSService):
         
         # Generate audio
         try:
-            logger.info(f"Calling model.generate()...")
+            logger.info("Calling model.generate()...")
             wav = self.model.generate(
                 text,
                 audio_prompt_path=str(voice_path),
                 cfg_weight=cfg_weight,
                 exaggeration=exaggeration,
             )
-            logger.info(f"Model.generate() completed, converting to bytes...")
+            logger.info("Model.generate() completed, converting to bytes...")
             
             # Convert to bytes (16-bit PCM, mono) - use model's actual sample rate
             wav_bytes = self._wav_to_bytes(wav, self.model.sr)
@@ -251,7 +251,7 @@ class ChatterboxTTSService(TTSService):
         except Exception as e:
             logger.error(f"TTS generation failed for voice={voice_id}, text={text[:50]}: {e}", exc_info=True)
             # Return silence as fallback (1 second)
-            logger.warning(f"Returning 1-second silence as fallback")
+            logger.warning("Returning 1-second silence as fallback")
             return self._generate_silence(1.0)
     
     def _get_cache_key(self, text: str, voice_id: str, *args) -> str:

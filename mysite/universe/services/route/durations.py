@@ -99,7 +99,7 @@ def extract_body_params(body) -> dict:
 
 def build_physics_nav_context(service, event: NavigationEvent, body) -> dict:
     """Build navigation context for physics calculations."""
-    from mysite.universe.models.celestial import Planet, StarSystem
+    from mysite.universe.models.celestial import Planet
 
     context = {
         "altitude_km": 300,
