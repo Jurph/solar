@@ -21,6 +21,7 @@ from mysite.universe.models.navigation import (
     find_nearest_node as bfs_find_nearest_node,
     print_tree,
     _is_control_station,
+    _normalize,
 )
 from mysite.universe.models.scale import Scale
 from mysite.universe.models.station import Station
@@ -310,3 +311,64 @@ class TestControlStationKeywordHelpers(TestCase):
         assert _is_control_station("Luna Orbital Control") is True
         assert _is_control_station("Freight Dispatch") is True
         assert _is_control_station("Research Platform") is False
+
+
+class TestNavigationEdgeCases(TestCase):
+    """
+    Covers uncovered branches in navigation.py utility functions.
+    """
+
+    def test_bfs_find_nearest_node_returns_none_when_no_match(self):
+        """
+        find_nearest_node exhausts the graph without finding a match and
+        returns None (navigation.py line 455).
+        """
+        a, b, c = object(), object(), object()
+        neighbors_map = {a: [b], b: [c], c: []}
+
+        result = bfs_find_nearest_node(
+            a,
+            target_check=lambda x: False,  # never matches
+            get_neighbors=lambda x: neighbors_map.get(x, []),
+        )
+        assert result is None
+
+    def test_normalize_passes_model_instance_through(self):
+        """_normalize returns a non-tuple item unchanged (line 464)."""
+        sentinel = object()
+        assert _normalize(sentinel) is sentinel
+
+    def test_normalize_extracts_first_element_from_tuple(self):
+        """_normalize extracts item[0] when given a tuple (lines 462-463)."""
+        inner = object()
+        result = _normalize((inner, "extra"))
+        assert result is inner
+
+    def test_is_planetary_false_for_planet_with_no_orbits(self):
+        """
+        A Location at PLANET scale with no `orbits` attribute (raw Location row,
+        not a Planet subclass) triggers the `orbits is None` branch (line 392).
+        """
+        raw_loc = Location.objects.create(name="NavEdge Planet Loc", scale=Scale.PLANET)
+        # get_concrete_instance() on a raw Location returns self, which has no orbits
+        assert is_planetary(raw_loc) is False
+
+    def test_print_tree_handles_node_with_no_location_data(self):
+        """
+        print_tree prints a fallback 'Unknown' line when a graph node has no
+        'location' key in its data dict (navigation.py line 553).
+        """
+        import networkx as nx
+
+        # Build a minimal UniverseGraph-like object whose internal graph has
+        # a node without 'location' data.
+        universe = UniverseGraph.__new__(UniverseGraph)
+        g = nx.Graph()
+        g.add_node(99)  # no 'location' key in node data
+        universe._graph = g
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_tree(universe, 99)
+        out = buf.getvalue()
+        assert "Unknown" in out
