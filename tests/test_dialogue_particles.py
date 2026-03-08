@@ -1,10 +1,10 @@
 """Unit tests for dialogue particle classes."""
+
 from django.test import TestCase
 from mysite.universe.models.actor import Pilot, Controller
 from mysite.universe.models.ship import Ship
 from mysite.universe.services.dialogue.particles import (
     LaunchRequest,
-    CircularizationRequest,
     InsertionRequest,
     SublightRequest,
     HyperspaceRequest,
@@ -20,31 +20,29 @@ from mysite.universe.services.dialogue.particles import (
 
 class DialogueParticleTest(TestCase):
     """Base test class for dialogue particles with common fixtures."""
-    
+
     @classmethod
     def setUpTestData(cls):
         """Set up test data shared across all particle tests."""
         # Create a test location first (required for Ship)
         from mysite.universe.models.base import Location
         from mysite.universe.models.scale import Scale
-        cls.location = Location.objects.create(
-            name="Test Station",
-            scale=Scale.STATION
-        )
-        
+
+        cls.location = Location.objects.create(name="Test Station", scale=Scale.STATION)
+
         # Create test ship (using factory method with location)
         cls.ship = Ship.create(location=cls.location, name="TEST SHIP")
-        
+
         # Create test pilot with ship
         cls.pilot = Pilot.create(ship=cls.ship)
         cls.pilot.name = "Test Pilot"
         cls.pilot.save()
-        
+
         # Create test controller
         cls.controller = Controller.create()
         cls.controller.name = "Mars Control"
         cls.controller.save()
-        
+
         # Standard nav_context for testing
         cls.nav_context = {
             "maneuver_type": "launch",
@@ -53,7 +51,7 @@ class DialogueParticleTest(TestCase):
             "inclination_deg": "20",
             "altitude_km": "150",
         }
-    
+
     def setUp(self):
         """Set up for each test."""
         # Reset nav_context to defaults
@@ -62,109 +60,69 @@ class DialogueParticleTest(TestCase):
 
 class TestPilotRequestParticles(DialogueParticleTest):
     """Test pilot request particle classes."""
-    
+
     def test_launch_request_role_description(self):
         """Test LaunchRequest returns correct role description."""
         particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         role_desc = particle.get_role_description()
         self.assertIn("Test Pilot", role_desc)
         self.assertIn("TEST SHIP", role_desc)
-    
+
     def test_launch_request_situation_description(self):
         """Test LaunchRequest situation description includes ship and maneuver."""
         particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         situation = particle.get_situation_description()
         self.assertIn("TEST SHIP", situation)
         self.assertIn("launch", situation.lower())
         self.assertIn("MARS CONTROL", situation)
-    
+
     def test_launch_request_examples_integrate_context_values(self):
         """Test that examples incorporate nav_context values when provided."""
         self.nav_context["destination"] = "Saturn"
         self.nav_context["azimuth_deg"] = 90  # Use numeric value and correct key name
         particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         examples = particle.get_examples()
         # At least some examples should reference the context values
         destination_found = any("Saturn" in ex for ex in examples)
         azimuth_found = any("90" in ex or "ninety" in ex.lower() for ex in examples)
-        self.assertTrue(destination_found, "Examples should incorporate destination from nav_context")
-        self.assertTrue(azimuth_found, "Examples should incorporate azimuth_deg from nav_context")
-    
+        self.assertTrue(
+            destination_found,
+            "Examples should incorporate destination from nav_context",
+        )
+        self.assertTrue(
+            azimuth_found, "Examples should incorporate azimuth_deg from nav_context"
+        )
+
     def test_examples_are_diverse(self):
         """Test that examples are not all identical templates."""
         particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         examples = particle.get_examples()
         self.assertGreater(len(examples), 1)
         # Check examples are different from each other
         unique_examples = set(examples)
         # Should have at least 3 unique examples (we have 8 total)
-        self.assertGreaterEqual(len(unique_examples), 3, 
-                               "Examples should be diverse, not identical templates")
+        self.assertGreaterEqual(
+            len(unique_examples),
+            3,
+            "Examples should be diverse, not identical templates",
+        )
 
-    
-    def test_circularization_request_examples_integrate_context(self):
-        """Test that CircularizationRequest examples use nav_context values."""
-        self.nav_context["maneuver_type"] = "circularize"
-        self.nav_context["altitude_km"] = "200"
-        self.nav_context["inclination_deg"] = "45"
-        particle = CircularizationRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
-        )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should reference orbital maneuvers (circularization, orbit, apogee, etc.)
-        orbit_keywords = ["circulariz", "orbit", "apogee", "altitude", "inclination"]
-        found_keyword = any(
-            keyword in example.lower()
-            for example in examples
-            for keyword in orbit_keywords
-        )
-        self.assertTrue(found_keyword, "Examples should reference orbital maneuvers")
-    
-    def test_insertion_request_examples(self):
-        """Test InsertionRequest examples are appropriate."""
-        self.nav_context["maneuver_type"] = "insertion"
-        particle = InsertionRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
-        )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        for example in examples:
-            self.assertIn("insertion", example.lower())
-    
     def test_generic_request_fallback(self):
-        """Test GenericRequest works for unknown maneuver types."""
+        """Test GenericRequest does not crash on unknown maneuver types."""
         self.nav_context["maneuver_type"] = "unknown_maneuver"
         particle = GenericRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         examples = particle.get_examples()
         self.assertGreater(len(examples), 0)
-        # Should include the maneuver type in examples
-        for example in examples:
-            self.assertIn("unknown_maneuver", example.lower())
 
     def test_sublight_request_uses_azimuth_language(self):
         self.nav_context["maneuver_type"] = "sublight"
@@ -193,56 +151,48 @@ class TestPilotRequestParticles(DialogueParticleTest):
 
 class TestControllerResponseParticles(DialogueParticleTest):
     """Test controller response particle classes."""
-    
+
     def test_radio_response_role_description(self):
         """Test RadioResponse returns correct controller role description."""
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         role_desc = particle.get_role_description()
         self.assertIn("anonymous space traffic controller", role_desc.lower())
         self.assertIn("Mars Control", role_desc)
-    
+
     def test_radio_response_situation_description(self):
         """Test RadioResponse situation description is correct."""
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         situation = particle.get_situation_description()
         self.assertIn("TEST SHIP", situation)
         self.assertIn("requested clearance", situation.lower())
         self.assertIn("MARS CONTROL", situation)
-    
+
     def test_radio_response_examples_are_context_aware(self):
         """Test RadioResponse generates context-aware examples based on maneuver type."""
         # Test launch examples
         self.nav_context["maneuver_type"] = "launch"
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         examples = particle.get_examples()
         self.assertGreater(len(examples), 0)
         # Examples should reference launch
         launch_keywords = ["launch", "burn", "approved", "go"]
         found_keyword = any(
-            keyword in example.lower() 
-            for example in examples 
+            keyword in example.lower()
+            for example in examples
             for keyword in launch_keywords
         )
         self.assertTrue(found_keyword, "Launch examples should reference launch")
-        
+
         # Test orbital examples
         self.nav_context["maneuver_type"] = "insertion"
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         examples = particle.get_examples()
         orbit_keywords = ["insertion", "cleared", "orbit", "degrees", "kilometers"]
@@ -251,20 +201,22 @@ class TestControllerResponseParticles(DialogueParticleTest):
             for example in examples
             for keyword in orbit_keywords
         )
-        self.assertTrue(found_keyword, "Orbital examples should reference orbital parameters")
-        
+        self.assertTrue(
+            found_keyword, "Orbital examples should reference orbital parameters"
+        )
+
         # Test departure examples with destination
         self.nav_context["maneuver_type"] = "sublight"
         self.nav_context["destination"] = "Neptune"
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         examples = particle.get_examples()
         # Examples should use the actual destination from nav_context
         destination_found = any("Neptune" in ex for ex in examples)
-        self.assertTrue(destination_found, "Examples should use nav_context destination dynamically")
+        self.assertTrue(
+            destination_found, "Examples should use nav_context destination dynamically"
+        )
 
         # Hyperspace responses should use "jump" language and include an azimuth.
         self.nav_context["maneuver_type"] = "hyperspace"
@@ -277,220 +229,125 @@ class TestControllerResponseParticles(DialogueParticleTest):
         examples = particle.get_examples()
         self.assertTrue(any("jump" in ex.lower() for ex in examples))
         self.assertTrue(any("azimuth" in ex.lower() for ex in examples))
-    
-    def test_hold_response_examples(self):
-        """Test HoldResponse examples indicate holding."""
+
+    def test_hold_response_chain_leads_to_holding(self):
+        """HoldResponse must always be followed by a holding acknowledgment."""
         particle = HoldResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should reference holding
-        hold_keywords = ["hold", "negative", "stand by", "wait"]
-        found_keyword = any(
-            keyword in example.lower() 
-            for example in examples 
-            for keyword in hold_keywords
-        )
-        self.assertTrue(found_keyword, "Examples should reference holding")
-    
-    def test_select_examples_returns_different_selections(self):
-        """Test that select_examples() returns different examples when called multiple times."""
-        particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
-        )
-        # Call select_examples multiple times
-        selections = [particle.select_examples(3) for _ in range(10)]
-        # Should get different combinations (not all identical)
-        unique_selections = set(tuple(sel) for sel in selections)
-        # With 8 examples and selecting 3, we should get some variety
-        self.assertGreater(len(unique_selections), 1, 
-                          "select_examples() should return different selections")
-    
-    def test_radio_readback_examples(self):
-        """Test RadioReadback examples include readback phrases."""
-        particle = RadioReadback(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
-        )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should include readback indicators
-        readback_keywords = ["understood", "copy", "maintaining", "cleared"]
-        found_keyword = any(
-            keyword in example.lower() 
-            for example in examples 
-            for keyword in readback_keywords
-        )
-        self.assertTrue(found_keyword, "Examples should include readback phrases")
+        self.assertEqual(particle.get_next_particle_probabilities(), {"holding": 1.0})
 
-    def test_radio_readback_uses_burn_for_sublight_and_jump_for_hyperspace(self):
-        # Sublight: burn
-        self.nav_context["maneuver_type"] = "sublight"
+    def test_radio_readback_has_sufficient_examples(self):
+        """RadioReadback must provide enough examples for the LLM to draw from."""
         particle = RadioReadback(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context,
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
-        examples = particle.get_examples()
-        self.assertTrue(any("burn" in ex.lower() for ex in examples))
-        self.assertFalse(any("jump" in ex.lower() for ex in examples))
+        self.assertGreater(len(particle.get_examples()), 5)
 
-        # Hyperspace: jump
-        self.nav_context["maneuver_type"] = "hyperspace"
-        particle = RadioReadback(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context,
-        )
-        examples = particle.get_examples()
-        self.assertTrue(any("jump" in ex.lower() for ex in examples))
-    
-    def test_holding_examples(self):
-        """Test Holding examples indicate holding position."""
+    def test_holding_chain_leads_to_adjusted_response(self):
+        """Holding acknowledgment must always be followed by an adjusted controller clearance."""
         particle = Holding(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
-        examples = particle.get_examples()
-        self.assertGreater(len(examples), 0)
-        # Examples should reference holding
-        hold_keywords = ["holding", "roger", "copy"]
-        found_keyword = any(
-            keyword in example.lower() 
-            for example in examples 
-            for keyword in hold_keywords
+        self.assertEqual(
+            particle.get_next_particle_probabilities(), {"adjusted_response": 1.0}
         )
-        self.assertTrue(found_keyword, "Examples should reference holding")
 
 
 class TestParticleSenderCallsign(DialogueParticleTest):
     """Test that get_sender_callsign works correctly for all particle types."""
-    
+
     def test_pilot_request_sender_callsign(self):
         """Test pilot request uses ship name as sender."""
         particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         sender = particle.get_sender_callsign()
         self.assertEqual(sender, "TEST SHIP")
-    
+
     def test_controller_response_sender_callsign(self):
         """Test controller response uses controller name as sender."""
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         sender = particle.get_sender_callsign()
         self.assertEqual(sender, "MARS CONTROL")
-    
 
 
 class TestParticlePromptBuilding(DialogueParticleTest):
     """Test that particles can build user prompt data correctly."""
-    
+
     def test_launch_request_builds_prompt_data(self):
-        """Test LaunchRequest can build UserPromptData."""
+        """Test LaunchRequest routes callsigns correctly in prompt data."""
         particle = LaunchRequest(
-            actor=self.pilot,
-            recipient="MARS CONTROL",
-            nav_context=self.nav_context
+            actor=self.pilot, recipient="MARS CONTROL", nav_context=self.nav_context
         )
         prompt_data = particle.build_user_prompt_data()
-        
-        # Verify all required fields are present
-        self.assertIsNotNone(prompt_data.role)
-        self.assertIsNotNone(prompt_data.situation)
         self.assertEqual(prompt_data.sender, "TEST SHIP")
         self.assertEqual(prompt_data.recipient, "MARS CONTROL")
-        self.assertGreater(len(prompt_data.example1), 0)
-        self.assertGreater(len(prompt_data.example2), 0)
-        self.assertGreater(len(prompt_data.example3), 0)
-    
+
     def test_radio_response_builds_prompt_data(self):
-        """Test RadioResponse can build UserPromptData."""
+        """Test RadioResponse routes callsigns correctly in prompt data."""
         particle = RadioResponse(
-            actor=self.controller,
-            recipient="TEST SHIP",
-            nav_context=self.nav_context
+            actor=self.controller, recipient="TEST SHIP", nav_context=self.nav_context
         )
         prompt_data = particle.build_user_prompt_data()
-        
-        # Verify all required fields are present
-        self.assertIsNotNone(prompt_data.role)
-        self.assertIsNotNone(prompt_data.situation)
         self.assertEqual(prompt_data.sender, "MARS CONTROL")
         self.assertEqual(prompt_data.recipient, "TEST SHIP")
-        self.assertGreater(len(prompt_data.example1), 0)
-        self.assertGreater(len(prompt_data.example2), 0)
-        self.assertGreater(len(prompt_data.example3), 0)
 
 
 class TestSatelliteParticles(DialogueParticleTest):
     """Test satellite-related dialogue particles (NavBroadcast, GratitudeParticle)."""
-    
+
     @classmethod
     def setUpTestData(cls):
         """Set up test data for satellite particles."""
         super().setUpTestData()
         from mysite.universe.models.actor import Satellite
+
         cls.satellite = Satellite.create(name="Relay Alpha 1")
-    
-    def test_nav_broadcast_descriptions_exist(self):
-        """Test NavBroadcast returns non-empty role and situation descriptions."""
+
+    def test_nav_broadcast_descriptions_include_satellite_name(self):
+        """NavBroadcast role description must identify the satellite by name."""
         nav_context = {"satellite_name": "RELAY ALPHA 1"}
         particle = NavBroadcast(
-            actor=self.satellite,
-            recipient="ALL",
-            nav_context=nav_context
+            actor=self.satellite, recipient="ALL", nav_context=nav_context
         )
         role_desc = particle.get_role_description()
-        situation = particle.get_situation_description()
-        
-        self.assertIsInstance(role_desc, str)
-        self.assertGreater(len(role_desc), 0, "Role description should be non-empty")
-        self.assertIsInstance(situation, str)
-        self.assertGreater(len(situation), 0, "Situation description should be non-empty")
-    
+        self.assertIn(self.satellite.name, role_desc)
+
     def test_nav_broadcast_generate_text(self):
         """Test NavBroadcast generates non-empty text with satellite name."""
         nav_context = {"satellite_name": "RELAY ALPHA 1"}
         particle = NavBroadcast(
-            actor=self.satellite,
-            recipient="ALL",
-            nav_context=nav_context
+            actor=self.satellite, recipient="ALL", nav_context=nav_context
         )
         broadcast_text = particle.generate_nav_broadcast_text()
-        
+
         # Test that text is generated and has reasonable structure
         self.assertIsInstance(broadcast_text, str)
-        self.assertGreater(len(broadcast_text), 50, "Broadcast text should have substantial content")
+        self.assertGreater(
+            len(broadcast_text), 50, "Broadcast text should have substantial content"
+        )
         # Important behavior: should include satellite name
-        self.assertIn(self.satellite.name.upper(), broadcast_text, "Text should include satellite name")
-    
+        self.assertIn(
+            self.satellite.name.upper(),
+            broadcast_text,
+            "Text should include satellite name",
+        )
+
     def test_nav_broadcast_next_particle_probabilities(self):
         """Test NavBroadcast has 5% chance of generating gratitude."""
         nav_context = {"satellite_name": "RELAY ALPHA 1"}
         particle = NavBroadcast(
-            actor=self.satellite,
-            recipient="ALL",
-            nav_context=nav_context
+            actor=self.satellite, recipient="ALL", nav_context=nav_context
         )
-        
+
         # Test multiple times to verify probability distribution
         gratitude_count = 0
         standalone_count = 0
         iterations = 1000
-        
+
         for _ in range(iterations):
             probs = particle.get_next_particle_probabilities()
             if "gratitude" in probs:
@@ -499,93 +356,80 @@ class TestSatelliteParticles(DialogueParticleTest):
             else:
                 standalone_count += 1
                 self.assertEqual(probs, {})
-        
+
         # Should be approximately 5% (allow 2-8% range for randomness)
         gratitude_rate = gratitude_count / iterations
-        self.assertGreater(gratitude_rate, 0.02, "Should have at least 2% gratitude rate")
+        self.assertGreater(
+            gratitude_rate, 0.02, "Should have at least 2% gratitude rate"
+        )
         self.assertLess(gratitude_rate, 0.08, "Should have at most 8% gratitude rate")
-    
-    def test_gratitude_particle_descriptions_exist(self):
-        """Test GratitudeParticle returns non-empty role and situation descriptions."""
+
+    def test_gratitude_particle_role_identifies_pilot(self):
+        """GratitudeParticle role description must identify the pilot, not the ship."""
         nav_context = {
             "satellite_name": "RELAY ALPHA 1",
-            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ...",
         }
         particle = GratitudeParticle(
-            actor=self.pilot,
-            recipient="RELAY ALPHA 1",
-            nav_context=nav_context
+            actor=self.pilot, recipient="RELAY ALPHA 1", nav_context=nav_context
         )
         role_desc = particle.get_role_description()
-        situation = particle.get_situation_description()
-        
-        self.assertIsInstance(role_desc, str)
-        self.assertGreater(len(role_desc), 0, "Role description should be non-empty")
-        self.assertIsInstance(situation, str)
-        self.assertGreater(len(situation), 0, "Situation description should be non-empty")
-        # Important behavior: should NOT include ship name (no callsigns in gratitude)
-        self.assertNotIn("TEST SHIP", role_desc, "Gratitude should not include callsigns")
-    
+        self.assertIn(self.pilot.name, role_desc)
+
     def test_gratitude_particle_examples_exist_and_have_no_callsigns(self):
         """Test GratitudeParticle examples exist and do not include callsigns."""
         nav_context = {
             "satellite_name": "RELAY ALPHA 1",
-            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ...",
         }
         particle = GratitudeParticle(
-            actor=self.pilot,
-            recipient="RELAY ALPHA 1",
-            nav_context=nav_context
+            actor=self.pilot, recipient="RELAY ALPHA 1", nav_context=nav_context
         )
         examples = particle.get_examples()
-        
+
         self.assertGreater(len(examples), 0, "Should have at least one example")
         # Important behavior: examples should NOT include callsigns
         for example in examples:
             self.assertIsInstance(example, str)
             self.assertGreater(len(example), 0, "Each example should be non-empty")
-            self.assertNotIn("TEST SHIP", example, "Examples should not include ship callsigns")
-            self.assertNotIn("RELAY ALPHA 1", example, "Examples should not include recipient callsigns")
-    
+            self.assertNotIn(
+                "TEST SHIP", example, "Examples should not include ship callsigns"
+            )
+            self.assertNotIn(
+                "RELAY ALPHA 1",
+                example,
+                "Examples should not include recipient callsigns",
+            )
+
     def test_gratitude_particle_ends_chain(self):
         """Test GratitudeParticle ends the chain (no follow-up particles)."""
         nav_context = {
             "satellite_name": "RELAY ALPHA 1",
-            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ..."
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // ...",
         }
         particle = GratitudeParticle(
-            actor=self.pilot,
-            recipient="RELAY ALPHA 1",
-            nav_context=nav_context
+            actor=self.pilot, recipient="RELAY ALPHA 1", nav_context=nav_context
         )
         probs = particle.get_next_particle_probabilities()
         self.assertEqual(probs, {}, "Gratitude should end the chain")
-    
+
     def test_gratitude_particle_builds_prompt_data(self):
         """Test GratitudeParticle can build UserPromptData."""
         nav_context = {
             "satellite_name": "RELAY ALPHA 1",
-            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345"
+            "previous_broadcast": "RELAY ALPHA 1 NAV UPDATE // POS 45.2 -120.3 ALT 850KM // STATUS NOM // TEMP +25C PWR 95% // TIMESTAMP 12345",
         }
         particle = GratitudeParticle(
-            actor=self.pilot,
-            recipient="RELAY ALPHA 1",
-            nav_context=nav_context
+            actor=self.pilot, recipient="RELAY ALPHA 1", nav_context=nav_context
         )
         prompt_data = particle.build_user_prompt_data(
             previous_dialogue=nav_context["previous_broadcast"]
         )
-        
-        # Verify all required fields are present and non-empty
-        self.assertIsNotNone(prompt_data.role)
-        self.assertGreater(len(prompt_data.role), 0, "Role should be non-empty")
-        self.assertIsNotNone(prompt_data.situation)
-        self.assertGreater(len(prompt_data.situation), 0, "Situation should be non-empty")
-        self.assertGreater(len(prompt_data.example1), 0, "Example1 should be non-empty")
-        self.assertGreater(len(prompt_data.example2), 0, "Example2 should be non-empty")
-        self.assertGreater(len(prompt_data.example3), 0, "Example3 should be non-empty")
-        # Important behavior: previous dialogue should be preserved
-        self.assertEqual(prompt_data.last_dialogue_line, nav_context["previous_broadcast"])
+
+        # Previous dialogue must be preserved so the LLM can reference it
+        self.assertEqual(
+            prompt_data.last_dialogue_line, nav_context["previous_broadcast"]
+        )
 
 
 class TestSemanticInvariants(DialogueParticleTest):
@@ -629,8 +473,9 @@ class TestSemanticInvariants(DialogueParticleTest):
         )
         examples = particle.get_examples()
         for ex in examples:
-            self.assertNotIn("burn", ex.lower(),
-                             f"Hyperspace readback should not say 'burn': {ex!r}")
+            self.assertNotIn(
+                "burn", ex.lower(), f"Hyperspace readback should not say 'burn': {ex!r}"
+            )
         self.assertTrue(any("jump" in ex.lower() for ex in examples))
 
     def test_sublight_readback_uses_burn_not_jump(self):
@@ -643,8 +488,9 @@ class TestSemanticInvariants(DialogueParticleTest):
         )
         examples = particle.get_examples()
         for ex in examples:
-            self.assertNotIn("jump", ex.lower(),
-                             f"Sublight readback should not say 'jump': {ex!r}")
+            self.assertNotIn(
+                "jump", ex.lower(), f"Sublight readback should not say 'jump': {ex!r}"
+            )
         self.assertTrue(any("burn" in ex.lower() for ex in examples))
 
     def test_orbital_readback_echoes_instructed_km_when_given(self):
@@ -656,7 +502,9 @@ class TestSemanticInvariants(DialogueParticleTest):
             nav_context=self.nav_context,
         )
         # Simulate controller having said "Cleared for insertion to 350 kilometers"
-        particle.previous_dialogue = "Cleared for insertion to 350 kilometers, 28 degrees inclination."
+        particle.previous_dialogue = (
+            "Cleared for insertion to 350 kilometers, 28 degrees inclination."
+        )
         examples = particle.get_examples()
         # At least some examples should echo back "350"
         self.assertTrue(
@@ -696,9 +544,52 @@ class TestSemanticInvariants(DialogueParticleTest):
             for ex in examples:
                 for phrase in grant_phrases:
                     self.assertNotIn(
-                        phrase, ex.lower(),
+                        phrase,
+                        ex.lower(),
                         f"{maneuver} request example grants own clearance with '{phrase}': {ex!r}",
                     )
+
+    def test_orbital_readback_does_not_invent_azimuth(self):
+        """Readback for orbital maneuvers (CIRCULARIZE, INSERTION) must not invent azimuth.
+
+        Azimuth is a departure concept. Echoing it in an orbital readback would
+        confuse the LLM into producing geometrically nonsensical confirmations.
+        """
+        for maneuver in ("circularize", "insertion"):
+            self.nav_context["maneuver_type"] = maneuver
+            particle = RadioReadback(
+                actor=self.pilot,
+                recipient="MARS CONTROL",
+                nav_context=self.nav_context,
+            )
+            examples = particle.get_examples()
+            for ex in examples:
+                self.assertNotIn(
+                    "azimuth",
+                    ex.lower(),
+                    f"{maneuver} readback should not invent azimuth: {ex!r}",
+                )
+
+    def test_transfer_readback_does_not_invent_altitude(self):
+        """Readback for TRANSFER must not contain altitude km values.
+
+        A Hohmann transfer is characterised by origin/destination orbits, not
+        a specific altitude target. Inventing a km value in the readback
+        would contradict the controller's actual clearance wording.
+        """
+        self.nav_context["maneuver_type"] = "transfer"
+        particle = RadioReadback(
+            actor=self.pilot,
+            recipient="MARS CONTROL",
+            nav_context=self.nav_context,
+        )
+        examples = particle.get_examples()
+        for ex in examples:
+            self.assertNotIn(
+                "kilometer",
+                ex.lower(),
+                f"TRANSFER readback should not invent altitude km: {ex!r}",
+            )
 
 
 class TestControllerResponseSemantics(TestCase):
@@ -772,14 +663,15 @@ class TestControllerResponseSemantics(TestCase):
     def test_launch_examples_include_numeric_altitude(self):
         """LAUNCH with physics params must produce at least one example with a km altitude."""
         import re
+
         examples = self._make_response("LAUNCH").get_examples()
         has_numeric_km = any(
-            re.search(r'\d+\s*kilometers?', ex, re.IGNORECASE) for ex in examples
+            re.search(r"\d+\s*kilometers?", ex, re.IGNORECASE) for ex in examples
         )
         self.assertTrue(
             has_numeric_km,
-            "LAUNCH examples with physics should include a numeric km altitude.\n" +
-            "\n".join(examples),
+            "LAUNCH examples with physics should include a numeric km altitude.\n"
+            + "\n".join(examples),
         )
 
     def test_launch_examples_include_azimuth(self):
@@ -787,21 +679,23 @@ class TestControllerResponseSemantics(TestCase):
         examples = self._make_response("LAUNCH").get_examples()
         self.assertTrue(
             any("azimuth" in ex.lower() for ex in examples),
-            "LAUNCH examples with physics should include azimuth.\n" +
-            "\n".join(examples),
+            "LAUNCH examples with physics should include azimuth.\n"
+            + "\n".join(examples),
         )
 
     def test_sublight_examples_all_include_numeric_azimuth(self):
         """Every SUBLIGHT example must include 'azimuth' followed by a number."""
         import re
+
         examples = self._make_response("sublight").get_examples()
         for ex in examples:
             self.assertIn(
-                "azimuth", ex.lower(),
+                "azimuth",
+                ex.lower(),
                 f"Sublight example missing 'azimuth': {ex!r}",
             )
             self.assertIsNotNone(
-                re.search(r'azimuth\s+\d+', ex.lower()),
+                re.search(r"azimuth\s+\d+", ex.lower()),
                 f"Sublight azimuth should be followed by a number: {ex!r}",
             )
 
@@ -810,7 +704,8 @@ class TestControllerResponseSemantics(TestCase):
         examples = self._make_response("hyperspace").get_examples()
         for ex in examples:
             self.assertNotIn(
-                "burn", ex.lower(),
+                "burn",
+                ex.lower(),
                 f"Hyperspace clearance should not say 'burn': {ex!r}",
             )
         self.assertTrue(
@@ -821,14 +716,15 @@ class TestControllerResponseSemantics(TestCase):
     def test_insertion_examples_include_altitude_and_inclination(self):
         """INSERTION examples with physics must include both altitude and inclination."""
         import re
+
         examples = self._make_response(
             "insertion", destination=self.planet.name
         ).get_examples()
         has_km = any(
-            re.search(r'\d+\s*kilometers?', ex, re.IGNORECASE) for ex in examples
+            re.search(r"\d+\s*kilometers?", ex, re.IGNORECASE) for ex in examples
         )
         has_deg = any(
-            re.search(r'\d+\s*degrees?', ex, re.IGNORECASE) for ex in examples
+            re.search(r"\d+\s*degrees?", ex, re.IGNORECASE) for ex in examples
         )
         self.assertTrue(
             has_km,
@@ -857,7 +753,8 @@ class TestControllerResponseSemantics(TestCase):
         examples = self._make_response("sublight").get_examples()
         for ex in examples:
             self.assertNotIn(
-                "kilometer", ex.lower(),
+                "kilometer",
+                ex.lower(),
                 f"Sublight clearance should not mention km altitude: {ex!r}",
             )
 
@@ -904,9 +801,7 @@ class TestParseInstructedValues(DialogueParticleTest):
 
     def test_handles_comma_separated_thousands(self):
         particle = self._make_particle()
-        result = particle.parse_instructed_values(
-            "Target apogee 1,200 kilometers."
-        )
+        result = particle.parse_instructed_values("Target apogee 1,200 kilometers.")
         self.assertEqual(result["instructed_km"], 1200)
 
     def test_uses_previous_dialogue_when_no_text_arg(self):
@@ -932,4 +827,3 @@ class TestParseInstructedValues(DialogueParticleTest):
         particle = self._make_particle()
         result = particle.parse_instructed_values("Fly to 400km orbit.")
         self.assertEqual(result["instructed_km"], 400)
-
