@@ -41,7 +41,7 @@ jobs:
       - run:
           name: Upload partial coverage to Codecov
           command: |
-            python -m codecov_cli upload-process \
+            codecovcli upload-process \
               --token=$CODECOV_TOKEN \
               --flag parallel \
               --plugin pycoverage \
@@ -65,7 +65,7 @@ jobs:
       - run:
           name: Notify Codecov to merge parallel uploads
           command: |
-            python -m codecov_cli send-notifications --token=$CODECOV_TOKEN
+            codecovcli send-notifications --token=$CODECOV_TOKEN
 
 workflows:
   test-workflow:
