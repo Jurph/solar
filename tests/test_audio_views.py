@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
 import os
+import sys
+import tempfile
 import wave
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import Client, TestCase
@@ -12,6 +17,17 @@ from django.utils import timezone
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.actor import Pilot
+
+
+def _minimal_wav() -> bytes:
+    """Return a tiny valid WAV file (0.01s silence) for use in tests."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(48000)
+        wf.writeframes(b"\x00\x00" * 480)
+    return buf.getvalue()
 
 
 class TestAudioPresetEndpoint(TestCase):
@@ -436,3 +452,292 @@ class TestEventAudioActorlessInvariant(TestCase):
         )
         response = self.client.head(f"/api/event_audio/{event.id}/")
         self.assertEqual(response.status_code, 400)
+
+
+# ---------------------------------------------------------------------------
+# _find_audio_lab_tts_sample_path()
+# ---------------------------------------------------------------------------
+
+
+class TestFindAudioLabTTSSamplePath(TestCase):
+    """_find_audio_lab_tts_sample_path() fallback chain."""
+
+    def test_returns_finder_result_when_found(self):
+        """When staticfiles finders resolves the path, it is returned directly."""
+        from mysite.universe.views.audio import _find_audio_lab_tts_sample_path
+
+        with patch(
+            "mysite.universe.views.audio.finders.find", return_value="/found/path.wav"
+        ):
+            result = _find_audio_lab_tts_sample_path()
+        self.assertEqual(result, "/found/path.wav")
+
+    def test_returns_legacy_path_when_finder_fails_but_legacy_exists(self):
+        """When finders returns None but the legacy staticfiles/ path exists, it is used."""
+        from mysite.universe.views.audio import _find_audio_lab_tts_sample_path
+
+        with patch("mysite.universe.views.audio.finders.find", return_value=None):
+            with patch("os.path.exists", return_value=True):
+                result = _find_audio_lab_tts_sample_path()
+        self.assertIsNotNone(result)
+        self.assertIn("staticfiles", result)
+
+    def test_returns_none_when_neither_source_found(self):
+        """When both finders and legacy path fail, None is returned."""
+        from mysite.universe.views.audio import _find_audio_lab_tts_sample_path
+
+        with patch("mysite.universe.views.audio.finders.find", return_value=None):
+            with patch("os.path.exists", return_value=False):
+                result = _find_audio_lab_tts_sample_path()
+        self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# _save_last_playback()
+# ---------------------------------------------------------------------------
+
+
+class TestSaveLastPlayback(TestCase):
+    """_save_last_playback() swallows write errors."""
+
+    def test_write_exception_is_swallowed(self):
+        """An OSError during write is caught; no exception propagates."""
+        from mysite.universe.views.audio import _save_last_playback
+
+        with patch.object(Path, "write_bytes", side_effect=OSError("disk full")):
+            _save_last_playback(b"fake_wav")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# audio_lab GET
+# ---------------------------------------------------------------------------
+
+
+class TestAudioLabView(TestCase):
+    """audio_lab renders the dev-tool template."""
+
+    def setUp(self):
+        self.client = Client()
+
+    def test_get_returns_200(self):
+        url = reverse("audio_lab")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# audio_lab_render POST — modem mode
+# ---------------------------------------------------------------------------
+
+
+class TestAudioLabRenderModemMode(TestCase):
+    """audio_lab_render default (modem) mode produces WAV without any TTS."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("audio_lab_render")
+
+    def test_invalid_json_returns_400(self):
+        response = self.client.post(
+            self.url, data="not json", content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_empty_body_uses_defaults_returns_wav(self):
+        response = self.client.post(
+            self.url, data="{}", content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "audio/wav")
+
+    def test_modem_mode_with_quindar_returns_wav(self):
+        payload = {"mode": "modem", "text": "NAVSAT TEST", "include_quindar": True}
+        response = self.client.post(
+            self.url, data=json.dumps(payload), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "audio/wav")
+
+    def test_modem_mode_without_quindar_returns_wav(self):
+        payload = {"mode": "modem", "text": "NAVSAT TEST", "include_quindar": False}
+        response = self.client.post(
+            self.url, data=json.dumps(payload), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# audio_lab_render POST — TTS mode  (sys.modules mock avoids importing torch)
+# ---------------------------------------------------------------------------
+
+
+def _mock_tts_module(wav_bytes: bytes | None = None) -> MagicMock:
+    """Return a mock tts_service module whose get_tts_service() yields a mock service."""
+    mock_svc = MagicMock()
+    mock_svc.generate.return_value = wav_bytes or _minimal_wav()
+    mock_module = MagicMock()
+    mock_module.get_tts_service.return_value = mock_svc
+    return mock_module
+
+
+class TestAudioLabRenderTTSMode(TestCase):
+    """audio_lab_render TTS mode branches; tts_service is mocked to avoid torch."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("audio_lab_render")
+
+    def test_tts_mode_with_voice_id_returns_wav(self):
+        """Happy path: voice_id provided, TTS generates valid WAV."""
+        mock_mod = _mock_tts_module()
+        payload = {"mode": "tts", "voice_id": "pilot_default", "text": "Check."}
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            response = self.client.post(
+                self.url, data=json.dumps(payload), content_type="application/json"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "audio/wav")
+
+    def test_tts_mode_tts_failure_falls_back_to_sample(self):
+        """TTS generation raises; view falls back to sample clip."""
+        mock_mod = _mock_tts_module()
+        mock_mod.get_tts_service.return_value.generate.side_effect = RuntimeError(
+            "GPU OOM"
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(_minimal_wav())
+            sample_path = tmp.name
+        try:
+            payload = {"mode": "tts", "voice_id": "pilot_default", "text": "Check."}
+            with patch.dict(
+                sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+            ):
+                with patch(
+                    "mysite.universe.views.audio._find_audio_lab_tts_sample_path",
+                    return_value=sample_path,
+                ):
+                    response = self.client.post(
+                        self.url,
+                        data=json.dumps(payload),
+                        content_type="application/json",
+                    )
+        finally:
+            os.unlink(sample_path)
+        self.assertEqual(response.status_code, 200)
+
+    def test_tts_mode_no_clip_returns_501(self):
+        """TTS fails and no sample exists → 501."""
+        mock_mod = _mock_tts_module()
+        mock_mod.get_tts_service.return_value.generate.side_effect = RuntimeError(
+            "no model"
+        )
+        payload = {"mode": "tts", "voice_id": "ghost", "text": "Check."}
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            with patch(
+                "mysite.universe.views.audio._find_audio_lab_tts_sample_path",
+                return_value=None,
+            ):
+                response = self.client.post(
+                    self.url, data=json.dumps(payload), content_type="application/json"
+                )
+        self.assertEqual(response.status_code, 501)
+
+    def test_tts_mode_fragment_loop_skips_missing_files(self):
+        """component_N_gain > 0 exercises the audio fragment loop; missing files are skipped."""
+        mock_mod = _mock_tts_module()
+        payload = {
+            "mode": "tts",
+            "voice_id": "pilot_default",
+            "text": "Check.",
+            "component_1_gain": 1.0,
+            "component_2_gain": 0.5,
+            "include_quindar": False,
+            "include_static": False,
+        }
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            with patch("mysite.universe.views.audio.finders.find", return_value=None):
+                response = self.client.post(
+                    self.url, data=json.dumps(payload), content_type="application/json"
+                )
+        self.assertEqual(response.status_code, 200)
+
+    def test_tts_mode_fragment_loop_adds_found_fragment(self):
+        """When finders resolves a fragment file, LoopedAudioFragment is added."""
+        mock_mod = _mock_tts_module()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(_minimal_wav())
+            fragment_path = tmp.name
+        try:
+            payload = {
+                "mode": "tts",
+                "voice_id": "pilot_default",
+                "text": "Check.",
+                "component_1_gain": 1.0,
+                "include_quindar": False,
+                "include_static": False,
+            }
+            with patch.dict(
+                sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+            ):
+                with patch(
+                    "mysite.universe.views.audio.finders.find",
+                    return_value=fragment_path,
+                ):
+                    response = self.client.post(
+                        self.url,
+                        data=json.dumps(payload),
+                        content_type="application/json",
+                    )
+        finally:
+            os.unlink(fragment_path)
+        self.assertEqual(response.status_code, 200)
+
+    def test_tts_mode_with_echo_and_rumble(self):
+        """include_echo and include_rumble exercise additional component branches."""
+        mock_mod = _mock_tts_module()
+        payload = {
+            "mode": "tts",
+            "voice_id": "pilot_default",
+            "text": "Check.",
+            "include_echo": True,
+            "include_rumble": True,
+            "include_static": True,
+            "include_quindar": True,
+        }
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            response = self.client.post(
+                self.url, data=json.dumps(payload), content_type="application/json"
+            )
+        self.assertEqual(response.status_code, 200)
+
+    def test_tts_mode_without_voice_id_uses_sample_path(self):
+        """TTS mode with no voice_id skips TTS generation and uses sample path."""
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(_minimal_wav())
+            sample_path = tmp.name
+        try:
+            payload = {
+                "mode": "tts",
+                "text": "Check.",
+                "include_quindar": False,
+                "include_static": False,
+            }
+            with patch(
+                "mysite.universe.views.audio._find_audio_lab_tts_sample_path",
+                return_value=sample_path,
+            ):
+                response = self.client.post(
+                    self.url, data=json.dumps(payload), content_type="application/json"
+                )
+        finally:
+            os.unlink(sample_path)
+        self.assertEqual(response.status_code, 200)
