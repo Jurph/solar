@@ -5,14 +5,19 @@ from mysite.universe.models.actor import Pilot, Controller
 from mysite.universe.models.ship import Ship
 from mysite.universe.services.dialogue.particles import (
     LaunchRequest,
+    CircularizationRequest,
     InsertionRequest,
     SublightRequest,
     HyperspaceRequest,
+    DeorbitRequest,
+    LandingRequest,
     GenericRequest,
     RadioResponse,
     RadioReadback,
     HoldResponse,
     Holding,
+    CommsCheckRequest,
+    SatelliteResponse,
     NavBroadcast,
     GratitudeParticle,
 )
@@ -827,3 +832,287 @@ class TestParseInstructedValues(DialogueParticleTest):
         particle = self._make_particle()
         result = particle.parse_instructed_values("Fly to 400km orbit.")
         self.assertEqual(result["instructed_km"], 400)
+
+
+# ---------------------------------------------------------------------------
+# Coverage-gap tests appended below
+# ---------------------------------------------------------------------------
+
+
+class TestCounterexampleMethods(DialogueParticleTest):
+    """All get_counterexample() methods must return a non-empty or expected string."""
+
+    def _pilot(self, cls, maneuver="launch", extra=None):
+        ctx = self.nav_context.copy()
+        ctx["maneuver_type"] = maneuver
+        if extra:
+            ctx.update(extra)
+        return cls(actor=self.pilot, recipient="MARS CONTROL", nav_context=ctx)
+
+    def _ctrl(self, cls, maneuver="launch", extra=None):
+        ctx = self.nav_context.copy()
+        ctx["maneuver_type"] = maneuver
+        if extra:
+            ctx.update(extra)
+        return cls(actor=self.controller, recipient="TEST SHIP", nav_context=ctx)
+
+    def test_launch_request_counterexample_has_marker(self):
+        result = self._pilot(LaunchRequest).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_circularization_request_counterexample_has_marker(self):
+        p = self._pilot(CircularizationRequest, extra={"destination": "Earth"})
+        result = p.get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+        self.assertIn("MARS CONTROL", result)
+
+    def test_sublight_request_counterexample_has_marker(self):
+        result = self._pilot(SublightRequest, "sublight").get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_hyperspace_request_counterexample_has_marker(self):
+        result = self._pilot(HyperspaceRequest, "hyperspace").get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_insertion_request_counterexample_has_marker(self):
+        result = self._pilot(InsertionRequest, "insertion").get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_deorbit_request_counterexample_has_marker(self):
+        result = self._pilot(DeorbitRequest, "deorbit").get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_landing_request_counterexample_has_marker(self):
+        result = self._pilot(
+            LandingRequest, "landing", extra={"destination": "Mars Surface"}
+        ).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_generic_request_counterexample_has_marker(self):
+        result = self._pilot(GenericRequest).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+        self.assertIn("MARS CONTROL", result)
+
+    def test_radio_response_counterexample_has_marker(self):
+        result = self._ctrl(RadioResponse).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+        self.assertIn("TEST SHIP", result)
+
+    def test_radio_readback_counterexample_has_marker(self):
+        result = self._pilot(RadioReadback).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_hold_response_counterexample_has_marker(self):
+        result = self._ctrl(HoldResponse).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_holding_counterexample_has_marker(self):
+        result = self._pilot(Holding).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_comms_check_request_counterexample_has_marker(self):
+        result = self._pilot(CommsCheckRequest).get_counterexample()
+        self.assertIn("DON'T DO THIS", result)
+
+    def test_satellite_response_counterexample_is_empty(self):
+        from mysite.universe.models.actor import Satellite
+
+        sat = Satellite.create(name="SAT CE")
+        p = SatelliteResponse(actor=sat, recipient="TEST SHIP", nav_context={})
+        self.assertEqual(p.get_counterexample(), "")
+
+    def test_nav_broadcast_counterexample_is_empty(self):
+        from mysite.universe.models.actor import Satellite
+
+        sat = Satellite.create(name="NAV CE")
+        p = NavBroadcast(actor=sat, recipient="ALL STATIONS", nav_context={})
+        self.assertEqual(p.get_counterexample(), "")
+
+    def test_gratitude_counterexample_is_empty(self):
+        result = self._pilot(GratitudeParticle).get_counterexample()
+        self.assertEqual(result, "")
+
+
+class TestHoldingParticleDetails(DialogueParticleTest):
+    """Tests for Holding particle methods not covered by other suites."""
+
+    def _make_holding(self):
+        ctx = self.nav_context.copy()
+        ctx["maneuver_type"] = "launch"
+        return Holding(actor=self.pilot, recipient="MARS CONTROL", nav_context=ctx)
+
+    def test_role_description_includes_pilot_and_ship(self):
+        result = self._make_holding().get_role_description()
+        self.assertIn("Test Pilot", result)
+        self.assertIn("TEST SHIP", result)
+
+    def test_situation_description_includes_both_callsigns(self):
+        result = self._make_holding().get_situation_description()
+        self.assertIn("MARS CONTROL", result)
+        self.assertIn("TEST SHIP", result)
+
+    def test_examples_include_hold_or_maneuver_language(self):
+        examples = self._make_holding().get_examples()
+        self.assertTrue(len(examples) > 0)
+        combined = " ".join(examples).lower()
+        self.assertTrue("hold" in combined or "launch" in combined)
+
+
+class TestCommsCheckParticleDetails(DialogueParticleTest):
+    """Tests for CommsCheckRequest methods not previously covered."""
+
+    def _make(self):
+        return CommsCheckRequest(
+            actor=self.pilot,
+            recipient="SOL NAVSAT",
+            nav_context={"maneuver_type": "comms_check"},
+        )
+
+    def test_situation_description_mentions_satellite(self):
+        result = self._make().get_situation_description()
+        self.assertIn("SOL NAVSAT", result)
+        self.assertIn("TEST SHIP", result)
+
+    def test_next_particle_probabilities_is_satellite_response(self):
+        self.assertEqual(
+            self._make().get_next_particle_probabilities(), {"satellite_response": 1.0}
+        )
+
+    def test_delay_until_next_is_at_most_five_seconds(self):
+        delay = self._make().get_delay_until_next()
+        self.assertIsNotNone(delay)
+        self.assertLessEqual(delay, 5.0)
+
+
+class TestSatelliteParticleDetails(DialogueParticleTest):
+    """Tests for SatelliteResponse methods not previously covered."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        from mysite.universe.models.actor import Satellite
+
+        cls.satellite = Satellite.create(name="SOL RELAY 1")
+
+    def _make(self):
+        return SatelliteResponse(
+            actor=self.satellite, recipient="TEST SHIP", nav_context={}
+        )
+
+    def test_role_description_includes_satellite_name(self):
+        self.assertIn("SOL RELAY 1", self._make().get_role_description())
+
+    def test_situation_description_mentions_recipient(self):
+        self.assertIn("TEST SHIP", self._make().get_situation_description())
+
+    def test_procedural_greeting_includes_both_names(self):
+        greeting = self._make().generate_procedural_greeting()
+        self.assertIn("TEST SHIP", greeting)
+        self.assertIn("SOL RELAY 1", greeting)
+
+    def test_build_user_prompt_data_logs_warning(self):
+        import logging
+
+        with self.assertLogs("dialogue_service", level=logging.WARNING):
+            data = self._make().build_user_prompt_data(previous_dialogue="test")
+        self.assertEqual(data.role, "")
+
+    def test_next_particle_probabilities_is_empty(self):
+        self.assertEqual(self._make().get_next_particle_probabilities(), {})
+
+
+class TestRadioResponseExtraBranches(DialogueParticleTest):
+    """RadioResponse.get_examples() branches for plane_change, deorbit, landing, after_hold."""
+
+    def _make(self, maneuver, extra=None):
+        ctx = self.nav_context.copy()
+        ctx["maneuver_type"] = maneuver
+        ctx["destination"] = "Earth"
+        if extra:
+            ctx.update(extra)
+        return RadioResponse(
+            actor=self.controller, recipient="TEST SHIP", nav_context=ctx
+        )
+
+    def test_plane_change_returns_examples(self):
+        examples = self._make("plane_change").get_examples()
+        self.assertIsInstance(examples, list)
+        self.assertTrue(len(examples) > 0)
+
+    def test_deorbit_returns_examples(self):
+        examples = self._make("deorbit").get_examples()
+        self.assertIsInstance(examples, list)
+        self.assertTrue(len(examples) > 0)
+
+    def test_landing_returns_examples(self):
+        examples = self._make("landing").get_examples()
+        self.assertIsInstance(examples, list)
+        self.assertTrue(len(examples) > 0)
+
+    def test_after_hold_adds_adjusted_clearance(self):
+        examples = self._make("launch", extra={"after_hold": True})
+        combined = " ".join(examples.get_examples()).lower()
+        self.assertTrue("adjusted" in combined or "cleared now" in combined)
+
+
+class TestHoldResponseDurationMethods(DialogueParticleTest):
+    """HoldResponse timing methods."""
+
+    def _make(self):
+        ctx = self.nav_context.copy()
+        ctx["maneuver_type"] = "launch"
+        return HoldResponse(
+            actor=self.controller, recipient="TEST SHIP", nav_context=ctx
+        )
+
+    def test_get_duration_is_sixty(self):
+        self.assertEqual(self._make().get_duration(), 60.0)
+
+    def test_get_delay_until_next_is_five(self):
+        self.assertEqual(self._make().get_delay_until_next(), 5.0)
+
+
+class TestNavBroadcastExtraMethods(DialogueParticleTest):
+    """NavBroadcast methods not previously exercised."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        from mysite.universe.models.actor import Satellite
+
+        cls.navsat = Satellite.create(name="SOL NAVSAT")
+
+    def _make(self):
+        return NavBroadcast(actor=self.navsat, recipient="ALL STATIONS", nav_context={})
+
+    def test_situation_description_includes_satellite_name(self):
+        self.assertIn("SOL NAVSAT", self._make().get_situation_description())
+
+    def test_build_user_prompt_data_returns_user_prompt_data(self):
+        from mysite.universe.services.dialogue.base import UserPromptData
+
+        result = self._make().build_user_prompt_data(previous_dialogue="prior text")
+        self.assertIsInstance(result, UserPromptData)
+
+    def test_get_examples_returns_list(self):
+        self.assertIsInstance(self._make().get_examples(), list)
+
+
+class TestGratitudeParticleDetails(DialogueParticleTest):
+    """GratitudeParticle methods not previously covered."""
+
+    def _make(self):
+        return GratitudeParticle(
+            actor=self.pilot, recipient="SOL NAVSAT", nav_context={}
+        )
+
+    def test_procedural_greeting_is_empty_string(self):
+        self.assertEqual(self._make().generate_procedural_greeting(), "")
+
+    def test_build_user_prompt_data_with_previous_dialogue(self):
+        from mysite.universe.services.dialogue.base import UserPromptData
+
+        result = self._make().build_user_prompt_data(
+            previous_dialogue="Prior broadcast."
+        )
+        self.assertIsInstance(result, UserPromptData)
