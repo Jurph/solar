@@ -1293,3 +1293,31 @@ class TestDetermineManeuversBranches(TestCase):
         names = self._maneuver_names(events)
         self.assertIn("PLANE_CHANGE", names)
         self.assertIn("DOCK", names)
+
+    def test_hyperspace_route_to_station_adds_plane_change(self):
+        """
+        Multi-leg transfer plan with a HYPERSPACE segment and Station destination
+        appends a PLANE_CHANGE arrival event (plan.py line 329).
+
+        Requires:
+          - len(transfer_plan) > 3  (multi-leg)
+          - origin scale is planetary  (is_origin_planetary = True)
+          - plan contains ManeuverType.HYPERSPACE
+          - dest_type == TypeName.STATION
+        """
+        tp = [
+            self.S_PLANET,
+            ManeuverType.HYPERSPACE,
+            self.S_STARSYSTEM,
+            ManeuverType.SUBLIGHT,
+            self.S_STATION,
+        ]
+        events = self.svc._determine_maneuvers(
+            tp, [self.earth, self.earth_control], self.S_STARSYSTEM
+        )
+        names = self._maneuver_names(events)
+        # The hyperspace loop adds SUBLIGHT + HYPERSPACE + SUBLIGHT + CIRCULARIZE,
+        # then the station check appends PLANE_CHANGE.
+        self.assertIn("HYPERSPACE", names)
+        self.assertIn("PLANE_CHANGE", names)
+        self.assertIn("DOCK", names)
