@@ -9,26 +9,51 @@ from django.apps import AppConfig
 
 logger = logging.getLogger(__name__)
 
+# Module-level flag so the watchdog is only started once per process,
+# regardless of how many times Django calls ready() (e.g. during tests).
+_watchdog_started = False
+
 
 def _audio_worker_watchdog(manage_py: str) -> None:
     """
     Daemon thread that keeps the audio worker process alive.
 
-    Restarts the worker on crash with exponential back-off when it fails
-    fast (TTS unavailable, warmup error, etc.).  A clean exit (code 0) or
-    a very fast exit is treated as a transient failure and retried.
+    Worker stdout is suppressed (verbose progress output); stderr is
+    forwarded to the Django logger so failures are visible without
+    dumping raw tracebacks to the user's terminal.
+
+    Restarts on crash with exponential back-off when it fails fast
+    (TTS unavailable, GPU error, warmup failure, etc.).
     """
     consecutive_fast_exits = 0
     while True:
         started_at = time.monotonic()
+        proc = None
         try:
             proc = subprocess.Popen(
                 [sys.executable, manage_py, "audio_worker"],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,  # capture so we can log, not dump raw
+                env={**os.environ},  # explicit copy ensures PYTHONPATH is inherited
             )
             logger.info("Audio worker started (pid %d)", proc.pid)
+
+            # Forward worker stderr to Django logger on a background thread
+            # so proc.wait() below doesn't deadlock.
+            def _drain_stderr(pipe: object) -> None:
+                for raw in iter(pipe.readline, b""):
+                    line = raw.decode(errors="replace").rstrip()
+                    if line:
+                        logger.warning("[audio_worker] %s", line)
+                pipe.close()
+
+            drain = threading.Thread(
+                target=_drain_stderr, args=(proc.stderr,), daemon=True
+            )
+            drain.start()
+
             proc.wait()
+            drain.join(timeout=5)
             elapsed = time.monotonic() - started_at
             logger.warning(
                 "Audio worker exited (code=%s, uptime=%.0fs)",
@@ -40,7 +65,6 @@ def _audio_worker_watchdog(manage_py: str) -> None:
             elapsed = time.monotonic() - started_at
 
         if elapsed < 30:
-            # Fast exit — TTS init failure, GPU not available, warmup error, etc.
             consecutive_fast_exits += 1
             backoff = min(300, 30 * consecutive_fast_exits)
             logger.warning(
@@ -51,7 +75,7 @@ def _audio_worker_watchdog(manage_py: str) -> None:
             time.sleep(backoff)
         else:
             consecutive_fast_exits = 0
-            time.sleep(5)  # Brief pause before normal restart
+            time.sleep(5)
 
 
 class UniverseConfig(AppConfig):
@@ -60,6 +84,8 @@ class UniverseConfig(AppConfig):
 
     def ready(self) -> None:
         """Import signal receivers and start background services."""
+        global _watchdog_started
+
         import mysite.universe.receivers  # noqa: F401
 
         from mysite.universe.services.log_buffer import get_log_handler
@@ -72,7 +98,7 @@ class UniverseConfig(AppConfig):
         root.setLevel(logging.INFO)
 
         # Skip heavy startup work for management commands that don't need it.
-        # Also skip for audio_worker itself to avoid recursive spawning.
+        # audio_worker is excluded so it never spawns itself recursively.
         skip_cmds = {
             "makemigrations",
             "migrate",
@@ -84,14 +110,14 @@ class UniverseConfig(AppConfig):
         if len(sys.argv) >= 2 and sys.argv[1] in skip_cmds:
             return
 
-        # Django's autoreloader forks two processes; only run in the child
-        # (RUN_MAIN=true) to avoid spawning duplicate audio workers.
-        if (
-            os.environ.get("RUN_MAIN") != "true"
-            and os.environ.get("DJANGO_AUTORELOAD") != "0"
-        ):
-            # Parent watcher process — skip worker spawn, it will happen in child
+        # Guard: only start the watchdog once per process.  Django's
+        # autoreloader calls ready() in two processes; _watchdog_started is
+        # per-process so both the parent watcher and the child server start
+        # one watchdog each — that's fine because the worker uses DB-level
+        # locking and the two processes don't share memory.
+        if _watchdog_started:
             return
+        _watchdog_started = True
 
         # Optional TTS warmup (loads model into GPU on startup)
         if os.getenv("AUDIO_WARMUP", "0") == "1":
@@ -102,12 +128,9 @@ class UniverseConfig(AppConfig):
             except Exception:
                 pass
 
-        # Start the audio worker watchdog in a daemon thread so it lives and
-        # dies with this Django process.
-        manage_py = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "manage.py"
+        manage_py = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "manage.py")
         )
-        manage_py = os.path.normpath(manage_py)
         t = threading.Thread(
             target=_audio_worker_watchdog,
             args=(manage_py,),

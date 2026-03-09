@@ -3,7 +3,7 @@ Tests for UniverseConfig.ready() in apps.py.
 
 Covers:
 - skip_cmds early return (migrate, test, audio_worker)
-- RUN_MAIN guard: warmup + watchdog only run in the autoreload child
+- _watchdog_started flag prevents double-spawn within a process
 - AUDIO_WARMUP=1 path: warm_tts_service called
 - AUDIO_WARMUP=1 path: exception swallowed
 - Watchdog thread is started for runserver
@@ -25,7 +25,7 @@ def _get_cfg():
 class TestUniverseConfigReady(TestCase):
     """UniverseConfig.ready() branches."""
 
-    def _call_ready(self, argv, warmup="0", tts_side_effect=None, run_main="true"):
+    def _call_ready(self, argv, warmup="0", tts_side_effect=None):
         """Call ready() with controlled argv and AUDIO_WARMUP env, mocking heavy deps."""
         cfg = _get_cfg()
         mock_handler = MagicMock()
@@ -36,8 +36,9 @@ class TestUniverseConfigReady(TestCase):
         if tts_side_effect is not None:
             mock_tts.warm_tts_service.side_effect = tts_side_effect
 
-        env_overrides = {"AUDIO_WARMUP": warmup, "RUN_MAIN": run_main}
-        with patch.dict(os.environ, env_overrides):
+        import mysite.universe.apps as apps_module
+
+        with patch.dict(os.environ, {"AUDIO_WARMUP": warmup}):
             with patch("sys.argv", argv):
                 with patch(
                     "mysite.universe.services.log_buffer.get_log_handler",
@@ -49,6 +50,8 @@ class TestUniverseConfigReady(TestCase):
                             {"mysite.universe.services.tts_service": mock_tts},
                         ):
                             with patch("threading.Thread") as mock_thread:
+                                # Reset per-process guard so each test runs cleanly
+                                apps_module._watchdog_started = False
                                 cfg.ready()
         return mock_tts, mock_thread
 
@@ -65,13 +68,6 @@ class TestUniverseConfigReady(TestCase):
     def test_ready_skips_watchdog_for_audio_worker_command(self):
         """When sys.argv[1] is 'audio_worker', ready() returns before spawning a worker."""
         _, mock_thread = self._call_ready(["manage.py", "audio_worker"], warmup="0")
-        mock_thread.assert_not_called()
-
-    def test_ready_skips_watchdog_when_not_run_main(self):
-        """In the autoreload parent process (RUN_MAIN unset), watchdog is not started."""
-        _, mock_thread = self._call_ready(
-            ["manage.py", "runserver"], warmup="0", run_main=""
-        )
         mock_thread.assert_not_called()
 
     def test_ready_calls_warm_tts_when_audio_warmup_set(self):
@@ -93,9 +89,32 @@ class TestUniverseConfigReady(TestCase):
         mock_tts.warm_tts_service.assert_not_called()
 
     def test_ready_starts_watchdog_thread_for_runserver(self):
-        """When running as runserver child process, watchdog thread is started."""
+        """When running runserver, watchdog thread is started."""
         _, mock_thread = self._call_ready(["manage.py", "runserver"], warmup="0")
         mock_thread.assert_called_once()
         call_kwargs = mock_thread.call_args.kwargs
         self.assertEqual(call_kwargs.get("daemon"), True)
         self.assertEqual(call_kwargs.get("name"), "audio-worker-watchdog")
+
+    def test_ready_watchdog_not_started_twice(self):
+        """Calling ready() twice does not start a second watchdog thread."""
+        import mysite.universe.apps as apps_module
+
+        cfg = _get_cfg()
+        mock_handler = MagicMock()
+        mock_root = MagicMock()
+        mock_root.handlers = []
+
+        with patch.dict(os.environ, {"AUDIO_WARMUP": "0"}):
+            with patch("sys.argv", ["manage.py", "runserver"]):
+                with patch(
+                    "mysite.universe.services.log_buffer.get_log_handler",
+                    return_value=mock_handler,
+                ):
+                    with patch("logging.getLogger", return_value=mock_root):
+                        with patch("threading.Thread") as mock_thread:
+                            apps_module._watchdog_started = False
+                            cfg.ready()
+                            cfg.ready()  # second call — should be a no-op
+        # Thread should only have been constructed once
+        self.assertEqual(mock_thread.call_count, 1)
