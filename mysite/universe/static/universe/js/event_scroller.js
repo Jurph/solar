@@ -2,6 +2,7 @@
         const POLL_INTERVAL = 1000; // Poll for new events every 1 second
         const STATUS_POLL_INTERVAL = 2000; // Poll server for status every 2 seconds
         const DISPLAY_UPDATE_INTERVAL = 200; // Update display at 5Hz for smooth countdown
+        const AUDIO_WAIT_TIMEOUT_MS = 60000; // Abandon audio after 60s; display text-only
         
         // State
         // Cursor for event pagination:
@@ -99,7 +100,12 @@
                     nextEventId = id;
                 }
 
-                if (!ev.audio_ready && waitTime > 10000 && waitTime % 5000 < 100) {
+                if (!ev.audio_ready && waitTime > AUDIO_WAIT_TIMEOUT_MS) {
+                    console.warn(
+                        `[WAITING] Event ${id} timed out after ${Math.floor(waitTime / 1000)}s — promoting as text-only`
+                    );
+                    ev.audioTimedOut = true;
+                } else if (!ev.audio_ready && waitTime > 10000 && waitTime % 5000 < 100) {
                     console.warn(
                         `[WAITING] Event ${id} still waiting for audio after ${Math.floor(waitTime / 1000)}s`
                     );
@@ -607,7 +613,15 @@
                     const { nextEvent, nextEventId } = findNextWaitingAudioCandidate(now);
                     
                     // For the NEXT event in queue, check if audio is ready
-                    if (nextEvent && nextEvent.audio_url && !nextEvent.audio_ready) {
+                    if (nextEvent && nextEvent.audioTimedOut) {
+                        // Waited too long — give up on audio and display text-only
+                        console.warn(`[WAITING] Promoting event ${nextEventId} as text-only (audio timed out)`);
+                        nextEvent.audio_url = null;
+                        nextEvent.audio_ready = false;
+                        eventQueue.push(nextEvent);
+                        waitingAudio.delete(nextEventId);
+                        processNextEvent();
+                    } else if (nextEvent && nextEvent.audio_url && !nextEvent.audio_ready) {
                         // Rate limit: Don't check same event more than once every 2 seconds
                         const lastCheck = lastAudioCheck.get(nextEventId) || 0;
                         const timeSinceCheck = now - lastCheck;
