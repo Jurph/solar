@@ -11,6 +11,18 @@ The goal is something you can leave running in the background like a radio - shi
 
 ---
 
+## Screenshots
+
+**Universe browser** — explore the celestial hierarchy, select any body to see its physical properties:
+
+![Universe browser showing the Sol system tree with Titan selected and its physical properties card](docs/screenshots/universe-browser.png)
+
+**Event scroller** — live ATC-style dialogue scrolling in simulation time with audio:
+
+![Event scroller showing a stream of ATC-style radio dialogue between ships and ground control](docs/screenshots/event-scroller.png)
+
+---
+
 ## What works today
 
 - Ships spawn with procedurally generated names, pilots, and cargo
