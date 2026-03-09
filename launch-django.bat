@@ -14,7 +14,8 @@ if not exist venv (
     echo Virtual environment created.
 )
 
-REM Use venv Python directly to avoid PATH ambiguity with system Python
+REM Use venv Python directly to avoid PATH ambiguity with system Python.
+REM Quotes are required throughout because the project path contains spaces.
 set "VENV_PYTHON=%CD%\venv\Scripts\python.exe"
 if not exist "%VENV_PYTHON%" (
     echo ERROR: venv not found at %VENV_PYTHON%
@@ -25,13 +26,13 @@ if not exist "%VENV_PYTHON%" (
 for /f "tokens=*" %%v in ('"%VENV_PYTHON%" --version') do echo Using %%v from venv
 
 echo Checking PyTorch CUDA availability...
-%VENV_PYTHON% -c "import sys, importlib.util; spec = importlib.util.find_spec('torch'); if not spec: print('torch not installed (skipping CUDA check)'); sys.exit(0); import torch; print(f'torch version: {torch.__version__}'); print(f'cuda available: {torch.cuda.is_available()}'); print(f'cuda device count: {torch.cuda.device_count()}'); print(f'device 0: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"no cuda devices detected\"}')" 2>NUL
+"%VENV_PYTHON%" -c "import sys, importlib.util; spec = importlib.util.find_spec('torch'); print('torch not installed (skipping CUDA check)') if not spec else None" 2>NUL
 
 REM Install Django if not already installed
-%VENV_PYTHON% -c "import django" 2>NUL
+"%VENV_PYTHON%" -c "import django" 2>NUL
 if errorlevel 1 (
     echo Installing Django...
-    %VENV_PYTHON% -m pip install django
+    "%VENV_PYTHON%" -m pip install django
 )
 
 REM Set PYTHONPATH to include the project root
@@ -51,14 +52,14 @@ if errorlevel 1 (
 
 REM Run migrations
 echo Running database migrations...
-%VENV_PYTHON% mysite/manage.py makemigrations universe
-%VENV_PYTHON% mysite/manage.py migrate
+"%VENV_PYTHON%" mysite/manage.py makemigrations universe
+"%VENV_PYTHON%" mysite/manage.py migrate
 
 REM Check if superuser exists, prompt to create if it doesn't
-%VENV_PYTHON% mysite/manage.py check_superuser
+"%VENV_PYTHON%" mysite/manage.py check_superuser
 if errorlevel 1 (
     echo No superuser found. Creating superuser...
-    %VENV_PYTHON% mysite/manage.py createsuperuser
+    "%VENV_PYTHON%" mysite/manage.py createsuperuser
 )
 
 REM Start development server with restart option
@@ -68,7 +69,7 @@ echo Universe view will be available at: http://127.0.0.1:8000/universe/
 echo.
 echo Press Ctrl+C to stop the server
 echo After stopping, press 'R' to migrate and restart, or any other key to exit
-%VENV_PYTHON% mysite/manage.py runserver
+"%VENV_PYTHON%" mysite/manage.py runserver
 
 REM Check for restart
 choice /c RC /n /m "Press R to migrate and restart, or C to close"
