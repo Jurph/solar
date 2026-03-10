@@ -104,6 +104,11 @@ When writing a block of code, afterward:
 
 `llm_service.py` connects to any OpenAI-compatible endpoint (defaults to Ollama at `localhost:11434`). The `slow` pytest marker gates all tests that make real LLM calls. LLM call timings are automatically logged to `artifacts/llm_benchmark.jsonl` by `conftest.py`.
 
+## Issue Tracker Conventions
+
+- **Epics** are large, deliberately vague work items (e.g., "NavSat broadcasts," "mission lifecycle"). They are NOT meant to be grabbed off the stack and closed in one shot. Working an epic means: (1) Q&A with all devs to reach consensus on scope and behavior, (2) decompose into concrete feature tickets with clear acceptance criteria, (3) close the feature tickets individually. Never close an epic directly — close it when all its child tickets are done.
+- **Bug** and **enhancement** tickets should be specific enough that a single dev can pick one up, implement it, and know when it's done.
+
 ## URLs (Development)
 - Universe browser: `http://127.0.0.1:8000/universe/`
 - Event scroller: `http://127.0.0.1:8000/events/`

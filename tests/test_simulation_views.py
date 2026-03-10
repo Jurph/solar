@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 
+from mysite.universe.models.actor import Controller
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.simulation import SimulationState, get_simulation_time
 
@@ -61,8 +62,10 @@ class TestSimulationViews(TestCase):
 
     def test_skip_to_next_event_advances_to_next_pending_event(self):
         # Add a pending event in the future relative to sim time
+        actor = Controller.objects.create(name="Tester")
         DialogueEventLog.objects.create(
             timestamp=1500.0,
+            actor=actor,
             actor_name="Tester",
             text="Hello",
             metadata={},
@@ -143,8 +146,10 @@ class TestHealthCheckView(TestCase):
     def test_audio_worker_warning_when_pending_but_no_recent_generation(self):
         """Events needing audio but no recent generation → 'warning'."""
         # Create an event within the 1-hour lookahead window but with no audio
+        actor = Controller.objects.create(name="Test Pilot")
         DialogueEventLog.objects.create(
             timestamp=100.0,
+            actor=actor,
             actor_name="Test Pilot",
             text="Testing audio worker health.",
         )
@@ -158,8 +163,10 @@ class TestHealthCheckView(TestCase):
         """Events with audio_rendered_at within last 2 minutes → 'ok' status (line 201)."""
         from django.utils import timezone
 
+        actor = Controller.objects.create(name="Test Pilot")
         DialogueEventLog.objects.create(
             timestamp=100.0,
+            actor=actor,
             actor_name="Test Pilot",
             text="Audio recently generated.",
             audio_rendered_at=timezone.now(),

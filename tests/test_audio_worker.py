@@ -1291,14 +1291,20 @@ class TestAudioWorkerActorlessEvents:
         sim_state = create_sim_state_at_time(1000.0)
         current_time = sim_state.get_simulation_time()
 
-        # Create events with no actor FK
+        # Create events with a real actor, then NULL it via raw UPDATE to
+        # simulate actor deletion (SET_NULL).  The model guard prevents
+        # creating actor=None on INSERT, which is correct behavior.
+        placeholder = Controller.objects.create(name="Placeholder")
+        event_ids = []
         for i in range(3):
-            DialogueEventLog.objects.create(
+            evt = DialogueEventLog.objects.create(
                 timestamp=current_time + float(i * 10),
-                actor=None,
+                actor=placeholder,
                 actor_name="Ghost",
                 text="Nobody home.",
             )
+            event_ids.append(evt.id)
+        DialogueEventLog.objects.filter(id__in=event_ids).update(actor=None)
 
         dummy_wav = create_minimal_wav()
         with patch(
@@ -1325,13 +1331,15 @@ class TestAudioWorkerActorlessEvents:
 
         real_actor = Controller.objects.create(name="Real Control")
 
-        # Actor-less event (earlier timestamp)
-        DialogueEventLog.objects.create(
+        # Create with real actor, then NULL via raw UPDATE to simulate
+        # actor deletion (SET_NULL).  Model guard prevents actor=None on INSERT.
+        ghost_event = DialogueEventLog.objects.create(
             timestamp=current_time + 5.0,
-            actor=None,
+            actor=real_actor,
             actor_name="Ghost",
             text="Orphan event.",
         )
+        DialogueEventLog.objects.filter(id=ghost_event.id).update(actor=None)
 
         # Real actor event (later timestamp)
         real_event = DialogueEventLog.objects.create(

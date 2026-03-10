@@ -110,12 +110,17 @@ class UniverseConfig(AppConfig):
         if len(sys.argv) >= 2 and sys.argv[1] in skip_cmds:
             return
 
-        # Guard: only start the watchdog once per process.  Django's
-        # autoreloader calls ready() in two processes; _watchdog_started is
-        # per-process so both the parent watcher and the child server start
-        # one watchdog each — that's fine because the worker uses DB-level
-        # locking and the two processes don't share memory.
-        if _watchdog_started:
+        # Guard: only start the watchdog once, and only in the right process.
+        # Django's autoreloader runs ready() in two processes — the parent
+        # (file watcher) and the child (actual server).  Starting a watchdog
+        # in both spawns two audio_workers, each loading ~9 GB of TTS model
+        # into VRAM, which exceeds the 12 GB on an RTX 3060.
+        # RUN_MAIN is set by Django's autoreloader in the child process.
+        # When --noreload is used, RUN_MAIN is never set, so we still start.
+        is_autoreload_parent = (
+            os.environ.get("RUN_MAIN") != "true" and "--noreload" not in sys.argv
+        )
+        if _watchdog_started or is_autoreload_parent:
             return
         _watchdog_started = True
 

@@ -6,7 +6,9 @@ Covers:
 - _watchdog_started flag prevents double-spawn within a process
 - AUDIO_WARMUP=1 path: warm_tts_service called
 - AUDIO_WARMUP=1 path: exception swallowed
-- Watchdog thread is started for runserver
+- Watchdog thread is started for runserver (child process only)
+- Autoreloader parent process does NOT start watchdog (#32)
+- --noreload bypasses the autoreloader guard
 """
 
 import os
@@ -25,8 +27,16 @@ def _get_cfg():
 class TestUniverseConfigReady(TestCase):
     """UniverseConfig.ready() branches."""
 
-    def _call_ready(self, argv, warmup="0", tts_side_effect=None):
-        """Call ready() with controlled argv and AUDIO_WARMUP env, mocking heavy deps."""
+    def _call_ready(self, argv, warmup="0", tts_side_effect=None, run_main="true"):
+        """Call ready() with controlled argv and env, mocking heavy deps.
+
+        Args:
+            argv: sys.argv to simulate
+            warmup: AUDIO_WARMUP env value ("0" or "1")
+            tts_side_effect: Optional exception for warm_tts_service
+            run_main: RUN_MAIN env value; "true" simulates autoreloader child
+                      process, "" simulates parent or non-autoreloader
+        """
         cfg = _get_cfg()
         mock_handler = MagicMock()
         mock_root = MagicMock()
@@ -38,7 +48,14 @@ class TestUniverseConfigReady(TestCase):
 
         import mysite.universe.apps as apps_module
 
-        with patch.dict(os.environ, {"AUDIO_WARMUP": warmup}):
+        env = {"AUDIO_WARMUP": warmup}
+        if run_main:
+            env["RUN_MAIN"] = run_main
+
+        with patch.dict(os.environ, env, clear=False):
+            # Clear RUN_MAIN if we're simulating a parent process
+            if not run_main and "RUN_MAIN" in os.environ:
+                del os.environ["RUN_MAIN"]
             with patch("sys.argv", argv):
                 with patch(
                     "mysite.universe.services.log_buffer.get_log_handler",
@@ -105,7 +122,7 @@ class TestUniverseConfigReady(TestCase):
         mock_root = MagicMock()
         mock_root.handlers = []
 
-        with patch.dict(os.environ, {"AUDIO_WARMUP": "0"}):
+        with patch.dict(os.environ, {"AUDIO_WARMUP": "0", "RUN_MAIN": "true"}):
             with patch("sys.argv", ["manage.py", "runserver"]):
                 with patch(
                     "mysite.universe.services.log_buffer.get_log_handler",
@@ -118,3 +135,21 @@ class TestUniverseConfigReady(TestCase):
                             cfg.ready()  # second call — should be a no-op
         # Thread should only have been constructed once
         self.assertEqual(mock_thread.call_count, 1)
+
+    def test_ready_autoreloader_parent_skips_watchdog(self):
+        """The autoreloader parent process (RUN_MAIN unset) does NOT start a watchdog.
+
+        Fixes #32: two audio_workers would both load ~9 GB TTS model, exceeding
+        the 12 GB VRAM on an RTX 3060.
+        """
+        _, mock_thread = self._call_ready(
+            ["manage.py", "runserver"], warmup="0", run_main=""
+        )
+        mock_thread.assert_not_called()
+
+    def test_ready_noreload_starts_watchdog_without_run_main(self):
+        """With --noreload, there's no parent/child split; watchdog starts even without RUN_MAIN."""
+        _, mock_thread = self._call_ready(
+            ["manage.py", "runserver", "--noreload"], warmup="0", run_main=""
+        )
+        mock_thread.assert_called_once()

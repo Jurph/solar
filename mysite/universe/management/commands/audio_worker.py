@@ -17,12 +17,14 @@ The worker will:
 6. Sleep 5 seconds, then repeat
 """
 
+import json
 import os
 import time
 import logging
 import tempfile
 import wave
 from collections import defaultdict
+from pathlib import Path
 from typing import List, Dict
 
 from django.core.management.base import BaseCommand
@@ -181,6 +183,10 @@ class Command(BaseCommand):
                         f"[{iteration}] Processed {processed} events, cleaned {cleaned} old files"
                     )
 
+                # Write heartbeat so the web server health_check can see
+                # this worker's VRAM and TTS stats (cross-process bridge).
+                self._write_heartbeat()
+
             except KeyboardInterrupt:
                 self.stdout.write(self.style.WARNING("\nShutting down audio worker"))
                 break
@@ -335,6 +341,54 @@ class Command(BaseCommand):
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
             return 0
+
+    def _write_heartbeat(self) -> None:
+        """Write a health snapshot to artifacts/audio_worker_heartbeat.json.
+
+        This file is the cross-process bridge that lets the web server's
+        health_check endpoint see the audio_worker's VRAM usage and TTS
+        health — data that is otherwise invisible because the worker runs
+        as a separate subprocess.
+        """
+        try:
+            from mysite.universe.services.tts_service import get_tts_health
+
+            heartbeat: dict = {
+                "pid": os.getpid(),
+                "wall_clock": time.time(),
+                "tts": get_tts_health(),
+            }
+
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    props = torch.cuda.get_device_properties(0)
+                    free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+                    allocated_mb = torch.cuda.memory_allocated(0) // (1024 * 1024)
+                    reserved_mb = torch.cuda.memory_reserved(0) // (1024 * 1024)
+                    heartbeat["vram"] = {
+                        "device": props.name,
+                        "total_mb": total_bytes // (1024 * 1024),
+                        "free_mb": free_bytes // (1024 * 1024),
+                        "allocated_mb": allocated_mb,
+                        "reserved_mb": reserved_mb,
+                    }
+            except Exception:
+                pass  # VRAM info is best-effort
+
+            heartbeat_path = (
+                Path(__file__).resolve().parents[4]
+                / "artifacts"
+                / "audio_worker_heartbeat.json"
+            )
+            heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+            # Atomic write: write to temp file, then rename
+            tmp_path = heartbeat_path.with_suffix(".tmp")
+            tmp_path.write_text(json.dumps(heartbeat, indent=2))
+            tmp_path.replace(heartbeat_path)
+        except Exception as e:
+            logger.debug("Heartbeat write failed (non-fatal): %s", e)
 
     def _process_batch(
         self,

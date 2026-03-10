@@ -10,6 +10,8 @@ Contains:
 import json
 import logging
 import time as time_module
+from pathlib import Path
+from typing import Optional
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -19,6 +21,25 @@ from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.simulation import SimulationState, get_simulation_time
 
 logger = logging.getLogger(__name__)
+
+# Path to the heartbeat file written by audio_worker each iteration.
+_HEARTBEAT_PATH = (
+    Path(__file__).resolve().parents[3] / "artifacts" / "audio_worker_heartbeat.json"
+)
+
+
+def _read_worker_heartbeat() -> Optional[dict]:
+    """Read the audio_worker's heartbeat file, or None if unavailable.
+
+    The heartbeat is a small JSON file written by the worker subprocess
+    every ~5 seconds containing VRAM usage and TTS health metrics.
+    """
+    try:
+        if _HEARTBEAT_PATH.exists():
+            return json.loads(_HEARTBEAT_PATH.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.debug("Could not read worker heartbeat: %s", e)
+    return None
 
 
 @csrf_exempt
@@ -252,42 +273,51 @@ def health_check(request):
         "oldest_pending_age_seconds": oldest_pending_age,
     }
 
-    # TTS service health (consecutive failures, last error)
-    try:
-        from mysite.universe.services.tts_service import get_tts_health
+    # TTS and VRAM status — read from the audio_worker's heartbeat file.
+    # The worker is a separate subprocess so in-process torch.cuda and
+    # get_tts_health() only see the web server's (empty) state.
+    heartbeat = _read_worker_heartbeat()
+    if heartbeat is not None:
+        heartbeat_age = time_module.time() - heartbeat.get("wall_clock", 0)
+        stale = heartbeat_age > 30  # worker writes every ~5s
 
-        health["tts"] = get_tts_health()
-    except Exception as e:
-        health["tts"] = {"status": "error", "message": f"TTS health check failed: {e}"}
+        # TTS health from the worker process
+        tts_data = heartbeat.get("tts", {})
+        if stale:
+            tts_data["status"] = "warning"
+            tts_data["message"] = (
+                f"Heartbeat stale ({heartbeat_age:.0f}s old); "
+                + tts_data.get("message", "unknown")
+            )
+        health["tts"] = tts_data
 
-    # VRAM status (only meaningful if CUDA is available)
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
-            total_mb = props.total_memory // (1024 * 1024)
-            allocated_mb = torch.cuda.memory_allocated(0) // (1024 * 1024)
-            reserved_mb = torch.cuda.memory_reserved(0) // (1024 * 1024)
-            free_mb = total_mb - reserved_mb
-            health["vram"] = {
-                "status": "ok" if free_mb > 512 else "warning",
-                "device": props.name,
-                "total_mb": total_mb,
-                "allocated_mb": allocated_mb,
-                "reserved_mb": reserved_mb,
-                "free_mb": free_mb,
-                "message": f"{free_mb} MB free of {total_mb} MB on {props.name}",
-            }
+        # VRAM from the worker process (where the model actually lives)
+        vram_data = heartbeat.get("vram")
+        if vram_data:
+            free_mb = vram_data.get("free_mb", 0)
+            total_mb = vram_data.get("total_mb", 0)
+            device = vram_data.get("device", "unknown")
+            vram_data["status"] = "ok" if free_mb > 512 else "warning"
+            vram_data["message"] = f"{free_mb} MB free of {total_mb} MB on {device}"
+            if stale:
+                vram_data["message"] += f" (stale: {heartbeat_age:.0f}s ago)"
+            health["vram"] = vram_data
         else:
             health["vram"] = {
                 "status": "warning",
-                "message": "No CUDA device — TTS running on CPU",
+                "message": "Worker heartbeat has no VRAM data",
             }
-    except Exception as e:
+
+        health["audio_worker"]["worker_pid"] = heartbeat.get("pid")
+    else:
+        # No heartbeat file — worker may not have started yet
+        health["tts"] = {
+            "status": "unknown",
+            "message": "No worker heartbeat file (worker may not be running)",
+        }
         health["vram"] = {
-            "status": "error",
-            "message": f"VRAM check failed: {e}",
+            "status": "unknown",
+            "message": "No worker heartbeat file (VRAM data unavailable)",
         }
 
     return JsonResponse(health)
