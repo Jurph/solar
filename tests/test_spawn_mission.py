@@ -14,7 +14,7 @@ from unittest.mock import patch
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from mysite.universe.models.actor import Pilot
+from mysite.universe.models.actor import Pilot, Satellite
 from mysite.universe.models.base import Location
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.ship import Ship
@@ -468,3 +468,126 @@ class RunDemoTests(TestCase):
         url = reverse("run_demo")
         response = self.client.get(url)
         self.assertEqual(response.status_code, 405)
+
+
+class DialogueEventLogActorConstraintTests(TestCase):
+    """
+    The actor FK on DialogueEventLog must always be set at creation time.
+
+    If these fail: the save() guard was removed or weakened, meaning actor-less
+    events can silently enter the DB and cause 400 loops in the event scroller.
+    """
+
+    def setUp(self):
+        self.location = Location.objects.create(name="Test Loc", scale=Scale.STATION)
+        self.satellite = Satellite.objects.create(name="Test Navsat")
+
+    def test_create_without_actor_raises(self):
+        """DialogueEventLog.objects.create() without actor= must raise ValueError."""
+        with self.assertRaises(ValueError):
+            DialogueEventLog.objects.create(
+                timestamp=0.0,
+                actor_name="Ghost",
+                text="This should never reach the DB.",
+            )
+
+    def test_create_with_actor_succeeds(self):
+        """DialogueEventLog.objects.create() with a valid actor must succeed."""
+        event = DialogueEventLog.objects.create(
+            timestamp=0.0,
+            actor=self.satellite,
+            actor_name=self.satellite.name,
+            text="Sol System Navsat with a navigation update.",
+        )
+        self.assertIsNotNone(event.pk)
+        self.assertEqual(event.actor, self.satellite)
+
+    def test_existing_record_set_null_on_actor_delete_is_allowed(self):
+        """
+        SET_NULL on actor deletion is the only legitimate path to actor=None.
+        Verify that deleting the actor NULLs the FK without deleting the event.
+        """
+        event = DialogueEventLog.objects.create(
+            timestamp=0.0,
+            actor=self.satellite,
+            actor_name=self.satellite.name,
+            text="Broadcast from a satellite that will be deleted.",
+        )
+        pk = event.pk
+        self.satellite.delete()
+        event.refresh_from_db()
+        self.assertEqual(event.pk, pk)  # event still exists
+        self.assertIsNone(event.actor)  # FK nulled by SET_NULL, not our guard
+
+
+class NavBroadcastPersistenceTests(TestCase):
+    """
+    Verify that spawn_mission's nav_broadcast path saves DialogueEventLog records
+    with actor= set on every event.
+
+    If this fails: the missions view is creating actor-less events, which causes
+    400 Bad Request loops when the scroller tries to fetch audio for them.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+
+        self.satellite = Satellite.objects.create(name="Test System Navsat")
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=10_000.0,
+            anchor_wall_clock=0.0,
+            time_scale=0.0,
+        )
+
+    def test_nav_broadcast_events_always_have_actor_set(self):
+        """
+        Every DialogueEventLog created by a nav_broadcast mission must have
+        actor != None.  This is the regression test for the bug where the
+        missions view called DialogueEventLog.objects.create() without actor=.
+        """
+        url = reverse("spawn_mission")
+        satellite = self.satellite
+
+        fake_events = [
+            _FakeDialogueEvent(
+                timestamp=0.0,
+                actor=satellite,
+                text="All stations, this is TEST SYSTEM NAVSAT with a navigation update.",
+                metadata={"type": "nav_broadcast", "satellite_name": satellite.name},
+            ),
+        ]
+
+        class _FakeScriptService:
+            @staticmethod
+            def get_instance():
+                return _FakeScriptService()
+
+            def generate_nav_broadcast_chain(self, satellite, base_timestamp=0.0):
+                return fake_events
+
+        with (
+            patch("mysite.universe.views.missions.threading.Thread", _ImmediateThread),
+            patch(
+                "mysite.universe.services.script_server.ScriptService",
+                _FakeScriptService,
+            ),
+        ):
+            response = self.client.post(
+                url,
+                {"mission_type": "nav_broadcast", "satellite_name": satellite.name},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        saved = list(DialogueEventLog.objects.all())
+        self.assertGreater(
+            len(saved), 0, "No events were saved — check nav_broadcast path"
+        )
+        for event in saved:
+            self.assertIsNotNone(
+                event.actor,
+                f"Event {event.id} ('{event.text[:40]}') has actor=None — "
+                "missions.py is missing actor= in DialogueEventLog.objects.create()",
+            )

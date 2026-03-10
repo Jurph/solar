@@ -14,12 +14,12 @@ from mysite.universe.models.navigation import ManeuverType
 class Event:
     """
     Base class for all simulation events.
-    
+
     Events are data objects that represent things happening in the simulation.
     The simulation queue processes events by emitting signals when their
     timestamp is reached. Dialogue chains are generated complete upfront,
     so events don't generate follow-up events.
-    
+
     Attributes:
         timestamp: float
             The time (in seconds from the simulation start) when the event should trigger.
@@ -30,25 +30,27 @@ class Event:
         metadata: Optional[Dict]
             Additional data associated with this event.
     """
+
     # Required fields (no defaults) must come first
     timestamp: float
-    
+
     # Optional fields with defaults come last
     duration: float = 5.0
     event_type: str = "event"
     metadata: Optional[Dict] = None
 
+
 @dataclass(frozen=True, kw_only=True)
 class DialogueEvent(Event):
     """
     A dialogue event represents a line of dialogue spoken by an actor.
-    
+
     This can be a request for clearance, acknowledgment of instructions,
     or any other communication between actors.
-    
+
     Dialogue chains are generated complete upfront by DialogueService,
     so events are pure data objects with no reply generation logic.
-    
+
     Attributes:
         timestamp: When the event should occur in simulation time
         actor: The actor speaking the dialogue
@@ -57,11 +59,12 @@ class DialogueEvent(Event):
         event_type: The type of event ("dialogue")
         metadata: Additional information about the event
     """
+
     # Required fields first
     timestamp: float
     actor: Actor
     text: str
-    
+
     # Optional fields with defaults last
     duration: float = 0.0
     event_type: str = "dialogue"
@@ -82,7 +85,7 @@ class DialogueEvent(Event):
 class NavigationEvent(Event):
     """
     A navigation event represents a navigation maneuver in the simulation.
-    
+
     Attributes:
         timestamp: When the event should occur in simulation time.
         maneuver: The type of maneuver being performed.
@@ -91,6 +94,7 @@ class NavigationEvent(Event):
         event_type: The type of event ("navigation").
         metadata: Additional context for the event.
     """
+
     timestamp: float
     maneuver: ManeuverType
     target: Location
@@ -102,49 +106,58 @@ class NavigationEvent(Event):
 class DialogueEventLog(models.Model):
     """
     Django model for storing dialogue events in the database for real-time display.
-    
+
     This is an ephemeral storage solution - events are temporary and don't need
     long-term persistence. Used by the web interface to display scrolling dialogue.
-    
+
     CRITICAL: The 'text' field MUST always contain natural language dialogue.
     If JSON is needed, it can be stored in metadata, but 'text' is for display only.
     """
+
     timestamp = models.FloatField(help_text="Simulation time when event occurred")
     actor = models.ForeignKey(
         Actor,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='dialogue_events',
-        help_text="The actor speaking this dialogue"
+        related_name="dialogue_events",
+        help_text="The actor speaking this dialogue",
     )
-    actor_name = models.CharField(max_length=200, help_text="Name of the speaking actor (cached for display)")
+    actor_name = models.CharField(
+        max_length=200, help_text="Name of the speaking actor (cached for display)"
+    )
     text = models.TextField(help_text="The dialogue message")
-    metadata = models.JSONField(default=dict, blank=True, help_text="Additional event metadata (e.g., modem_data for nav broadcasts)")
-    created_at = models.DateTimeField(auto_now_add=True, help_text="Database insertion time")
-    
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional event metadata (e.g., modem_data for nav broadcasts)",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, help_text="Database insertion time"
+    )
+
     # TTS pre-generation fields
     audio_file = models.FileField(
-        upload_to='rendered_audio/',
+        upload_to="rendered_audio/",
         null=True,
         blank=True,
-        help_text="Pre-rendered mixed audio file (managed by Django storage)"
+        help_text="Pre-rendered mixed audio file (managed by Django storage)",
     )
     audio_rendered_at = models.DateTimeField(
         null=True,
         blank=True,
-        help_text="When the audio was pre-rendered by the background worker"
+        help_text="When the audio was pre-rendered by the background worker",
     )
     audio_generating = models.BooleanField(
         default=False,
-        help_text="True if audio is currently being generated (prevents concurrent generation)"
+        help_text="True if audio is currently being generated (prevents concurrent generation)",
     )
-    
+
     class Meta:
-        ordering = ['timestamp']
+        ordering = ["timestamp"]
         indexes = [
-            models.Index(fields=['timestamp']),
-            models.Index(fields=['actor']),
+            models.Index(fields=["timestamp"]),
+            models.Index(fields=["actor"]),
         ]
         verbose_name = "Dialogue Event Log"
         verbose_name_plural = "Dialogue Event Logs"
@@ -152,14 +165,21 @@ class DialogueEventLog(models.Model):
     def save(self, *args, **kwargs):
         """
         Ensure metadata is at least an empty dict and actor_name is populated from actor if available.
+
+        Raises ValueError on INSERT if actor is None — every new event must have an actor.
+        Existing records may have actor=None only if the actor was later deleted (SET_NULL).
         """
+        if self.pk is None and self.actor is None:
+            raise ValueError(
+                "DialogueEventLog requires an actor on creation. "
+                "Pass actor= to objects.create() or assign it before saving."
+            )
         if self.metadata is None:
             self.metadata = {}
         # Cache actor_name for display even if actor is deleted later
         if self.actor and not self.actor_name:
             self.actor_name = self.actor.name
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         return f"[{self.timestamp:.2f}] {self.actor_name}: {self.text[:50]}"
-

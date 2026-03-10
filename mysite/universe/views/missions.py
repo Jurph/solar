@@ -10,6 +10,7 @@ Future additions:
 - spawn_chatter: Trigger small talk between ships
 - Mission type parameter for unified spawning
 """
+
 import logging
 import threading
 
@@ -28,18 +29,18 @@ logger = logging.getLogger(__name__)
 def spawn_mission(request):
     """
     API endpoint to spawn a complete mission: ship, pilot, cargo, route, and dialogue.
-    
+
     Creates a new ship with pilot and cargo, picks a random destination,
     plans the route, generates dialogue events with physics-based timing,
     and schedules them for display based on simulation time.
-    
+
     Query parameters:
         mission_type: (optional str) Mission type - "cargo" (default) or "nav_broadcast"
         satellite_name: (optional str) For nav_broadcast missions, specific satellite name
-    
+
     Events are saved directly to DialogueEventLog with timestamps in simulation
     time. They will appear in the event feed when simulation time reaches them.
-    
+
     Returns:
         JSON with status and message indicating mission processing has started
     """
@@ -50,30 +51,36 @@ def spawn_mission(request):
     from mysite.universe.services.script_server import ScriptService
     from mysite.universe.services.llm_service import LLMService
     from mysite.universe.models.simulation import get_simulation_time
-    
+
     # Get mission type from query parameters (capture before thread)
     # Support both GET (query params) and POST (form data) for flexibility
-    mission_type = request.GET.get("mission_type") or request.POST.get("mission_type", "cargo")
+    mission_type = request.GET.get("mission_type") or request.POST.get(
+        "mission_type", "cargo"
+    )
     if mission_type:
         mission_type = mission_type.lower()
     else:
         mission_type = "cargo"
-    satellite_name = request.GET.get("satellite_name") or request.POST.get("satellite_name")
-    
+    satellite_name = request.GET.get("satellite_name") or request.POST.get(
+        "satellite_name"
+    )
+
     def process_mission_in_background():
         """Process the mission in a background thread to avoid blocking the request."""
         try:
             logger.info(f"spawn_mission: Starting {mission_type} mission generation...")
-            
+
             base_sim_time = get_simulation_time()
-            
+
             if mission_type == "nav_broadcast":
                 # Nav broadcast mission: generate broadcast from satellite(s)
                 script_service = ScriptService.get_instance()
 
                 import math
                 import random
-                from mysite.universe.services.location_service import find_star_system_for_location
+                from mysite.universe.services.location_service import (
+                    find_star_system_for_location,
+                )
 
                 # Get satellite to broadcast from
                 if satellite_name:
@@ -81,7 +88,9 @@ def spawn_mission(request):
                         satellite = Satellite.objects.get(name=satellite_name)
                         satellites = [satellite]
                     except Satellite.DoesNotExist:
-                        logger.error(f"spawn_mission: Satellite '{satellite_name}' not found")
+                        logger.error(
+                            f"spawn_mission: Satellite '{satellite_name}' not found"
+                        )
                         return
                     target_system = (
                         find_star_system_for_location(satellite.location)
@@ -117,7 +126,9 @@ def spawn_mission(request):
                             target_system = random.choice(all_systems)
                         else:
                             # Minimal-DB fallback: allow nav broadcasts even with no imported universe.
-                            logger.warning("spawn_mission: No star systems found; creating a generic navigation satellite")
+                            logger.warning(
+                                "spawn_mission: No star systems found; creating a generic navigation satellite"
+                            )
                             satellite = Satellite.create(name="Navigation Satellite")
                             satellites = [satellite]
                             target_system = None
@@ -130,7 +141,9 @@ def spawn_mission(request):
                         if nav_sats:
                             satellite = random.choice(nav_sats)
                         else:
-                            satellite = Satellite.create_navigation_satellite(location=target_system)
+                            satellite = Satellite.create_navigation_satellite(
+                                location=target_system
+                            )
                             logger.info(
                                 f"spawn_mission: Created navigation satellite '{satellite.name}' for {target_system.name}"
                             )
@@ -149,8 +162,9 @@ def spawn_mission(request):
 
                 # Consider "used" timestamps to be any existing nav_broadcast events.
                 occupied = set(
-                    DialogueEventLog.objects.filter(metadata__type="nav_broadcast")
-                    .values_list("timestamp", flat=True)
+                    DialogueEventLog.objects.filter(
+                        metadata__type="nav_broadcast"
+                    ).values_list("timestamp", flat=True)
                 )
 
                 start_time = None
@@ -183,25 +197,39 @@ def spawn_mission(request):
                             and event.metadata
                             and event.metadata.get("type") == "nav_broadcast"
                         ):
-                            event.metadata["navsat_next_cycle_anchor_ts"] = start_time + (count * cadence)
+                            event.metadata["navsat_next_cycle_anchor_ts"] = (
+                                start_time + (count * cadence)
+                            )
                             event.metadata["navsat_cycle_count"] = count
-                            event.metadata["navsat_cycle_cadence_hours"] = cadence / hours
+                            event.metadata["navsat_cycle_cadence_hours"] = (
+                                cadence / hours
+                            )
                             event.metadata["navsat_cycle_anchor_ts"] = start_time
                             if target_system is not None:
-                                event.metadata["navsat_star_system_name"] = target_system.name
-                                event.metadata["navsat_star_system_id"] = target_system.id
+                                event.metadata["navsat_star_system_name"] = (
+                                    target_system.name
+                                )
+                                event.metadata["navsat_star_system_id"] = (
+                                    target_system.id
+                                )
                         # CRITICAL: Store actor_id in metadata - never use name lookups
                         metadata = dict(event.metadata) if event.metadata else {}
-                        if hasattr(event, 'actor') and event.actor is not None:
-                            if hasattr(event.actor, 'id'):
-                                metadata['actor_id'] = event.actor.id
+                        if hasattr(event, "actor") and event.actor is not None:
+                            if hasattr(event.actor, "id"):
+                                metadata["actor_id"] = event.actor.id
                             else:
-                                logger.error("Nav broadcast event actor has no 'id' attribute: %s", type(event.actor))
+                                logger.error(
+                                    "Nav broadcast event actor has no 'id' attribute: %s",
+                                    type(event.actor),
+                                )
                         else:
-                            logger.error("Nav broadcast event has no actor or actor is None")
-                        
+                            logger.error(
+                                "Nav broadcast event has no actor or actor is None"
+                            )
+
                         DialogueEventLog.objects.create(
                             timestamp=event.timestamp,
+                            actor=event.actor,
                             actor_name=event.actor.name,
                             text=event.text,
                             metadata=metadata,
@@ -212,47 +240,53 @@ def spawn_mission(request):
                     f"spawn_mission: Generated {events_saved} nav broadcast event(s) "
                     f"({count} broadcasts scheduled)"
                 )
-                
+
             else:
                 # Cargo mission (default): ship, pilot, route, dialogue
                 # Create ship and pilot (controllers should already exist from XML import)
                 ship = Ship.create()
-                logger.info(f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}")
-                
+                logger.info(
+                    f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}"
+                )
+
                 pilot = Pilot.create(ship=ship)
                 logger.debug(f"spawn_mission: Created pilot {pilot.name}")
-                
+
                 # Pick a random destination (different from origin)
                 # For cargo missions, only valid endpoints (planets, moons, stations with berths)
                 route_service = RouteService()
                 destination = route_service.pick_random_destination(
-                    excluding=ship.current_location,
-                    cargo_mission=True
+                    excluding=ship.current_location, cargo_mission=True
                 )
                 logger.info(f"spawn_mission: Destination {destination.name}")
-                
+
                 # Plan the route
                 route_events = route_service.plan_route(
-                    origin=ship.current_location,
-                    destination=destination
+                    origin=ship.current_location, destination=destination
                 )
-                
+
                 if not route_events:
-                    logger.error(f"spawn_mission: Failed to generate route for {ship.name}")
+                    logger.error(
+                        f"spawn_mission: Failed to generate route for {ship.name}"
+                    )
                     return
-                
-                logger.debug(f"spawn_mission: Planned route with {len(route_events)} navigation events")
-                
+
+                logger.debug(
+                    f"spawn_mission: Planned route with {len(route_events)} navigation events"
+                )
+
                 # Initialize LLM with low temperature for consistent dialogue
                 llm = LLMService(quiet_mode=True)
                 llm.temperature = 0.25
-                
+
                 # Create a fresh ScriptService instance for this mission
                 script_service = ScriptService(llm=llm)
-                
+
                 # Generate dialogue events from navigation events
                 # Use physics_delays=True for realistic timing between maneuvers
-                logger.debug("spawn_mission: Generating dialogue events with physics delays...")
+                logger.debug(
+                    "spawn_mission: Generating dialogue events with physics delays..."
+                )
 
                 dialogue_events_iter = script_service.iter_navigation_events(
                     route_events, ship, use_physics_delays=True
@@ -265,12 +299,14 @@ def spawn_mission(request):
                 last_relative_timestamp = 0.0
                 for event in dialogue_events_iter:
                     scheduled_time = base_sim_time + event.timestamp
-                    
+
                     # Store event with actor ForeignKey reference
                     DialogueEventLog.objects.create(
                         timestamp=scheduled_time,
-                        actor=event.actor if hasattr(event, 'actor') else None,
-                        actor_name=event.actor.name if hasattr(event, 'actor') and event.actor else "Unknown",
+                        actor=event.actor if hasattr(event, "actor") else None,
+                        actor_name=event.actor.name
+                        if hasattr(event, "actor") and event.actor
+                        else "Unknown",
                         text=event.text,
                         metadata=dict(event.metadata) if event.metadata else {},
                     )
@@ -278,7 +314,9 @@ def spawn_mission(request):
                     last_relative_timestamp = event.timestamp
 
                 if events_saved == 0:
-                    logger.error(f"spawn_mission: No dialogue events generated for {ship.name}")
+                    logger.error(
+                        f"spawn_mission: No dialogue events generated for {ship.name}"
+                    )
                     return
 
                 logger.debug(f"spawn_mission: Generated {events_saved} dialogue events")
@@ -289,29 +327,31 @@ def spawn_mission(request):
                 minutes = int((mission_duration % 3600) // 60)
                 seconds = int(mission_duration % 60)
                 duration_str = f"{hours}h {minutes}m {seconds}s"
-                
+
                 logger.info(
                     f"spawn_mission: {ship.name} from {ship.current_location.name} "
                     f"to {destination.name}, {events_saved} events spanning {duration_str}"
                 )
-                
+
         except Exception as e:
             logger.exception(f"spawn_mission: Error - {e}")
-    
+
     try:
         # Start mission processing in background thread
         thread = threading.Thread(target=process_mission_in_background, daemon=True)
         thread.start()
-        
-        return JsonResponse({
-            'status': 'started',
-            'message': 'Mission spawned and processing in background'
-        })
+
+        return JsonResponse(
+            {
+                "status": "started",
+                "message": "Mission spawned and processing in background",
+            }
+        )
     except Exception as e:
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Failed to spawn mission: {str(e)}'
-        }, status=500)
+        return JsonResponse(
+            {"status": "error", "message": f"Failed to spawn mission: {str(e)}"},
+            status=500,
+        )
 
 
 @csrf_exempt
@@ -319,21 +359,21 @@ def spawn_mission(request):
 def run_demo(request):
     """
     API endpoint to run the character dialogue demo in the background.
-    
+
     DEPRECATED: Use spawn_mission instead for variety. This endpoint
     always runs the same demo ship/route for testing purposes.
     """
+
     def run_demo_command():
         """Run the demo command in a background thread."""
         try:
             # Run the management command with low temperature for consistent dialogue
-            call_command('character_dialogue_demo', temperature=0.25, use_json=True)
+            call_command("character_dialogue_demo", temperature=0.25, use_json=True)
         except Exception as e:
             logger.error(f"Error running demo: {e}")
-    
+
     # Start the demo in a background thread
     thread = threading.Thread(target=run_demo_command, daemon=True)
     thread.start()
-    
-    return JsonResponse({'status': 'started', 'message': 'Demo started in background'})
 
+    return JsonResponse({"status": "started", "message": "Demo started in background"})
