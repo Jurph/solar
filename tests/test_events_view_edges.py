@@ -202,9 +202,11 @@ class TestEventFeedCursorValidation(TestCase):
 
     def test_limit_parameter_is_respected(self):
         """Limit parameter caps the number of returned events."""
+        actor = Controller.objects.create(name="LimitTest")
         for i in range(5):
             DialogueEventLog.objects.create(
                 timestamp=float(i * 100),
+                actor=actor,
                 actor_name=f"Actor {i}",
                 text=f"Message {i}",
             )
@@ -271,8 +273,10 @@ class TestDialogueEventLogSave(TestCase):
         Explicitly setting metadata=None before save() triggers the
         `if self.metadata is None: self.metadata = {}` branch (line 157).
         """
+        actor = Controller.objects.create(name="MetaTest")
         event = DialogueEventLog(
             timestamp=0.0,
+            actor=actor,
             actor_name="Ghost",
             text="Signal lost.",
             metadata=None,

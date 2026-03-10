@@ -119,6 +119,7 @@ def test_dialogue_event_log_direct_create_has_actor_id():
 
     log_entry = DialogueEventLog.objects.create(
         timestamp=event.timestamp,
+        actor=event.actor,
         actor_name=event.actor.name,
         text=event.text,
         metadata=metadata,

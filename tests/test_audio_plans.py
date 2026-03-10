@@ -308,12 +308,19 @@ class TestAudioPlanActorlessFallback(TestCase):
 
     def test_actorless_event_raises_value_error(self):
         """build_audio_plan_for_dialogue_event() must raise ValueError for actor-less events."""
+        from mysite.universe.models.actor import Controller
+
+        # Create with a real actor to satisfy the save() guard, then bypass
+        # the guard via QuerySet.update() to simulate SET_NULL after actor deletion.
+        tmp_actor = Controller.objects.create(name="Temp Ghost")
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
-            actor=None,
+            actor=tmp_actor,
             actor_name="Ghost Speaker",
             text="Hello, is anyone there?",
         )
+        DialogueEventLog.objects.filter(id=event.id).update(actor=None)
+        event.refresh_from_db()
         with self.assertRaises(ValueError):
             build_audio_plan_for_dialogue_event(event)
 

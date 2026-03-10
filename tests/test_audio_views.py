@@ -16,7 +16,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from mysite.universe.models.event import DialogueEventLog
-from mysite.universe.models.actor import Pilot
+from mysite.universe.models.actor import Controller, Pilot
 
 
 def _minimal_wav() -> bytes:
@@ -366,8 +366,10 @@ class TestClearEventsFullReset(TestCase):
 
     def test_clear_events_removes_cache_keys(self):
         """clear_events calls cache.clear() so mixed_audio cache entries are gone."""
+        actor = Controller.objects.create(name="ClearTest")
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
+            actor=actor,
             actor_name="Test Pilot",
             text="Test.",
         )
@@ -384,8 +386,10 @@ class TestClearEventsFullReset(TestCase):
 
     def test_event_audio_after_clear_returns_404(self):
         """After clear_events, requesting audio for a deleted event returns 404."""
+        actor = Controller.objects.create(name="ClearTest2")
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
+            actor=actor,
             actor_name="Test Pilot",
             text="Test.",
         )
@@ -431,12 +435,16 @@ class TestEventAudioActorlessInvariant(TestCase):
 
     def test_get_returns_400_for_actorless_event(self):
         """GET /api/event_audio/<id>/ returns 400 when event has no actor."""
+        # Create with a real actor, then bypass save() guard via update()
+        tmp_actor = Controller.objects.create(name="TmpGhost")
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
-            actor=None,
+            actor=tmp_actor,
             actor_name="Ghost Speaker",
             text="Test transmission.",
         )
+        DialogueEventLog.objects.filter(id=event.id).update(actor=None)
+        event.refresh_from_db()
         response = self.client.get(f"/api/event_audio/{event.id}/")
         self.assertEqual(response.status_code, 400)
         data = response.json()
@@ -444,12 +452,16 @@ class TestEventAudioActorlessInvariant(TestCase):
 
     def test_head_returns_400_for_actorless_event(self):
         """HEAD /api/event_audio/<id>/ returns 400 when event has no actor."""
+        # Create with a real actor, then bypass save() guard via update()
+        tmp_actor = Controller.objects.create(name="TmpGhost2")
         event = DialogueEventLog.objects.create(
             timestamp=100.0,
-            actor=None,
+            actor=tmp_actor,
             actor_name="Ghost Speaker",
             text="Test transmission.",
         )
+        DialogueEventLog.objects.filter(id=event.id).update(actor=None)
+        event.refresh_from_db()
         response = self.client.head(f"/api/event_audio/{event.id}/")
         self.assertEqual(response.status_code, 400)
 
