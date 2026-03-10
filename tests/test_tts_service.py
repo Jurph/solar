@@ -6,7 +6,7 @@ Covers without GPU/model files:
 - _get_cache_key(): determinism and uniqueness
 - _wav_to_bytes(): mono conversion, resampling
 - _get_voice_path(): fallback chain (pilot prefix, controller prefix, generic)
-- generate(): cache hit, model load failure, voice not found, exception→silence
+- generate(): cache hit, model load failure, voice not found, exception→raises RuntimeError
 - get_tts_service(): singleton pattern
 - warm_tts_service(): swallows errors
 """
@@ -236,7 +236,8 @@ class TestGenerate:
                 with pytest.raises(ValueError, match="Voice clip not found"):
                     self.svc.generate("hello", "ghost_voice")
 
-    def test_model_generation_exception_returns_silence(self):
+    def test_model_generation_exception_raises(self):
+        """Model failure must raise RuntimeError so callers know to retry (no silent silence)."""
         fake_path = Path("/fake/pilot_default.wav")
         mock_model = MagicMock()
         mock_model.generate.side_effect = RuntimeError("CUDA error")
@@ -246,12 +247,8 @@ class TestGenerate:
         with patch("mysite.universe.services.tts_service.cache") as mock_cache:
             mock_cache.get.return_value = None
             with patch.object(self.svc, "_get_voice_path", return_value=fake_path):
-                result = self.svc.generate("hello", "pilot_default")
-
-        # Silence fallback: must be valid WAV bytes
-        assert isinstance(result, bytes)
-        wf = _parse_wav(result)
-        assert wf.getnchannels() == 1
+                with pytest.raises(RuntimeError, match="TTS generation failed"):
+                    self.svc.generate("hello", "pilot_default")
 
     def test_successful_generation_sets_cache(self):
         fake_path = Path("/fake/pilot_default.wav")

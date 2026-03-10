@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict, Optional
 from openai import OpenAI
 import yaml
@@ -11,31 +12,36 @@ from ..schemas.dialogue_schema import (
     Role,
 )
 
+logger = logging.getLogger(__name__)
+
+
 class LLMService:
     """
     A service for interacting with a local LLM model via Ollama.
     """
-    
+
     # Compiled regex for detecting invalid dialogue message content
     # This is the SINGLE SOURCE OF TRUTH for message content validation
     # Patterns detected: template variables (${...}), JSON fragments ({ "...), error fallbacks
-    _INVALID_DIALOGUE_CONTENT_PATTERN = re.compile(r"\$\{|\{\s*\"|Error in communication", re.IGNORECASE)
-    
+    _INVALID_DIALOGUE_CONTENT_PATTERN = re.compile(
+        r"\$\{|\{\s*\"|Error in communication", re.IGNORECASE
+    )
+
     @classmethod
     def is_invalid_dialogue_message(cls, message_text: str) -> bool:
         """
         Check if a dialogue message contains invalid content that should trigger a retry.
-        
+
         All code that needs to validate dialogue message content should use this method.
-        
+
         Detects:
         - Template variables: ${...} patterns
         - JSON fragments: { " patterns (leaked JSON structure)
         - Error fallbacks: "Error in communication" (case-insensitive)
-        
+
         Args:
             message_text: The message text to validate
-            
+
         Returns:
             True if message contains invalid content (should retry), False otherwise
         """
@@ -46,27 +52,24 @@ class LLMService:
     def __init__(self, config_path: str = "llm.config", quiet_mode: bool = True):
         """
         Initialize the LLM service.
-        
+
         The YAML config file should contain:
         - base_url: The base URL for the API (e.g., "http://localhost:11434/v1/")
         - api_key: The API key (e.g., "ollama")
         - model_name: The model name (e.g., "qwen2.5:0.5b")
         - temperature: Default temperature
         - max_tokens: Default maximum tokens
-        
+
         Args:
             config_path: Path to the YAML config file
             quiet_mode: If True, suppress all stdout/stderr during API calls
         """
         self.quiet_mode = quiet_mode
 
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f)
         self.api_base = config["api_base"]
-        self.client = OpenAI(
-            base_url=self.api_base,
-            api_key=config["api_key"]
-        )
+        self.client = OpenAI(base_url=self.api_base, api_key=config["api_key"])
         self.model_name = config["model_name"]
         self.temperature = config["temperature"]
         self.max_tokens = config["max_tokens"]
@@ -82,7 +85,7 @@ class LLMService:
     ) -> str:
         """
         Send a chat request to the LLM and get a JSON-formatted response.
-        
+
         Args:
             messages: List of message dictionaries with keys "role" and "content"
             temperature: Optional temperature override (defaults to instance temperature)
@@ -90,30 +93,36 @@ class LLMService:
             system_prompt: Optional system prompt (for backward compatibility with old API)
             use_structured_output: Whether to use structured outputs (default: True)
             format: Optional JSON schema dict for structured outputs (Ollama format parameter)
-            
+
         Returns:
             A valid JSON string containing the complete DialogueMessage (or plain text if not JSON mode)
         """
         # If a system prompt is provided (backward compatibility), add or replace a system message
         if system_prompt:
-            if any(msg.get('role') == 'system' for msg in messages):
+            if any(msg.get("role") == "system" for msg in messages):
                 messages = [
-                    {'role': 'system', 'content': system_prompt} if msg.get('role') == 'system' else msg
+                    {"role": "system", "content": system_prompt}
+                    if msg.get("role") == "system"
+                    else msg
                     for msg in messages
                 ]
             else:
-                messages = [{'role': 'system', 'content': system_prompt}] + messages
+                messages = [{"role": "system", "content": system_prompt}] + messages
 
         # Extract system and user messages
-        system_msg = next((msg['content'] for msg in messages if msg.get('role') == 'system'), None)
-        user_msg = next((msg['content'] for msg in messages if msg.get('role') == 'user'), None)
+        system_msg = next(
+            (msg["content"] for msg in messages if msg.get("role") == "system"), None
+        )
+        user_msg = next(
+            (msg["content"] for msg in messages if msg.get("role") == "user"), None
+        )
 
         # Check if this is a JSON request (system message contains JSON schema or JSON instructions)
         is_json_mode = system_msg and (
-            'JSON' in system_msg.upper() or 
-            'json' in system_msg.lower() or
-            'DialogueMessage' in system_msg or
-            'schema' in system_msg.lower()
+            "JSON" in system_msg.upper()
+            or "json" in system_msg.lower()
+            or "DialogueMessage" in system_msg
+            or "schema" in system_msg.lower()
         )
 
         # Add explicit JSON requirement to system message if in JSON mode
@@ -138,9 +147,6 @@ The JSON must match this exact schema:
 
         try:
             # Quiet STDOUT by default; log to shared in-memory/buffer handler.
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.setLevel(logging.INFO)
             logger.debug("=== PROMPT SENT TO LLM API ===")
             logger.debug(f"SYSTEM MESSAGE:\n{system_msg}")
             logger.debug(f"USER MESSAGE:\n{user_msg}")
@@ -149,33 +155,37 @@ The JSON must match this exact schema:
             # Use structured outputs if format schema is provided
             if use_structured_output and format is not None:
                 # Use Ollama's /api/chat endpoint directly for structured outputs
-                base_url = self.api_base.rstrip('/')
-                if base_url.endswith('/v1'):
+                base_url = self.api_base.rstrip("/")
+                if base_url.endswith("/v1"):
                     base_url = base_url[:-3]
                 api_url = f"{base_url}/api/chat"
-                
+
                 # Convert messages to Ollama format
                 ollama_messages = []
                 for msg in messages:
-                    ollama_messages.append({
-                        "role": msg.get("role", "user"),
-                        "content": msg.get("content", "")
-                    })
-                
+                    ollama_messages.append(
+                        {
+                            "role": msg.get("role", "user"),
+                            "content": msg.get("content", ""),
+                        }
+                    )
+
                 payload = {
                     "model": self.model_name,
                     "messages": ollama_messages,
                     "stream": False,
                     "format": format,
                     "options": {
-                        "temperature": temperature if temperature is not None else self.temperature,
-                    }
+                        "temperature": temperature
+                        if temperature is not None
+                        else self.temperature,
+                    },
                 }
-                
+
                 response_obj = requests.post(api_url, json=payload)
                 response_obj.raise_for_status()
                 result = response_obj.json()
-                response = result['message']['content'].strip()
+                response = result["message"]["content"].strip()
             else:
                 # Fallback to OpenAI client completions API (legacy)
                 if self.quiet_mode:
@@ -185,18 +195,26 @@ The JSON must match this exact schema:
                         completion = self.client.completions.create(
                             model=self.model_name,
                             prompt=prompt,
-                            temperature=temperature if temperature is not None else self.temperature,
-                            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
+                            temperature=temperature
+                            if temperature is not None
+                            else self.temperature,
+                            max_tokens=max_tokens
+                            if max_tokens is not None
+                            else self.max_tokens,
                         )
                 else:
                     completion = self.client.completions.create(
                         model=self.model_name,
                         prompt=prompt,
-                        temperature=temperature if temperature is not None else self.temperature,
-                        max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
+                        temperature=temperature
+                        if temperature is not None
+                        else self.temperature,
+                        max_tokens=max_tokens
+                        if max_tokens is not None
+                        else self.max_tokens,
                     )
                 response = completion.choices[0].text.strip()
-            
+
             # Log to a file for later analysis; no STDOUT
             logger.debug("=== LLM CALL ===")
             logger.debug(f"SYSTEM: {system_msg}")
@@ -209,28 +227,28 @@ The JSON must match this exact schema:
                 try:
                     # Extract JSON from response (in case LLM added extra text or markdown)
                     # First, try to strip markdown code blocks
-                    if response.startswith('```'):
+                    if response.startswith("```"):
                         # Remove markdown code block markers
-                        lines = response.split('\n')
+                        lines = response.split("\n")
                         # Remove first line if it's ```json or ```
-                        if lines[0].strip().startswith('```'):
+                        if lines[0].strip().startswith("```"):
                             lines = lines[1:]
                         # Remove last line if it's ```
-                        if lines and lines[-1].strip() == '```':
+                        if lines and lines[-1].strip() == "```":
                             lines = lines[:-1]
-                        response = '\n'.join(lines).strip()
-                    
+                        response = "\n".join(lines).strip()
+
                     # Find JSON object boundaries
-                    start = response.find('{')
-                    end = response.rfind('}') + 1
+                    start = response.find("{")
+                    end = response.rfind("}") + 1
                     if start >= 0 and end > start:
                         json_str = response[start:end]
                         json_data = json.loads(json_str)
-                        
+
                         # Convert string enum values to enum types
-                        if 'role' in json_data and isinstance(json_data['role'], str):
-                            json_data['role'] = Role(json_data['role'])
-                        
+                        if "role" in json_data and isinstance(json_data["role"], str):
+                            json_data["role"] = Role(json_data["role"])
+
                         # Try to validate against DialogueMessage schema
                         try:
                             dialogue_msg = DialogueMessage(**json_data)
@@ -239,20 +257,26 @@ The JSON must match this exact schema:
                         except Exception as validation_error:
                             # If validation fails, try to fix common issues and use model_construct
                             # This allows us to bypass validation for messages that are close but not perfect
-                            if not self.quiet_mode:
-                                print(f"Warning: DialogueMessage validation failed: {validation_error}")
-                                print("Attempting to construct message with model_construct (bypassing validation)...")
-                            
+                            logger.warning(
+                                "DialogueMessage validation failed: %s — attempting model_construct fallback",
+                                validation_error,
+                            )
+
                             # Use model_construct to bypass validation - this is acceptable for LLM-generated content
                             # that might have minor validation issues but is otherwise valid
                             try:
-                                dialogue_msg = DialogueMessage.model_construct(**json_data)
+                                dialogue_msg = DialogueMessage.model_construct(
+                                    **json_data
+                                )
                                 # Return the corrected JSON
                                 return json.dumps(dialogue_msg.model_dump())
                             except Exception as construct_error:
                                 # If even model_construct fails, raise the original validation error
-                                if not self.quiet_mode:
-                                    print(f"Error: Could not construct DialogueMessage even with model_construct: {construct_error}")
+                                logger.error(
+                                    "model_construct also failed: %s (original error: %s)",
+                                    construct_error,
+                                    validation_error,
+                                )
                                 raise ValueError(
                                     f"LLM failed to generate valid DialogueMessage: {validation_error}"
                                 ) from construct_error
@@ -260,9 +284,11 @@ The JSON must match this exact schema:
                         raise ValueError("No JSON object found in response")
 
                 except (json.JSONDecodeError, ValueError) as e:
-                    if not self.quiet_mode:
-                        print(f"Warning: LLM response was not valid JSON: {e}")
-                        print(f"Raw response: {response}")
+                    logger.error(
+                        "LLM response was not valid JSON: %s | raw_response=%r",
+                        e,
+                        response[:200],
+                    )
                     raise ValueError(f"LLM failed to generate valid JSON: {e}") from e
             else:
                 # Plain text mode - return as-is

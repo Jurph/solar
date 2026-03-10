@@ -194,10 +194,12 @@ def event_feed(request):
 
     queryset = queryset.order_by("timestamp", "id")[:limit]
 
-    logger.info(
-        f"event_feed: Fetching events with sim_time={sim_time:.2f}, after_ts={after_ts}, limit={limit}"
+    logger.debug(
+        "event_feed: sim_time=%.2f after_ts=%s limit=%s",
+        sim_time,
+        after_ts,
+        limit,
     )
-    logger.info(f"event_feed: Queryset returned {queryset.count()} events")
 
     # Check which events have cached mixed audio
     cached_event_ids = set()
@@ -205,10 +207,6 @@ def event_feed(request):
         cache_key = f"mixed_audio:{event.id}"
         if cache.get(cache_key):
             cached_event_ids.add(event.id)
-
-    logger.info(
-        f"event_feed: {len(cached_event_ids)} events have cached audio, {queryset.count() - len(cached_event_ids)} need TTS"
-    )
 
     # Convert to list of dicts with only essential fields
     events = []
@@ -269,13 +267,12 @@ def event_feed(request):
     events_with_audio = len(cached_event_ids)
     events_needing_audio = len(events) - events_with_audio
 
-    logger.info(
-        f"event_feed: Returning {len(events)} events (cached: {events_with_audio}, pending: {events_needing_audio})"
+    logger.debug(
+        "event_feed: returning %d events (cached=%d pending=%d)",
+        len(events),
+        events_with_audio,
+        events_needing_audio,
     )
-    if len(events) > 0:
-        logger.info(
-            f"event_feed: First event: id={events[0]['id']}, actor={events[0]['actor_name']}, audio_url={events[0]['audio_url']}, audio_ready={events[0]['audio_ready']}"
-        )
 
     return JsonResponse(
         {
@@ -389,17 +386,11 @@ def event_audio(request, event_id: int):
         404 if event not found
     """
 
-    print(
-        f"[EVENT_AUDIO] {request.method} request for event {event_id}"
-    )  # Force to stdout
-    logger.info(f"event_audio: {request.method} request for event {event_id}")
+    logger.debug("event_audio: %s request for event %s", request.method, event_id)
 
     # Get event
     try:
         event = DialogueEventLog.objects.get(id=event_id)
-        logger.info(
-            f"event_audio: Found event {event_id}, actor={event.actor_name}, text={event.text[:50]}"
-        )
     except DialogueEventLog.DoesNotExist:
         logger.error(f"event_audio: Event {event_id} not found in database")
         return JsonResponse(
@@ -461,14 +452,13 @@ def event_audio(request, event_id: int):
             logger.debug(
                 f"event_audio: HEAD request - audio not ready for event {event_id}, returning 202"
             )
-            print(f"[EVENT_AUDIO] HEAD event {event_id} - returning 202")
             return JsonResponse(
                 {"status": "pending", "message": "Audio not yet generated."}, status=202
             )
 
     # Check for pre-rendered file (from audio worker)
     if event.audio_file:
-        logger.info(f"event_audio: Serving pre-rendered audio for event {event_id}")
+        logger.debug("event_audio: serving pre-rendered audio for event %s", event_id)
         try:
             # Use Django's storage backend to read the file
             with event.audio_file.open("rb") as f:
@@ -491,9 +481,6 @@ def event_audio(request, event_id: int):
 
     # Cache miss - audio not ready yet
     # The audio_worker should handle generation; web server only serves pre-rendered files
-    print(
-        f"[EVENT_AUDIO] Event {event_id} audio not ready - returning 202"
-    )  # Force to stdout
     logger.info(
         "Event %s audio not ready (no pre-rendered file, not in cache). Worker should generate.",
         event_id,
