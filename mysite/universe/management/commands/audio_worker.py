@@ -313,26 +313,23 @@ class Command(BaseCommand):
             if not sim_state:
                 return 0
 
-            # Delete files for events at least 10 minutes (600s) in the past
+            # Delete files for events at least 10 minutes (600s) in the past.
+            # Only match events that actually have a file (exclude "" and NULL).
             cleanup_threshold = sim_state.get_simulation_time() - 600
-            old_events = DialogueEventLog.objects.filter(
-                timestamp__lt=cleanup_threshold, audio_file__isnull=False
+            old_events = (
+                DialogueEventLog.objects.filter(timestamp__lt=cleanup_threshold)
+                .exclude(audio_file="")
+                .exclude(audio_file__isnull=True)
             )
 
             cleaned_count = 0
             for event in old_events:
-                if event.audio_file:
-                    try:
-                        # Use Django's storage to delete the file
-                        event.audio_file.delete(save=False)
-                        logger.info(f"Cleaned up audio file for event {event.id}")
-                        cleaned_count += 1
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to delete audio for event {event.id}: {e}"
-                        )
-
-                # Clear the database timestamp field
+                try:
+                    event.audio_file.delete(save=False)
+                    logger.info(f"Cleaned up audio file for event {event.id}")
+                    cleaned_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to delete audio for event {event.id}: {e}")
                 event.audio_rendered_at = None
                 event.save(update_fields=["audio_file", "audio_rendered_at"])
 

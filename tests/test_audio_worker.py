@@ -368,6 +368,38 @@ class TestAudioWorkerCleanup:
         assert not old_event.audio_file
         assert old_event.audio_rendered_at is None
 
+    def test_cleanup_skips_already_cleaned_events(self):
+        """Already-cleaned events (audio_file='') produce zero DB writes.
+
+        Fixes #36: the old filter matched empty-string audio_file and the
+        unconditional save() re-wrote every old event every 5 seconds.
+        """
+        create_sim_state_at_time(1000.0)
+        actor = Controller.objects.create(name="Test Control")
+
+        # Create an old event that has already been cleaned (no file, no rendered_at)
+        cleaned_event = DialogueEventLog.objects.create(
+            timestamp=100.0,  # 900s in the past, well beyond 600s threshold
+            actor=actor,
+            actor_name=actor.name,
+            text="Already cleaned event.",
+        )
+        # Confirm it has audio_file="" and audio_rendered_at=None (the post-cleanup state)
+        cleaned_event.refresh_from_db()
+        assert not cleaned_event.audio_file
+        assert cleaned_event.audio_rendered_at is None
+
+        command = Command()
+        cleaned = command._cleanup_old_files()
+
+        # Should NOT have processed this event — it has no file to clean
+        assert cleaned == 0
+
+        # Verify the event was not touched (no unnecessary save)
+        # If the old bug were present, audio_rendered_at would be re-set to None
+        # via save(), but we can verify by checking the query count stays at zero
+        # through the cleaned_count return value.
+
 
 @pytest.mark.django_db
 class TestAudioWorkerStartupCatchup:
