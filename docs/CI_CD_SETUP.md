@@ -10,11 +10,12 @@ Solar uses CircleCI for continuous integration and Codecov for coverage tracking
 
 ### What It Does
 - Runs on every push to GitHub
-- Installs dependencies from `requirements.txt`
+- Installs dependencies from `pyproject.toml`
 - Runs the fast pytest suite (`-m "not slow"`) across 4 parallel CircleCI workers
 - Splits test files by historical timing data using `circleci tests split --split-by=timings`
 - Generates per-worker coverage reports
 - Uploads partial coverage to Codecov, then notifies Codecov to merge them
+- Runs a separate daily dependency-audit workflow on `main` to catch stale or missing top-level declarations
 
 ### Configuration File
 `.circleci/config.yml`
@@ -28,9 +29,12 @@ source venv/bin/activate  # or venv\Scripts\activate on Windows
 
 # Run the same fast suite that CI validates
 pytest tests -m "not slow" --cov=mysite/universe --cov-report=xml --cov-report=term -v
+
+# Audit top-level dependency declarations
+python scripts/audit_dependencies.py
 ```
 
-**Note:** CI runs the same fast-test selection, but splits files across 4 workers based on timing history.
+**Note:** Push CI runs the same fast-test selection, but splits files across 4 workers based on timing history. Dependency auditing runs separately on a daily schedule.
 
 ### Excluded Tests
 **Slow tests (`@pytest.mark.slow`)** are excluded from CI:
@@ -94,12 +98,12 @@ Added to `README.md`:
 
 ### 3. Push to GitHub
 ```bash
-git add .circleci/config.yml .codecov.yml README.md requirements.txt
+git add .circleci/config.yml .codecov.yml README.md pyproject.toml
 git commit -m "Add CircleCI and Codecov integration"
 git push
 ```
 
-CircleCI will automatically run tests on push.
+CircleCI will automatically run tests on push and the dependency audit once per day on `main`.
 
 ---
 
@@ -124,7 +128,7 @@ Coverage changes over time. Treat Codecov as the source of truth for current per
 ### Tests Pass Locally But Fail in CI
 
 **Common causes:**
-1. **Missing dependency** in `requirements.txt`
+1. **Missing dependency** in `pyproject.toml`
 2. **File paths** (CI uses Linux, you use Windows)
 3. **Database differences** (CI uses in-memory SQLite)
 4. **Environment variables** not set in CI

@@ -45,10 +45,10 @@ except ImportError:
     print("torch not installed (skipping CUDA check)")
 EOF
 
-    # Install Django if not already installed
+    # Install project dependencies if not already installed
     if ! "$VENV_PYTHON" -c "import django" 2>/dev/null; then
-        echo "Installing Django..."
-        "$VENV_PYTHON" -m pip install django
+        echo "Installing project dependencies..."
+        "$VENV_PYTHON" -m pip install -e ".[dev]"
     fi
 
     # Set PYTHONPATH to include the project root

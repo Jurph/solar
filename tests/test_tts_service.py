@@ -19,7 +19,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Skip this entire file gracefully when torch is not installed (e.g. in CI,
-# which installs requirements.txt but not requirements-ml.txt).  Tests here
+# which installs the base + dev dependency sets but not the optional ML extras).
+# Tests here
 # are mock-based and need no GPU, but tts_service.py imports torch at module
 # level so torch must at least be importable.
 torch = pytest.importorskip("torch")

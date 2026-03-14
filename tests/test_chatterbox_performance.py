@@ -15,7 +15,7 @@ import pytest
 from django.conf import settings
 
 # Skip this entire file gracefully when torch is not installed (CI uses
-# requirements.txt only; torch lives in requirements-ml.txt).
+# the base + dev dependency sets only; torch lives in the optional ML extra).
 pytest.importorskip("torch")
 
 from mysite.universe.services.tts_service import get_tts_service  # noqa: E402

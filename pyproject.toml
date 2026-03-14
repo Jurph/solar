@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solar"
+version = "0.9.0"
+description = "A space traffic control simulation with local LLM dialogue and pre-rendered comms audio."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "Django>=5.1,<6",
+    "networkx>=3.4",
+    "openai>=2.8.0",
+    "pydantic>=2.0",
+    "PyYAML>=6.0",
+    "requests>=2.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-django>=4.11.0",
+    "pytest-timeout>=2.4.0",
+    "tomli>=2.0.0; python_version < '3.11'",
+]
+ml = [
+    "chatterbox-tts==0.1.6",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+]
+ci = [
+    "codecov-cli",
+]
+
+[tool.setuptools]
+py-modules = []

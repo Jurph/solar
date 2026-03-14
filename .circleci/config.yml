@@ -11,18 +11,18 @@ jobs:
 
       - restore_cache:
           keys:
-            - venv-v2-{{ checksum "requirements.txt" }}
-            - venv-v2-
+            - venv-v3-{{ checksum "pyproject.toml" }}
+            - venv-v3-
 
       - run:
           name: Install dependencies
           command: |
             python -m venv venv
             venv/bin/pip install --upgrade pip
-            venv/bin/pip install -r requirements.txt
+            venv/bin/pip install -e ".[dev,ci]"
 
       - save_cache:
-          key: venv-v2-{{ checksum "requirements.txt" }}
+          key: venv-v3-{{ checksum "pyproject.toml" }}
           paths:
             - venv
 
@@ -55,6 +55,36 @@ jobs:
       - store_artifacts:
           path: coverage.xml
 
+  dependency-audit:
+    docker:
+      - image: cimg/python:3.10
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - venv-v3-{{ checksum "pyproject.toml" }}
+            - venv-v3-
+
+      - run:
+          name: Install dependencies
+          command: |
+            python -m venv venv
+            venv/bin/pip install --upgrade pip
+            venv/bin/pip install -e .[dev]
+
+      - save_cache:
+          key: venv-v3-{{ checksum "pyproject.toml" }}
+          paths:
+            - venv
+
+      - run:
+          name: Audit declared dependencies
+          command: |
+            source venv/bin/activate
+            python scripts/audit_dependencies.py
+
   notify-codecov:
     docker:
       - image: cimg/base:stable
@@ -74,3 +104,13 @@ workflows:
       - notify-codecov:
           requires:
             - test
+  daily-dependency-audit:
+    triggers:
+      - schedule:
+          cron: "0 9 * * *"
+          filters:
+            branches:
+              only:
+                - main
+    jobs:
+      - dependency-audit

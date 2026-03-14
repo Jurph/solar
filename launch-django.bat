@@ -28,11 +28,11 @@ for /f "tokens=*" %%v in ('"%VENV_PYTHON%" --version') do echo Using %%v from ve
 echo Checking PyTorch CUDA availability...
 "%VENV_PYTHON%" -c "import sys, importlib.util; spec = importlib.util.find_spec('torch'); print('torch not installed (skipping CUDA check)') if not spec else None" 2>NUL
 
-REM Install Django if not already installed
+REM Install project dependencies if not already installed
 "%VENV_PYTHON%" -c "import django" 2>NUL
 if errorlevel 1 (
-    echo Installing Django...
-    "%VENV_PYTHON%" -m pip install django
+    echo Installing project dependencies...
+    "%VENV_PYTHON%" -m pip install -e .[dev]
 )
 
 REM Set PYTHONPATH to include the project root

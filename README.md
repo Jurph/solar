@@ -58,57 +58,68 @@ The easiest way to run the project is to use the launch scripts:
 
 Those scripts handle the virtual environment, migrations, and Django startup. They also try to start Ollama if it is installed.
 
-If you prefer to do things manually, `venv`, `uv`, and `conda` are all fine.
+If you prefer to do things manually, use the install steps below.
 
-### Manual setup
+## Install
 
-1. Create and activate an environment.
+Dependencies for this project are defined in `pyproject.toml`.
 
-**Using `venv`:**
+If you are using `uv`:
+
 ```bash
-python -m venv venv
-source venv/bin/activate        # Linux/macOS
-venv\Scripts\activate           # Windows
+uv sync --extra dev
 ```
 
-**Using `uv`:**
+If you are using `pip`:
+
 ```bash
-uv venv --python 3.10
-source .venv/bin/activate       # Linux/macOS
-.venv\Scripts\activate          # Windows
+python -m venv .venv
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Windows (cmd.exe)
+.venv\Scripts\activate
+
+pip install -e .[dev]
 ```
 
-**Using `conda`:**
+If you want the full TTS experience or plan to run the slow GPU-backed tests, add the optional ML dependencies as well:
+
 ```bash
-conda create -n solar python=3.10
-conda activate solar
+uv sync --extra dev --extra ml
+pip install -e .[dev,ml]
 ```
 
-2. Install PyTorch for your CUDA version first.  
-   See: <https://pytorch.org/get-started/locally/>
+<a href="https://hatch.pypa.io/1.13/config/metadata/">Hatch</a>,
+<a href="https://pdm-project.org/en/latest/reference/pep621/">PDM</a>, and
+<a href="https://python-poetry.org/docs/pyproject/">Poetry</a>
+also support `pyproject.toml` natively.
+If you prefer
+<a href="https://docs.conda.io/projects/conda/en/25.5.x/user-guide/tasks/manage-environments.html">conda</a>,
+you may need a few additional setup steps.
 
-3. Install the rest of the dependencies.
-```bash
-pip install -r requirements.txt
-```
+After installation:
 
-4. Run migrations.
+1. Run migrations.
 ```bash
 cd mysite
 python manage.py migrate
 ```
 
-5. Start an LLM endpoint if you want dialogue generation.
+2. Start an LLM endpoint if you want dialogue generation.
 ```bash
 ollama serve
 ```
 
-6. Start Django.
+3. Start Django.
 ```bash
 python manage.py runserver
 ```
 
-7. Optionally start the audio worker if you want pre-generated TTS audio.
+4. Optionally start the audio worker if you want pre-generated TTS audio.
 ```bash
 python manage.py audio_worker
 ```
