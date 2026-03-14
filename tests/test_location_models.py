@@ -9,6 +9,8 @@ These tests create minimal Location objects to reach those uncovered
 return statements.
 """
 
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from mysite.universe.models.base import Location
@@ -407,3 +409,65 @@ class TestCalculateStationOrbit(TestCase):
         km, orbit_type = calculate_station_orbit(self.station, plain)
         self.assertEqual(orbit_type, "CUSTOM")
         self.assertEqual(km, 400)
+
+    def test_half_geo_selected_when_geo_is_outside_hill_sphere(self):
+        """If GEO is invalid but HALF_GEO is still safe, choose HALF_GEO."""
+        from mysite.universe.services.location_service import calculate_station_orbit
+
+        with patch.object(
+            self.geo_planet, "get_geostationary_altitude_km", return_value=2_000_000.0
+        ):
+            km, orbit_type = calculate_station_orbit(self.station, self.geo_planet)
+
+        self.assertEqual(orbit_type, "HALF_GEO")
+        self.assertEqual(km, 1_000_000)
+
+    def test_l4_rejected_outside_hill_sphere_falls_back_to_low(self):
+        """A moon outside the Hill sphere should not win over a valid LOW orbit."""
+        from mysite.universe.models.station import Station as StationModel
+        from mysite.universe.services.location_service import calculate_station_orbit
+
+        far_moon = type(self.big_moon).objects.create(
+            name="CSO Far Moon",
+            orbits=self.gas_giant,
+            moon_type="IC",
+            mass_kg=self.big_moon.mass_kg * 2,
+            radius_km=3000.0,
+            orbital_distance_km=100_000_000.0,
+        )
+        station = StationModel.objects.create(
+            name="CSO Low Fallback Station",
+            orbits=self.gas_giant,
+            large_berths=1,
+            medium_berths=1,
+            small_berths=2,
+        )
+
+        km, orbit_type = calculate_station_orbit(station, self.gas_giant)
+
+        self.assertEqual(orbit_type, "LOW")
+        self.assertNotEqual(km, round(far_moon.orbital_distance_km))
+
+    def test_low_failure_falls_back_to_custom_from_min_safe(self):
+        """If LOW orbit calculation errors, the service should still return CUSTOM."""
+        from mysite.universe.models.station import Station as StationModel
+        from mysite.universe.services.location_service import calculate_station_orbit
+
+        station = StationModel.objects.create(
+            name="CSO Custom Fallback Station",
+            orbits=self.airless_planet,
+            large_berths=1,
+            medium_berths=1,
+            small_berths=2,
+        )
+        min_safe = self.airless_planet.get_min_safe_orbit_km()
+
+        with patch.object(
+            self.airless_planet,
+            "get_low_orbit_altitude_km",
+            side_effect=RuntimeError("sensor fault"),
+        ):
+            km, orbit_type = calculate_station_orbit(station, self.airless_planet)
+
+        self.assertEqual(orbit_type, "CUSTOM")
+        self.assertEqual(km, round(min_safe + 200.0))
