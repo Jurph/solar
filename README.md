@@ -158,7 +158,7 @@ A smaller model like `qwen2.5:0.5b` works but produces noticeably weaker dialogu
 | Audio pre-generation | Django management command (`audio_worker`) | Renders audio 1hr ahead of playback |
 | Frontend | Django templates + vanilla JS | No framework |
 | Testing | pytest + pytest-django |  |
-| CI / coverage | CircleCI + Codecov | Runs on every push |
+| CI / coverage | CircleCI + Codecov | Fast test suite split across 4 parallel workers on every push |
 
 ---
 
@@ -178,12 +178,12 @@ More detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/audio_w
 ## Tests
 
 ```bash
-pytest -m "not slow"    # fast tests (~80 seconds, 390+ tests)
+pytest -m "not slow"    # fast tests used by CI
 pytest -m "slow"        # includes TTS/LLM benchmarks, requires GPU and running models
 pytest                  # everything
 ```
 
-Slow tests require a running LLM and GPU. The CI pipeline runs fast tests only.
+Slow tests require a running LLM and GPU. The CI pipeline runs the fast suite only, split across parallel CircleCI workers.
 
 ---
 

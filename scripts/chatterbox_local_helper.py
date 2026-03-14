@@ -3,10 +3,14 @@ Manual helper to test-drive Chatterbox-Turbo locally using downloaded weights.
 
 Usage:
     SET DJANGO_SETTINGS_MODULE=mysite.settings
-    SET CHATTERBOX_LOCAL_PATH=C:\\Users\\Jurph\\Documents\\Python Scripts\\solar\\models\\chatterbox-turbo
+    SET CHATTERBOX_LOCAL_PATH=<path-to-your-local-chatterbox-turbo-checkout>
     python scripts/chatterbox_local_helper.py
 
     Or explicitly use venv Python:
+    .\venv\Scripts\python.exe scripts\chatterbox_local_helper.py
+
+    Example (PowerShell):
+    $env:CHATTERBOX_LOCAL_PATH = (Resolve-Path .\\models\\chatterbox-turbo)
     .\venv\Scripts\python.exe scripts\chatterbox_local_helper.py
 """
 
@@ -16,20 +20,26 @@ import os
 
 # Ensure we're using the venv Python
 _venv_python = Path(__file__).parent.parent / "venv" / "Scripts" / "python.exe"
-if _venv_python.exists() and sys.executable != str(_venv_python) and not os.environ.get("_VENV_RERUN"):
+if (
+    _venv_python.exists()
+    and sys.executable != str(_venv_python)
+    and not os.environ.get("_VENV_RERUN")
+):
     print(f"Warning: Not using venv Python. Expected: {_venv_python}")
     print(f"Current: {sys.executable}")
     print("Re-running with venv Python...")
     import subprocess
+
     os.environ["_VENV_RERUN"] = "1"
     sys.exit(subprocess.call([str(_venv_python), __file__] + sys.argv[1:]))
 
 # Setup Django BEFORE importing any Django-dependent code
 current_path = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(current_path))
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mysite.settings")
 
 import django  # noqa: E402
+
 django.setup()
 
 # Now we can import Django-dependent code
@@ -38,12 +48,14 @@ from mysite.universe.services.tts_service import get_tts_service  # noqa: E402
 
 def main() -> int:
     # Load canonical audio sentences
-    canonical_file = Path(__file__).parent.parent / "docs" / "Canonical Audio Sentences.txt"
-    with open(canonical_file, 'r', encoding='utf-8') as f:
+    canonical_file = (
+        Path(__file__).parent.parent / "docs" / "Canonical Audio Sentences.txt"
+    )
+    with open(canonical_file, "r", encoding="utf-8") as f:
         sentences = [line.strip() for line in f if line.strip()]
-    
+
     print(f"Loaded {len(sentences)} canonical sentences")
-    
+
     voices = [
         "pilot-M-001",
         "pilot-M-002",
@@ -54,6 +66,7 @@ def main() -> int:
     service = get_tts_service()
     print(f"TTS Service device: {service.device}")
     import torch
+
     print(f"CUDA available: {torch.cuda.is_available()}")
     outdir = Path("audio/voices/generated")
     outdir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +74,7 @@ def main() -> int:
     # Combine all sentences into a single text with pauses
     combined_text = " ".join(sentences)
     print(f"Combined text: {combined_text[:100]}...")
-    
+
     any_failed = False
     for v in voices:
         try:

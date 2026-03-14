@@ -11,23 +11,26 @@ Solar uses CircleCI for continuous integration and Codecov for coverage tracking
 ### What It Does
 - Runs on every push to GitHub
 - Installs dependencies from `requirements.txt`
-- Runs full test suite (excluding slow TTS tests: `-m "not slow"`)
-- Generates coverage report
-- Uploads to Codecov
+- Runs the fast pytest suite (`-m "not slow"`) across 4 parallel CircleCI workers
+- Splits test files by historical timing data using `circleci tests split --split-by=timings`
+- Generates per-worker coverage reports
+- Uploads partial coverage to Codecov, then notifies Codecov to merge them
 
 ### Configuration File
 `.circleci/config.yml`
 
 **Note:** Uses Codecov CLI (not orb) to avoid requiring "Allow uncertified public orbs" setting.
 
-### Running Tests Locally (Same as CI)
+### Running Tests Locally (Equivalent Test Scope)
 ```bash
 # Activate venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 
-# Run tests with coverage
+# Run the same fast suite that CI validates
 pytest tests -m "not slow" --cov=mysite/universe --cov-report=xml --cov-report=term -v
 ```
+
+**Note:** CI runs the same fast-test selection, but splits files across 4 workers based on timing history.
 
 ### Excluded Tests
 **Slow tests (`@pytest.mark.slow`)** are excluded from CI:
@@ -102,19 +105,7 @@ CircleCI will automatically run tests on push.
 
 ## Maintaining Coverage
 
-### Current Coverage: 82%
-
-**Well-covered (>90%):**
-- Core models (celestial, navigation, display, simulation)
-- Audio profiles
-- Route planning
-- LLM service
-- Procedural generation
-
-**Needs improvement (<70%):**
-- Audio worker (50% - infinite loop and error paths not measured)
-- Some dialogue particles (content variations not all exercised)
-- TTS service (66% - model loading paths require GPU)
+Coverage changes over time. Treat Codecov as the source of truth for current percentages and patch impact rather than relying on hard-coded numbers in this document.
 
 ### Coverage Goals
 
@@ -156,7 +147,7 @@ CircleCI will automatically run tests on push.
 
 ### Slow Test Suite
 
-**Current:** ~80 seconds for 387 tests (excluding slow tests)
+The fast CI suite is timing-split across 4 workers. Local runtime will vary more because it runs serially and depends on your machine.
 
 **If it gets slower:**
 - Check for database-heavy tests (use transactions)
@@ -171,4 +162,4 @@ CircleCI will automatically run tests on push.
 - `ARCHITECTURE.md` - System architecture
 - `INTERFACE_CHANGES_CHECKLIST.md` - Interface change procedures
 
-**Last Updated:** December 31, 2025
+**Last Updated:** March 14, 2026
