@@ -43,8 +43,11 @@ jobs:
           name: Upload partial coverage to Codecov
           command: |
             source venv/bin/activate
-            codecovcli upload-process \
+            codecovcli do-upload \
               --token=$CODECOV_TOKEN \
+              --sha=$CIRCLE_SHA1 \
+              --git-service=github \
+              --slug=Jurph/solar \
               --flag parallel \
               --plugin pycoverage \
               --coverage-files-search-root-folder .
@@ -87,15 +90,21 @@ jobs:
 
   notify-codecov:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/python:3.10
 
     steps:
+      - checkout
+      - run:
+          name: Install codecov CLI
+          command: pip install codecov-cli
       - run:
           name: Notify Codecov to merge parallel uploads
           command: |
-            curl -Os https://cli.codecov.io/latest/linux/codecov
-            chmod +x codecov
-            ./codecov send-notifications --token=$CODECOV_TOKEN
+            codecovcli send-notifications \
+              --token=$CODECOV_TOKEN \
+              --sha=$CIRCLE_SHA1 \
+              --git-service=github \
+              --slug=Jurph/solar
 
 workflows:
   test-workflow:
