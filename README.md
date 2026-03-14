@@ -72,8 +72,15 @@ uv sync --extra dev
 
 If you are using `pip`:
 
+First create a virtual environment:
+
 ```bash
 python -m venv .venv
+```
+
+Then activate it:
+
+```bash
 # Linux/macOS
 source .venv/bin/activate
 
@@ -82,7 +89,11 @@ source .venv/bin/activate
 
 # Windows (cmd.exe)
 .venv\Scripts\activate
+```
 
+Then install the project and development dependencies:
+
+```bash
 pip install -e .[dev]
 ```
 
