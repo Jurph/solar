@@ -731,6 +731,189 @@ class TestAudioLabRenderTTSMode(TestCase):
             )
         self.assertEqual(response.status_code, 200)
 
+
+# ---------------------------------------------------------------------------
+# Numeric coercion / request-validation (issue #44)
+# ---------------------------------------------------------------------------
+
+
+class TestAudioPresetNumericValidation(TestCase):
+    """audio_preset returns 400 for malformed numeric query params."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("audio_preset", kwargs={"preset": "modem_noise_example"})
+
+    def test_malformed_gain_returns_400(self):
+        """Non-numeric gain query param → 400, not 500."""
+        resp = self.client.get(self.url, {"text": "TEST", "gain": "loud"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.json()["status"])
+
+    def test_malformed_carrier_frequency_returns_400(self):
+        resp = self.client.get(
+            self.url, {"text": "TEST", "carrier_frequency_hz": "high"}
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_baud_rate_returns_400(self):
+        """baud_rate is parsed as int(); a float string like '3.5' is invalid."""
+        resp = self.client.get(self.url, {"text": "TEST", "baud_rate": "fast"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_wow_rate_returns_400(self):
+        resp = self.client.get(self.url, {"text": "TEST", "wow_rate_hz": "wobble"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_valid_numeric_params_still_work(self):
+        """Sanity check: valid numeric overrides still produce 200."""
+        resp = self.client.get(
+            self.url,
+            {
+                "text": "OK",
+                "gain": "0.5",
+                "carrier_frequency_hz": "1800",
+                "baud_rate": "300",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "audio/wav")
+
+
+class TestAudioLabRenderModemNumericValidation(TestCase):
+    """audio_lab_render modem mode returns 400 for malformed numeric body fields."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("audio_lab_render")
+
+    def _post(self, payload: dict):
+        return self.client.post(
+            self.url, data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_malformed_modem_gain_returns_400(self):
+        resp = self._post({"mode": "modem", "modem_gain": "loud"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.json()["status"])
+
+    def test_malformed_baud_rate_returns_400(self):
+        resp = self._post({"mode": "modem", "baud_rate": "fast"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_carrier_frequency_returns_400(self):
+        resp = self._post({"mode": "modem", "carrier_frequency_hz": "high"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_quindar_gain_returns_400(self):
+        """quindar_gain is parsed before mode dispatch — shared param."""
+        resp = self._post({"mode": "modem", "quindar_gain": "beep"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_engine_bed_gain_returns_400(self):
+        resp = self._post({"mode": "modem", "engine_bed_gain": "rumble"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_valid_modem_overrides_still_work(self):
+        resp = self._post(
+            {
+                "mode": "modem",
+                "modem_gain": 0.5,
+                "baud_rate": 150,
+                "carrier_frequency_hz": 1600.0,
+            }
+        )
+        self.assertEqual(resp.status_code, 200)
+
+
+class TestAudioLabRenderTTSNumericValidation(TestCase):
+    """audio_lab_render TTS mode returns 400 for malformed numeric body fields."""
+
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse("audio_lab_render")
+
+    def _post(self, payload: dict):
+        return self.client.post(
+            self.url, data=json.dumps(payload), content_type="application/json"
+        )
+
+    def test_malformed_tts_gain_returns_400(self):
+        """tts_gain is parsed immediately on entering TTS mode."""
+        resp = self._post({"mode": "tts", "tts_gain": "loud"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.json()["status"])
+
+    def test_malformed_component_gain_returns_400(self):
+        """component_N_gain is parsed inside the fragment loop."""
+        mock_mod = _mock_tts_module()
+        payload = {
+            "mode": "tts",
+            "voice_id": "pilot_default",
+            "text": "Check.",
+            "component_1_gain": "broken",
+            "include_quindar": False,
+            "include_static": False,
+        }
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            resp = self._post(payload)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_static_gain_returns_400(self):
+        """static_gain is parsed when include_static is True."""
+        mock_mod = _mock_tts_module()
+        payload = {
+            "mode": "tts",
+            "voice_id": "pilot_default",
+            "text": "Check.",
+            "include_quindar": True,
+            "include_static": True,
+            "static_gain": "noisy",
+        }
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            resp = self._post(payload)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_rumble_gain_returns_400(self):
+        """rumble_gain is parsed when include_rumble is True."""
+        mock_mod = _mock_tts_module()
+        payload = {
+            "mode": "tts",
+            "voice_id": "pilot_default",
+            "text": "Check.",
+            "include_quindar": False,
+            "include_static": False,
+            "include_rumble": True,
+            "rumble_gain": "shaky",
+        }
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            resp = self._post(payload)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_malformed_echo_delay_returns_400(self):
+        """echo_delay_ms is parsed when include_echo is True."""
+        mock_mod = _mock_tts_module()
+        payload = {
+            "mode": "tts",
+            "voice_id": "pilot_default",
+            "text": "Check.",
+            "include_quindar": False,
+            "include_static": False,
+            "include_echo": True,
+            "echo_delay_ms": "slow",
+        }
+        with patch.dict(
+            sys.modules, {"mysite.universe.services.tts_service": mock_mod}
+        ):
+            resp = self._post(payload)
+        self.assertEqual(resp.status_code, 400)
+
     def test_tts_mode_without_voice_id_uses_sample_path(self):
         """TTS mode with no voice_id skips TTS generation and uses sample path."""
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:

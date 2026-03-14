@@ -95,6 +95,7 @@ def _save_last_playback(wav_bytes: bytes) -> None:
     except Exception:
         logger.warning("Failed to save last-playback.wav", exc_info=True)
 
+
 _PRESET_DEFINITIONS = {
     # Quindar tones (NASA comm beeps)
     # Intro: 2525 Hz ~250ms
@@ -149,7 +150,7 @@ def audio_preset(request, preset: str):
     Return a pre-rendered audio clip for a named preset as WAV.
 
     This is deliberately Python-defined synthesis: the browser only plays.
-    
+
     For modem_noise presets, accepts optional ?text=... query parameter.
     """
     components = _PRESET_DEFINITIONS.get(preset)
@@ -158,21 +159,27 @@ def audio_preset(request, preset: str):
             {"status": "error", "message": f"Unknown audio preset: {preset!r}"},
             status=404,
         )
-    
+
     # Allow params from audio plan (passed as query parameters)
     # For modem_noise presets, use text parameter to encode the actual broadcast message
     if preset.startswith("modem_noise") and "text" in request.GET:
         text = request.GET["text"]
         # Get optional params from query string (with defaults)
-        gain = float(request.GET.get("gain", 0.8))
-        carrier_freq = float(request.GET.get("carrier_frequency_hz", 1800.0))
-        carrier_gain = float(request.GET.get("carrier_gain", 0.15))
-        mark_freq = float(request.GET.get("mark_frequency_hz", 1200.0))
-        space_freq = float(request.GET.get("space_frequency_hz", 2200.0))
-        baud_rate = int(request.GET.get("baud_rate", 300))
-        wow_rate = float(request.GET.get("wow_rate_hz", 0.0))
-        wow_depth = float(request.GET.get("wow_depth_hz", 0.0))
-        
+        try:
+            gain = float(request.GET.get("gain", 0.8))
+            carrier_freq = float(request.GET.get("carrier_frequency_hz", 1800.0))
+            carrier_gain = float(request.GET.get("carrier_gain", 0.15))
+            mark_freq = float(request.GET.get("mark_frequency_hz", 1200.0))
+            space_freq = float(request.GET.get("space_frequency_hz", 2200.0))
+            baud_rate = int(request.GET.get("baud_rate", 300))
+            wow_rate = float(request.GET.get("wow_rate_hz", 0.0))
+            wow_depth = float(request.GET.get("wow_depth_hz", 0.0))
+        except (ValueError, TypeError) as exc:
+            return JsonResponse(
+                {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+                status=400,
+            )
+
         # Replace any ModemNoise components with text from query
         components = [
             ModemNoise(
@@ -185,7 +192,9 @@ def audio_preset(request, preset: str):
                 carrier_gain=carrier_gain,
                 wow_rate_hz=wow_rate,
                 wow_depth_hz=wow_depth,
-            ) if isinstance(comp, ModemNoise) else comp
+            )
+            if isinstance(comp, ModemNoise)
+            else comp
             for comp in components
         ]
 
@@ -207,7 +216,9 @@ def _list_available_voice_templates() -> list[str]:
 
     candidates = set()
 
-    static_dir = os.path.join(settings.BASE_DIR, "mysite", "universe", "static", "universe", "voices")
+    static_dir = os.path.join(
+        settings.BASE_DIR, "mysite", "universe", "static", "universe", "voices"
+    )
     for path in glob(os.path.join(static_dir, "*.wav")):
         candidates.add(os.path.splitext(os.path.basename(path))[0])
 
@@ -235,17 +246,31 @@ def audio_lab_render(request):
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except Exception:
-        return JsonResponse({"status": "error", "message": "Invalid JSON body"}, status=400)
+        return JsonResponse(
+            {"status": "error", "message": "Invalid JSON body"}, status=400
+        )
 
     mode = (payload.get("mode") or "modem").lower()
     text = payload.get("text") or "Sphinx of black quartz, judge my vow."
     include_quindar = bool(payload.get("include_quindar", True))
     include_static = bool(payload.get("include_static", True))
-    quindar_gain = float(payload.get("quindar_gain", 0.45))
-    engine_bed_gain = float(payload.get("engine_bed_gain", 1.0))
+    try:
+        quindar_gain = float(payload.get("quindar_gain", 0.45))
+        engine_bed_gain = float(payload.get("engine_bed_gain", 1.0))
+    except (ValueError, TypeError) as exc:
+        return JsonResponse(
+            {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+            status=400,
+        )
 
     if mode == "tts":
-        tts_gain = float(payload.get("tts_gain", 2.0))
+        try:
+            tts_gain = float(payload.get("tts_gain", 2.0))
+        except (ValueError, TypeError) as exc:
+            return JsonResponse(
+                {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+                status=400,
+            )
         voice_id = (payload.get("voice_id") or "").strip()
         generated_tmp_path = None
 
@@ -257,7 +282,11 @@ def audio_lab_render(request):
                 import tempfile
 
                 tts_service = get_tts_service()
-                logger.info("audio_lab TTS generation: voice_id=%s text_len=%d", voice_id, len(text))
+                logger.info(
+                    "audio_lab TTS generation: voice_id=%s text_len=%d",
+                    voice_id,
+                    len(text),
+                )
                 wav_bytes = tts_service.generate(text=text, voice_id=voice_id)
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
                 tmp.write(wav_bytes)
@@ -287,9 +316,18 @@ def audio_lab_render(request):
 
         components = []
         if include_quindar:
-            components.append(SineBeep(start_seconds=0.0, duration_seconds=0.25, frequency_hz=2525.0, gain=quindar_gain))
+            components.append(
+                SineBeep(
+                    start_seconds=0.0,
+                    duration_seconds=0.25,
+                    frequency_hz=2525.0,
+                    gain=quindar_gain,
+                )
+            )
 
-        components.append(WavFileClip(start_seconds=voice_start, path=tts_clip_path, gain=tts_gain))
+        components.append(
+            WavFileClip(start_seconds=voice_start, path=tts_clip_path, gain=tts_gain)
+        )
 
         # Compute voice clip duration for looping the 10 soundscape components.
         voice_duration = 0.5  # fallback
@@ -323,7 +361,18 @@ def audio_lab_render(request):
         ]
 
         for i in range(1, 11):
-            component_gain = float(payload.get(f"component_{i}_gain", 0.0)) * engine_bed_gain
+            try:
+                component_gain = (
+                    float(payload.get(f"component_{i}_gain", 0.0)) * engine_bed_gain
+                )
+            except (ValueError, TypeError) as exc:
+                return JsonResponse(
+                    {
+                        "status": "error",
+                        "message": f"Invalid numeric parameter component_{i}_gain: {exc}",
+                    },
+                    status=400,
+                )
             if component_gain <= 0.0:
                 continue  # Skip components with zero gain
 
@@ -344,9 +393,14 @@ def audio_lab_render(request):
             if not fragment_path:
                 # Fallback to root audio/ folder (source assets location)
                 import os
+
                 root_candidates = [
-                    os.path.join(settings.BASE_DIR, "audio", f"audio-{i:02d}-variant-a.wav"),
-                    os.path.join(settings.BASE_DIR, "audio", f"audio-{i:02d}-{name}.wav"),
+                    os.path.join(
+                        settings.BASE_DIR, "audio", f"audio-{i:02d}-variant-a.wav"
+                    ),
+                    os.path.join(
+                        settings.BASE_DIR, "audio", f"audio-{i:02d}-{name}.wav"
+                    ),
                     os.path.join(settings.BASE_DIR, "audio", f"audio-{i:02d}.wav"),
                 ]
                 for rc in root_candidates:
@@ -355,7 +409,9 @@ def audio_lab_render(request):
                         break
 
             if not fragment_path:
-                logger.warning(f"Audio fragment audio-{i:02d} not found (variant, descriptive, numeric), skipping")
+                logger.warning(
+                    f"Audio fragment audio-{i:02d} not found (variant, descriptive, numeric), skipping"
+                )
                 continue
 
             components.append(
@@ -381,23 +437,46 @@ def audio_lab_render(request):
             except Exception:
                 pass
             end_time = voice_start + voice_duration
-            components.append(SineBeep(start_seconds=end_time + 0.05, duration_seconds=0.25, frequency_hz=2475.0, gain=quindar_gain))
+            components.append(
+                SineBeep(
+                    start_seconds=end_time + 0.05,
+                    duration_seconds=0.25,
+                    frequency_hz=2475.0,
+                    gain=quindar_gain,
+                )
+            )
 
         if include_static:
+            try:
+                static_gain = float(payload.get("static_gain", 0.08))
+                static_intensity = float(payload.get("static_intensity", 0.6))
+                static_lowpass = float(payload.get("static_lowpass_hz", 5000.0))
+                static_highpass = float(payload.get("static_highpass_hz", 80.0))
+            except (ValueError, TypeError) as exc:
+                return JsonResponse(
+                    {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+                    status=400,
+                )
             components.append(
                 WhiteNoise(
                     start_seconds=0.0,
                     duration_seconds=max(0.001, end_time),
-                    gain=float(payload.get("static_gain", 0.08)),
-                    intensity=float(payload.get("static_intensity", 0.6)),
-                    lowpass_hz=float(payload.get("static_lowpass_hz", 5000.0)),
-                    highpass_hz=float(payload.get("static_highpass_hz", 80.0)),
+                    gain=static_gain,
+                    intensity=static_intensity,
+                    lowpass_hz=static_lowpass,
+                    highpass_hz=static_highpass,
                 )
             )
 
         if bool(payload.get("include_rumble", False)):
-            rumble_gain = float(payload.get("rumble_gain", 0.05))
-            rumble_frequency_hz = float(payload.get("rumble_frequency_hz", 55.0))
+            try:
+                rumble_gain = float(payload.get("rumble_gain", 0.05))
+                rumble_frequency_hz = float(payload.get("rumble_frequency_hz", 55.0))
+            except (ValueError, TypeError) as exc:
+                return JsonResponse(
+                    {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+                    status=400,
+                )
             components.append(
                 SineBeep(
                     start_seconds=0.0,
@@ -421,11 +500,20 @@ def audio_lab_render(request):
 
         post_effects = []
         if bool(payload.get("include_echo", False)):
+            try:
+                echo_delay = float(payload.get("echo_delay_ms", 90.0))
+                echo_decay = float(payload.get("echo_decay", 0.25))
+                echo_wet = float(payload.get("echo_wet", 0.12))
+            except (ValueError, TypeError) as exc:
+                return JsonResponse(
+                    {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+                    status=400,
+                )
             post_effects.append(
                 Echo(
-                    delay_ms=float(payload.get("echo_delay_ms", 90.0)),
-                    decay=float(payload.get("echo_decay", 0.25)),
-                    wet=float(payload.get("echo_wet", 0.12)),
+                    delay_ms=echo_delay,
+                    decay=echo_decay,
+                    wet=echo_wet,
                 )
             )
 
@@ -434,14 +522,20 @@ def audio_lab_render(request):
         return HttpResponse(wav_bytes, content_type="audio/wav")
 
     # Defaults tuned for audibility without being painfully loud.
-    modem_gain = float(payload.get("modem_gain", 0.8))
-    carrier_frequency_hz = float(payload.get("carrier_frequency_hz", 1800.0))
-    carrier_gain = float(payload.get("carrier_gain", 0.15))
-    baud_rate = int(payload.get("baud_rate", 300))
-    mark_frequency_hz = float(payload.get("mark_frequency_hz", 1200.0))
-    space_frequency_hz = float(payload.get("space_frequency_hz", 2200.0))
-    wow_rate_hz = float(payload.get("wow_rate_hz", 0.0))
-    wow_depth_hz = float(payload.get("wow_depth_hz", 0.0))
+    try:
+        modem_gain = float(payload.get("modem_gain", 0.8))
+        carrier_frequency_hz = float(payload.get("carrier_frequency_hz", 1800.0))
+        carrier_gain = float(payload.get("carrier_gain", 0.15))
+        baud_rate = int(payload.get("baud_rate", 300))
+        mark_frequency_hz = float(payload.get("mark_frequency_hz", 1200.0))
+        space_frequency_hz = float(payload.get("space_frequency_hz", 2200.0))
+        wow_rate_hz = float(payload.get("wow_rate_hz", 0.0))
+        wow_depth_hz = float(payload.get("wow_depth_hz", 0.0))
+    except (ValueError, TypeError) as exc:
+        return JsonResponse(
+            {"status": "error", "message": f"Invalid numeric parameter: {exc}"},
+            status=400,
+        )
 
     # Build components with simple timing:
     # optional quindar_start → modem → optional quindar_end; static overlays full duration.
@@ -453,11 +547,20 @@ def audio_lab_render(request):
     bits_per_char = 10
     attack = 0.01
     release = 0.01
-    modem_duration = (len(text) * bits_per_char) / float(max(1, baud_rate)) + attack + release
+    modem_duration = (
+        (len(text) * bits_per_char) / float(max(1, baud_rate)) + attack + release
+    )
 
     components = []
     if include_quindar:
-        components.append(SineBeep(start_seconds=0.0, duration_seconds=quindar_duration, frequency_hz=2525.0, gain=quindar_gain))
+        components.append(
+            SineBeep(
+                start_seconds=0.0,
+                duration_seconds=quindar_duration,
+                frequency_hz=2525.0,
+                gain=quindar_gain,
+            )
+        )
 
     components.append(
         ModemNoise(
@@ -490,4 +593,3 @@ def audio_lab_render(request):
 
     wav_bytes = render_wav_bytes(components, post_effects=[])
     return HttpResponse(wav_bytes, content_type="audio/wav")
-
