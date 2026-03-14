@@ -1,4 +1,6 @@
 import json
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -176,3 +178,105 @@ class TestHealthCheckView(TestCase):
             resp = self.client.get(url)
         data = resp.json()
         self.assertEqual(data["audio_worker"]["status"], "ok")
+
+    def test_health_check_without_worker_heartbeat_reports_unknown_tts_and_vram(self):
+        """No heartbeat file should surface explicit unknown statuses for worker-side state."""
+        url = reverse("health_check")
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            with patch(
+                "mysite.universe.views.simulation._read_worker_heartbeat",
+                return_value=None,
+            ):
+                resp = self.client.get(url)
+
+        data = resp.json()
+        self.assertEqual(data["tts"]["status"], "unknown")
+        self.assertEqual(data["vram"]["status"], "unknown")
+        self.assertIn("No worker heartbeat file", data["tts"]["message"])
+
+    def test_health_check_with_stale_heartbeat_marks_tts_and_vram_warning(self):
+        """A stale heartbeat should warn on TTS and include stale text in VRAM output."""
+        url = reverse("health_check")
+        heartbeat = {
+            "pid": 4242,
+            "wall_clock": 50.0,
+            "tts": {"status": "ok", "message": "warm"},
+            "vram": {"free_mb": 256, "total_mb": 8192, "device": "RTX test"},
+        }
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            with patch(
+                "mysite.universe.views.simulation._read_worker_heartbeat",
+                return_value=heartbeat,
+            ):
+                with patch(
+                    "mysite.universe.views.simulation.time_module.time",
+                    return_value=100.0,
+                ):
+                    resp = self.client.get(url)
+
+        data = resp.json()
+        self.assertEqual(data["tts"]["status"], "warning")
+        self.assertIn("Heartbeat stale", data["tts"]["message"])
+        self.assertEqual(data["vram"]["status"], "warning")
+        self.assertIn("stale: 50s ago", data["vram"]["message"])
+        self.assertEqual(data["audio_worker"]["worker_pid"], 4242)
+
+    def test_health_check_with_heartbeat_but_no_vram_data_reports_warning(self):
+        """Heartbeat without a vram block should return the explicit warning branch."""
+        url = reverse("health_check")
+        heartbeat = {
+            "pid": 31337,
+            "wall_clock": 100.0,
+            "tts": {"status": "ok", "message": "ready"},
+        }
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            with patch(
+                "mysite.universe.views.simulation._read_worker_heartbeat",
+                return_value=heartbeat,
+            ):
+                with patch(
+                    "mysite.universe.views.simulation.time_module.time",
+                    return_value=105.0,
+                ):
+                    resp = self.client.get(url)
+
+        data = resp.json()
+        self.assertEqual(data["tts"]["status"], "ok")
+        self.assertEqual(data["vram"]["status"], "warning")
+        self.assertIn("no VRAM data", data["vram"]["message"])
+        self.assertEqual(data["audio_worker"]["worker_pid"], 31337)
+
+
+class TestReadWorkerHeartbeat(TestCase):
+    def test_invalid_json_returns_none(self):
+        """Malformed heartbeat JSON should be swallowed and treated as unavailable."""
+        from mysite.universe.views.simulation import _read_worker_heartbeat
+
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as tmp:
+            tmp.write("{not valid json")
+            heartbeat_path = tmp.name
+
+        try:
+            with patch(
+                "mysite.universe.views.simulation._HEARTBEAT_PATH",
+                Path(heartbeat_path),
+            ):
+                self.assertIsNone(_read_worker_heartbeat())
+        finally:
+            import os
+
+            os.unlink(heartbeat_path)
+
+    def test_oserror_returns_none(self):
+        """Read errors should not bubble out of the health endpoint helper."""
+        from mysite.universe.views.simulation import _read_worker_heartbeat
+
+        class _FakePath:
+            def exists(self):
+                return True
+
+            def read_text(self):
+                raise OSError("disk offline")
+
+        with patch("mysite.universe.views.simulation._HEARTBEAT_PATH", _FakePath()):
+            self.assertIsNone(_read_worker_heartbeat())

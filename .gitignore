@@ -139,6 +139,7 @@ dmypy.json
 artifacts/llm_benchmark.jsonl
 
 # Coverage artifacts
+coverage.json
 coverage.xml
 .coverage
 
