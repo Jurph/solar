@@ -142,10 +142,8 @@ artifacts/llm_benchmark.jsonl
 coverage.xml
 .coverage
 
-# Claude / local assistant runtime state
-.claude/agent-memory/
-.claude/*.local.json
-.claude/*.lock
+# Claude / local assistant state
+.claude/
 
 # Django collectstatic output
 staticfiles/
