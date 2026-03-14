@@ -9,6 +9,7 @@ Contains:
 
 import json
 import logging
+import math
 import time as time_module
 from pathlib import Path
 from typing import Optional
@@ -62,6 +63,12 @@ def set_time_scale(request):
     try:
         data = json.loads(request.body) if request.body else {}
         new_scale = float(data.get("time_scale", 1.0))
+
+        if not math.isfinite(new_scale):
+            return JsonResponse(
+                {"status": "error", "message": "time_scale must be finite"},
+                status=400,
+            )
 
         if new_scale <= 0:
             return JsonResponse(

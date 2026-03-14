@@ -31,15 +31,34 @@ def logs_view(request):
     }
     min_level_no = level_map.get(min_level.upper(), logging.DEBUG)
 
-    tail_n = int(request.GET.get("n", "200"))
+    try:
+        tail_n = int(request.GET.get("n", "200"))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "Invalid n; must be a non-negative integer.",
+            },
+            status=400,
+        )
+    if tail_n < 0:
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "Invalid n; must be a non-negative integer.",
+            },
+            status=400,
+        )
     handler = get_log_handler()
     all_logs = handler.tail(tail_n)
-    
+
     # Filter by minimum level
     filtered_logs = [
-        log for log in all_logs
+        log
+        for log in all_logs
         if level_map.get(log["level"], logging.DEBUG) >= min_level_no
     ]
-    
-    return JsonResponse({"logs": filtered_logs, "filtered": len(all_logs) - len(filtered_logs)})
 
+    return JsonResponse(
+        {"logs": filtered_logs, "filtered": len(all_logs) - len(filtered_logs)}
+    )

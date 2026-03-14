@@ -111,6 +111,7 @@ def _sentence_case(text: str) -> str:
     return t
 
 
+@require_http_methods(["GET"])
 def event_feed(request):
     """
     API endpoint that returns dialogue events as JSON for real-time display.

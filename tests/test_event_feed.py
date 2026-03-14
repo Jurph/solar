@@ -502,6 +502,14 @@ class EventFeedLimitValidationTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class EventFeedMethodTests(TestCase):
+    """The event feed is a read-only API and should reject non-GET methods."""
+
+    def test_post_rejected(self):
+        response = self.client.post("/api/events/")
+        self.assertEqual(response.status_code, 405)
+
+
 class EventFeedTimestampTieBreakTests(TestCase):
     """
     Tests for cursor behavior when two events share the same timestamp.

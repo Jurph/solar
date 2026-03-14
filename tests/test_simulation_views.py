@@ -43,6 +43,22 @@ class TestSimulationViews(TestCase):
         assert resp.status_code == 400
         assert "must be positive" in resp.json()["message"]
 
+    def test_set_time_scale_rejects_nan(self):
+        url = reverse("set_time_scale")
+        resp = self.client.post(
+            url, data=json.dumps({"time_scale": "nan"}), content_type="application/json"
+        )
+        assert resp.status_code == 400
+        assert "finite" in resp.json()["message"]
+
+    def test_set_time_scale_rejects_infinity(self):
+        url = reverse("set_time_scale")
+        resp = self.client.post(
+            url, data=json.dumps({"time_scale": "inf"}), content_type="application/json"
+        )
+        assert resp.status_code == 400
+        assert "finite" in resp.json()["message"]
+
     def test_set_time_scale_updates_state(self):
         url = reverse("set_time_scale")
         resp = self.client.post(

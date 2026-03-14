@@ -187,6 +187,20 @@ class TestLogsView(TestCase):
         # With no min_level filter, we get up to 2 total from tail
         self.assertLessEqual(len(data["logs"]), 2)
 
+    def test_invalid_n_returns_400(self):
+        """A non-integer ?n should return a helpful 400 instead of a 500."""
+        url = reverse("logs_view")
+        resp = self.client.get(url, {"n": "abc"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["status"], "error")
+
+    def test_negative_n_returns_400(self):
+        """A negative ?n should be rejected instead of slicing oddly."""
+        url = reverse("logs_view")
+        resp = self.client.get(url, {"n": "-1"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["status"], "error")
+
     def test_level_param_does_not_crash(self):
         """?level=DEBUG should set root logger level without crashing."""
         url = reverse("logs_view")
