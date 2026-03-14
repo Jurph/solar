@@ -2,7 +2,12 @@ from typing import List, Union
 
 from mysite.universe.models.base import Location
 from mysite.universe.models.constants import TypeName
-from mysite.universe.models.navigation import ManeuverType, NavigationEvent, UniverseGraph, is_planetary
+from mysite.universe.models.navigation import (
+    ManeuverType,
+    NavigationEvent,
+    UniverseGraph,
+    is_planetary,
+)
 from mysite.universe.models.scale import OrderedScale, Scale
 
 
@@ -56,7 +61,9 @@ def determine_transfer_plan(scale_path: List[int]) -> List[Union[int, ManeuverTy
     return transfer_plan
 
 
-def plan_route(service, origin: Location, destination: Location) -> List[NavigationEvent]:
+def plan_route(
+    service, origin: Location, destination: Location
+) -> List[NavigationEvent]:
     """
     Plans a route from origin to destination using a two-pass approach.
 
@@ -174,6 +181,73 @@ def plan_route(service, origin: Location, destination: Location) -> List[Navigat
     return determine_maneuvers(service, transfer_plan, compressed_path, overall_max)
 
 
+def _plan_direct_ascent_route(
+    service,
+    origin: Location,
+    destination: Location,
+    origin_type: str,
+    dest_type: str,
+) -> List[NavigationEvent]:
+    """
+    Build the maneuver sequence for a direct-ascent transfer between two locations.
+
+    Direct ascent is used when the origin and destination are close enough that
+    no intermediate Hohmann transfer or hyperspace jump is needed — the ship
+    flies straight from one body to the other.
+
+    The sequence is: optional departure (UNDOCK/LAUNCH) → DIRECT_ASCENT →
+    optional arrival (DOCK, or CIRCULARIZE+DEORBIT+LANDING, or DEORBIT+LANDING).
+    """
+
+    def _make_event(maneuver: ManeuverType) -> NavigationEvent:
+        current_loc = origin
+        if maneuver in (
+            ManeuverType.DEORBIT,
+            ManeuverType.LANDING,
+            ManeuverType.DOCK,
+            ManeuverType.CIRCULARIZE,
+        ):
+            current_loc = destination
+
+        return NavigationEvent(
+            maneuver=maneuver,
+            origin=origin,
+            current=current_loc,
+            next=destination,
+            destination=destination,
+            description=f"{maneuver.name} from {origin.name} to {destination.name}",
+            controller=None,
+        )
+
+    events: List[NavigationEvent] = []
+
+    if origin_type == TypeName.STATION:
+        events.append(_make_event(ManeuverType.UNDOCK))
+    elif origin_type == TypeName.MOON:
+        events.append(_make_event(ManeuverType.LAUNCH))
+
+    events.append(_make_event(ManeuverType.DIRECT_ASCENT))
+
+    if dest_type == TypeName.STATION:
+        events.append(_make_event(ManeuverType.DOCK))
+    elif dest_type == TypeName.MOON:
+        events.extend(
+            [
+                _make_event(ManeuverType.CIRCULARIZE),
+                _make_event(ManeuverType.DEORBIT),
+                _make_event(ManeuverType.LANDING),
+            ]
+        )
+    else:
+        events.extend(
+            [_make_event(ManeuverType.DEORBIT), _make_event(ManeuverType.LANDING)]
+        )
+
+    from .controllers import enhance_with_controllers
+
+    return enhance_with_controllers(service, events)
+
+
 def determine_maneuvers(
     service,
     transfer_plan: List[Union[int, ManeuverType]],
@@ -199,50 +273,9 @@ def determine_maneuvers(
         and isinstance(transfer_plan[1], ManeuverType)
         and transfer_plan[1] == ManeuverType.DIRECT_ASCENT
     ):
-
-        def make_direct_event(maneuver: ManeuverType) -> NavigationEvent:
-            current_loc = origin
-            if maneuver in (
-                ManeuverType.DEORBIT,
-                ManeuverType.LANDING,
-                ManeuverType.DOCK,
-                ManeuverType.CIRCULARIZE,
-            ):
-                current_loc = destination
-
-            return NavigationEvent(
-                maneuver=maneuver,
-                origin=origin,
-                current=current_loc,
-                next=destination,
-                destination=destination,
-                description=f"{maneuver.name} from {origin.name} to {destination.name}",
-                controller=None,
-            )
-
-        events.clear()
-
-        if origin_type == TypeName.STATION:
-            events.append(make_direct_event(ManeuverType.UNDOCK))
-        elif origin_type == TypeName.MOON:
-            events.append(make_direct_event(ManeuverType.LAUNCH))
-        events.append(make_direct_event(ManeuverType.DIRECT_ASCENT))
-        if dest_type == TypeName.STATION:
-            events.append(make_direct_event(ManeuverType.DOCK))
-        elif dest_type == TypeName.MOON:
-            events.extend(
-                [
-                    make_direct_event(ManeuverType.CIRCULARIZE),
-                    make_direct_event(ManeuverType.DEORBIT),
-                    make_direct_event(ManeuverType.LANDING),
-                ]
-            )
-        else:
-            events.extend([make_direct_event(ManeuverType.DEORBIT), make_direct_event(ManeuverType.LANDING)])
-
-        from .controllers import enhance_with_controllers
-
-        return enhance_with_controllers(service, events)
+        return _plan_direct_ascent_route(
+            service, origin, destination, origin_type, dest_type
+        )
 
     # Multi-leg journey branch
     def make_departure_event(maneuver: ManeuverType) -> NavigationEvent:
@@ -295,22 +328,39 @@ def determine_maneuvers(
         else:
             events.append(make_transfer_event(ManeuverType.SUBLIGHT))
     else:
-        is_origin_planetary = origin_type in TypeName.PLANETARY_BODIES or is_planetary(origin)
+        is_origin_planetary = origin_type in TypeName.PLANETARY_BODIES or is_planetary(
+            origin
+        )
         if is_origin_planetary:
-            if not any(isinstance(x, ManeuverType) and x == ManeuverType.HYPERSPACE for x in transfer_plan):
+            if not any(
+                isinstance(x, ManeuverType) and x == ManeuverType.HYPERSPACE
+                for x in transfer_plan
+            ):
                 if dest_type == TypeName.STATION:
                     if len(transfer_plan) == 5:
-                        events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                        events.append(
+                            make_transfer_arrival_event(ManeuverType.PLANE_CHANGE)
+                        )
                         events.append(make_transfer_event(ManeuverType.SUBLIGHT))
-                        events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
-                        events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                        events.append(
+                            make_transfer_arrival_event(ManeuverType.CIRCULARIZE)
+                        )
+                        events.append(
+                            make_transfer_arrival_event(ManeuverType.PLANE_CHANGE)
+                        )
                     else:
                         events.append(make_transfer_event(ManeuverType.PLANE_CHANGE))
                         events.append(make_transfer_event(ManeuverType.SUBLIGHT))
                         events.append(make_transfer_event(ManeuverType.CIRCULARIZE))
-                        events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
-                        events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
-                        events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                        events.append(
+                            make_transfer_arrival_event(ManeuverType.SUBLIGHT)
+                        )
+                        events.append(
+                            make_transfer_arrival_event(ManeuverType.CIRCULARIZE)
+                        )
+                        events.append(
+                            make_transfer_arrival_event(ManeuverType.PLANE_CHANGE)
+                        )
                 else:
                     events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
                     events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
@@ -326,7 +376,9 @@ def determine_maneuvers(
                     events.append(make_transfer_arrival_event(ManeuverType.SUBLIGHT))
                     events.append(make_transfer_arrival_event(ManeuverType.CIRCULARIZE))
                 if dest_type == TypeName.STATION:
-                    events.append(make_transfer_arrival_event(ManeuverType.PLANE_CHANGE))
+                    events.append(
+                        make_transfer_arrival_event(ManeuverType.PLANE_CHANGE)
+                    )
         else:
             events.append(make_transfer_event(ManeuverType.SUBLIGHT))
             events.append(make_transfer_event(ManeuverType.CIRCULARIZE))
@@ -341,5 +393,3 @@ def determine_maneuvers(
     from .controllers import enhance_with_controllers
 
     return enhance_with_controllers(service, events)
-
-
