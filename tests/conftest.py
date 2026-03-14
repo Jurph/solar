@@ -190,6 +190,9 @@ def _log_vram_baseline():
     any test runs, so this snapshot captures it as part of the baseline.
     Written to artifacts/vram_baseline.json alongside the LLM benchmark log.
     """
+    if os.getenv("SOLAR_LOG_VRAM_BASELINE") != "1":
+        return
+
     try:
         import torch
 

@@ -137,6 +137,7 @@ dmypy.json
 
 # LLM benchmark data (test artifacts)
 artifacts/llm_benchmark.jsonl
+artifacts/vram_baseline.json
 
 # Coverage artifacts
 coverage.json
