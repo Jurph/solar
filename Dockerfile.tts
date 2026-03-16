@@ -1,0 +1,61 @@
+# Solar TTS Service Container
+# Chatterbox-TTS with FastAPI server for audio generation
+# Runs independently from Django web server
+
+FROM python:3.10-slim
+
+# Metadata labels
+LABEL maintainer="Solar Team"
+LABEL description="Solar TTS Service - Chatterbox-TTS"
+LABEL version="1.0.0"
+
+# Prevent Python warnings
+ENV PYTHONWARNINGS="ignore::DeprecationWarning"
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for TTS (audio processing, CUDA support)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Audio processing libraries
+    libsndfile1-dev \
+    # Build tools for PyTorch/CUDA
+    build-essential \
+    pkg-config \
+    # CA certificates for API calls
+    ca-certificates \
+    # Clean up package manager
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN groupadd tts --gid 1000 && useradd tts --gid 1000 --uid 1000 --shell /bin/bash
+
+# Copy requirements first (for layer caching)
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project code (needed for tts_service imports)
+COPY . .
+
+# Copy TTS server script to root
+COPY tts_server.py /app/tts_server.py
+
+# Create necessary directories
+RUN mkdir -p /app/models /app/audio_cache && \
+    chown -R tts:tts /app
+
+# Switch to non-root user
+USER tts
+
+# Expose TTS API port
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
+    CMD python -c "import requests; requests.get('http://localhost:8001/health')" || exit 1
+
+# Run TTS FastAPI server
+CMD ["python", "/app/tts_server.py"]
+

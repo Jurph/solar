@@ -10,6 +10,7 @@ Contains:
 import json
 import logging
 import math
+import os
 import time as time_module
 from pathlib import Path
 from typing import Optional
@@ -200,7 +201,8 @@ def health_check(request):
     # Check LLM server using OpenAI-compatible /v1/models endpoint
     # This works with: Ollama, LM Studio, OpenAI API, and other compatible servers
     try:
-        resp = requests.get("http://localhost:11434/v1/models", timeout=2)
+        llm_endpoint = os.getenv('LLM_ENDPOINT', 'http://localhost:11434/v1')
+        resp = requests.get(f"{llm_endpoint}/models", timeout=2)
         if resp.status_code == 200:
             health["llm"] = {"status": "ok", "message": "LLM server responding"}
         else:
@@ -280,7 +282,8 @@ def health_check(request):
         "oldest_pending_age_seconds": oldest_pending_age,
     }
 
-    # TTS and VRAM status — read from the audio_worker's heartbeat file.
+    # TTS and VRAM status — read from the audio_worker's heartbeat file (local dev)
+    # or query the TTS service directly (Docker).
     # The worker is a separate subprocess so in-process torch.cuda and
     # get_tts_health() only see the web server's (empty) state.
     heartbeat = _read_worker_heartbeat()
@@ -317,14 +320,60 @@ def health_check(request):
 
         health["audio_worker"]["worker_pid"] = heartbeat.get("pid")
     else:
-        # No heartbeat file — worker may not have started yet
-        health["tts"] = {
-            "status": "unknown",
-            "message": "No worker heartbeat file (worker may not be running)",
-        }
+        # No heartbeat file — try to query TTS service directly (Docker setup)
+        try:
+            tts_endpoint = os.getenv('TTS_ENDPOINT', 'http://localhost:8001/v1/audio')
+            # Extract base URL (remove /v1/audio path)
+            tts_base = tts_endpoint.rsplit('/v1', 1)[0] if '/v1' in tts_endpoint else tts_endpoint
+            resp = requests.get(f"{tts_base}/health", timeout=2)
+            if resp.status_code == 200:
+                tts_response = resp.json()
+                tts_status = tts_response.get("status", "ok")
+                tts_device = tts_response.get('tts_health', {}).get('device', 'unknown')
+                # Map TTS status to frontend display status:
+                # - "ok" → green (🟢)
+                # - "degraded" → yellow (🟡) - service running but not yet used
+                # - anything else → red (🔴)
+                if tts_status == "degraded":
+                    display_status = "idle"  # Yellow indicator
+                elif tts_status == "ok":
+                    display_status = "ok"    # Green indicator
+                else:
+                    display_status = tts_status  # Red indicator
+
+                health["tts"] = {
+                    "status": tts_status,
+                    "message": f"TTS service responding ({tts_device})",
+                }
+                # Also set audio_worker status for frontend compatibility
+                # Frontend looks for health.audio_worker to display TTS status
+                health["audio_worker"]["status"] = display_status
+                health["audio_worker"]["message"] = f"TTS service responding ({tts_device})"
+            else:
+                health["tts"] = {
+                    "status": "error",
+                    "message": f"TTS service returned {resp.status_code}",
+                }
+                health["audio_worker"]["status"] = "error"
+                health["audio_worker"]["message"] = f"TTS service returned {resp.status_code}"
+        except requests.exceptions.ConnectionError:
+            health["tts"] = {
+                "status": "error",
+                "message": f"Cannot connect to TTS service ({tts_endpoint})",
+            }
+            health["audio_worker"]["status"] = "error"
+            health["audio_worker"]["message"] = f"Cannot connect to TTS service"
+        except Exception as e:
+            health["tts"] = {
+                "status": "error",
+                "message": f"TTS health check failed: {str(e)}",
+            }
+            health["audio_worker"]["status"] = "error"
+            health["audio_worker"]["message"] = f"TTS health check failed: {str(e)}"
+
         health["vram"] = {
             "status": "unknown",
-            "message": "No worker heartbeat file (VRAM data unavailable)",
+            "message": "VRAM data unavailable (no audio_worker heartbeat)",
         }
 
     return JsonResponse(health)
