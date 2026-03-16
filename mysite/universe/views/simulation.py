@@ -321,11 +321,14 @@ def health_check(request):
         health["audio_worker"]["worker_pid"] = heartbeat.get("pid")
     else:
         # No heartbeat file — try to query TTS service directly (Docker setup)
+        # If TTS query fails, report unknown status (not error) since we can't reach the worker
+        tts_queried = False
         try:
             tts_endpoint = os.getenv('TTS_ENDPOINT', 'http://localhost:8001/v1/audio')
             # Extract base URL (remove /v1/audio path)
             tts_base = tts_endpoint.rsplit('/v1', 1)[0] if '/v1' in tts_endpoint else tts_endpoint
             resp = requests.get(f"{tts_base}/health", timeout=2)
+            tts_queried = True
             if resp.status_code == 200:
                 tts_response = resp.json()
                 tts_status = tts_response.get("status", "ok")
@@ -354,22 +357,23 @@ def health_check(request):
                     "status": "error",
                     "message": f"TTS service returned {resp.status_code}",
                 }
-                health["audio_worker"]["status"] = "error"
-                health["audio_worker"]["message"] = f"TTS service returned {resp.status_code}"
         except requests.exceptions.ConnectionError:
             health["tts"] = {
                 "status": "error",
                 "message": f"Cannot connect to TTS service ({tts_endpoint})",
             }
-            health["audio_worker"]["status"] = "error"
-            health["audio_worker"]["message"] = f"Cannot connect to TTS service"
         except Exception as e:
             health["tts"] = {
                 "status": "error",
                 "message": f"TTS health check failed: {str(e)}",
             }
-            health["audio_worker"]["status"] = "error"
-            health["audio_worker"]["message"] = f"TTS health check failed: {str(e)}"
+
+        # If we couldn't query TTS service, report unknown status
+        if not tts_queried:
+            health["tts"] = {
+                "status": "unknown",
+                "message": "No worker heartbeat file; TTS status unavailable",
+            }
 
         health["vram"] = {
             "status": "unknown",
