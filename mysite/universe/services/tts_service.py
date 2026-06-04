@@ -18,13 +18,32 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-import torch
-import torchaudio as ta
-
 from django.conf import settings
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
+
+
+def _import_torch():
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError(
+            "PyTorch is required for Chatterbox TTS. Install the optional ML/TTS "
+            "dependencies before starting the audio worker."
+        ) from exc
+    return torch
+
+
+def _import_torchaudio():
+    try:
+        import torchaudio as ta
+    except ImportError as exc:
+        raise RuntimeError(
+            "torchaudio is required to resample Chatterbox TTS output. Install "
+            "the optional ML/TTS dependencies before generating audio."
+        ) from exc
+    return ta
 
 
 class TTSService(ABC):
@@ -65,6 +84,7 @@ class ChatterboxTTSService(TTSService):
             device: "cuda" or "cpu" (auto-detects GPU if None)
         """
         if device is None:
+            torch = _import_torch()
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.device = device
@@ -85,6 +105,7 @@ class ChatterboxTTSService(TTSService):
                 return
 
             try:
+                torch = _import_torch()
                 from chatterbox.tts_turbo import ChatterboxTurboTTS
 
                 _vram_free_mb_before: int = 0
@@ -325,6 +346,7 @@ class ChatterboxTTSService(TTSService):
 
         # Resample if needed (Chatterbox may output different sample rate)
         if sample_rate != self.sample_rate:
+            ta = _import_torchaudio()
             wav_tensor = ta.transforms.Resample(sample_rate, self.sample_rate)(
                 wav_tensor
             )
@@ -456,7 +478,7 @@ def warm_tts_service(voice_id: str = "pilot_default", text: str = "check") -> bo
     Warm the TTS model once to avoid first-hit latency.
 
     Returns True on success, False on failure.  Health state is updated
-    automatically by generate() so callers can read get_tts_health() afterward.
+automatically by generate() so callers can read get_tts_health() afterward.
     """
     try:
         svc = get_tts_service()
