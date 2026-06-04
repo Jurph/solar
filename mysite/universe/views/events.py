@@ -111,6 +111,22 @@ def _sentence_case(text: str) -> str:
     return t
 
 
+def _event_audio_file_available(event: DialogueEventLog) -> bool:
+    """Return True only when the stored audio file can actually be opened."""
+    if not event.audio_file:
+        return False
+
+    try:
+        with event.audio_file.open("rb") as f:
+            f.read(1)
+        return True
+    except FileNotFoundError:
+        logger.warning(
+            "event_feed: stored audio file missing for event %s", event.id
+        )
+        return False
+
+
 @require_http_methods(["GET"])
 def event_feed(request):
     """
@@ -221,6 +237,7 @@ def event_feed(request):
                 event.actor_name,
             )
             audio_plan = []
+        audio_ready = _event_audio_file_available(event) or event.id in cached_event_ids
         events.append(
             {
                 "id": event.id,
@@ -231,10 +248,7 @@ def event_feed(request):
                 # Python-defined audio plan (client just queues & plays waveforms)
                 "audio_plan": audio_plan,
                 # Audio is ready if pre-rendered OR cached
-                "audio_ready": (
-                    bool(event.audio_file)  # Django FileField is truthy if file exists
-                    or event.id in cached_event_ids
-                ),
+                "audio_ready": audio_ready,
                 "audio_duration_s": None,  # Client can determine from WAV headers
                 "audio_url": f"/api/event_audio/{event.id}/",
             }
