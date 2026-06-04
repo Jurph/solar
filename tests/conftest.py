@@ -69,6 +69,7 @@ def _install_llm_benchmark_hooks():
     """
     path = _get_benchmark_path()
     if path is None:
+        yield
         return
 
     # Overwrite the file at the start of each test session (remove any existing data)
@@ -84,6 +85,7 @@ def _install_llm_benchmark_hooks():
         from mysite.universe.services.llm_service import LLMService
     except Exception:
         # If Django/settings aren't available for some reason, just skip instrumentation.
+        yield
         return
 
     orig_chat = LLMService.chat
