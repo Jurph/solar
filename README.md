@@ -193,19 +193,23 @@ A smaller model like `qwen2.5:0.5b` works but produces noticeably weaker dialogu
 5. **`/events/`** UI polls the feed, queues audio, and plays each event when audio is ready
 6. The web server never generates audio on demand - it only serves what the worker has rendered
 
-More detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/audio_worker_design.md`](docs/audio_worker_design.md).
+More detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+[`docs/audio_worker_design.md`](docs/audio_worker_design.md), and
+[`docs/EVENT_SCROLLER_STATE_MACHINE.md`](docs/EVENT_SCROLLER_STATE_MACHINE.md).
 
 ---
 
 ## Tests
 
 ```bash
-pytest -m "not slow"    # fast tests used by CI
-pytest -m "slow"        # includes TTS/LLM benchmarks, requires GPU and running models
-pytest                  # everything
+pytest -m "not slow and not external"  # fast project-local tests used by CI
+pytest -m external                     # local LLM/TTS/Ollama/hardware checks
+pytest                                # everything
 ```
 
-Slow tests require a running LLM and GPU. The CI pipeline runs the fast suite only, split across parallel CircleCI workers.
+External tests require local services or hardware such as Ollama, a GPU, or optional ML dependencies. The CI pipeline runs the fast suite only, split across parallel CircleCI workers. See [`docs/TESTING.md`](docs/TESTING.md) for marker policy and test quality expectations.
+
+Code review expectations are documented in [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md).
 
 ---
 

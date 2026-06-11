@@ -18,13 +18,13 @@ import logging
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q
 from django.core.cache import cache
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
+from mysite.universe.views.dev_guard import state_changing_dev_only
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +121,7 @@ def _event_audio_file_available(event: DialogueEventLog) -> bool:
             f.read(1)
         return True
     except FileNotFoundError:
-        logger.warning(
-            "event_feed: stored audio file missing for event %s", event.id
-        )
+        logger.warning("event_feed: stored audio file missing for event %s", event.id)
         return False
 
 
@@ -331,7 +329,7 @@ def event_scroller_wrapper(request):
     return render(request, "universe/event_scroller_wrapper.html")
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def clear_events(request):
     """

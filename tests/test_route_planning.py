@@ -156,6 +156,15 @@ class TestManeuverPlanning(TestCase):
         actual_maneuvers = [event.maneuver.name.upper() for event in events]
         self.assertEqual(actual_maneuvers, expected_maneuvers)
 
+    def test_direct_ascent_earth_to_earth_control(self):
+        """Planet-to-station direct ascent docks instead of landing."""
+        origin = self.earth
+        destination = self.earth_control
+        events = self.route_service.plan_route(origin, destination)
+        expected_maneuvers = ["DIRECT_ASCENT", "DOCK"]
+        actual_maneuvers = [event.maneuver.name.upper() for event in events]
+        self.assertEqual(actual_maneuvers, expected_maneuvers)
+
     def test_sublight_transfer_between_moons(self):
         origin = self.moon
         destination = self.luna

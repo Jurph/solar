@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
@@ -95,6 +96,25 @@ class TestSimulationViews(TestCase):
         assert data["status"] == "success"
         assert data["simulation_time"] >= 1500.0
         assert data["next_event_actor"] == "Tester"
+
+    def test_skip_to_next_event_wakes_audio_worker(self):
+        cache.delete("audio_worker_wake")
+        actor = Controller.objects.create(name="Tester")
+        DialogueEventLog.objects.create(
+            timestamp=1500.0,
+            actor=actor,
+            actor_name="Tester",
+            text="Hello",
+            metadata={},
+        )
+
+        resp = self.client.post(
+            reverse("skip_to_next_event"), data=b"{}", content_type="application/json"
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+        assert cache.get("audio_worker_wake") is True
 
 
 class TestHealthCheckView(TestCase):
@@ -261,6 +281,30 @@ class TestHealthCheckView(TestCase):
         self.assertEqual(data["vram"]["status"], "warning")
         self.assertIn("no VRAM data", data["vram"]["message"])
         self.assertEqual(data["audio_worker"]["worker_pid"], 31337)
+
+    def test_worker_health_endpoint_returns_200_when_idle(self):
+        """Dedicated worker health endpoint should be OK when no audio is pending."""
+        resp = self.client.get(reverse("worker_health_check"))
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["audio_worker"]["status"], "idle")
+        self.assertIn("pipeline_delta", data["audio_worker"])
+
+    def test_worker_health_endpoint_returns_503_when_pending_audio_stalls(self):
+        """Dedicated worker health endpoint should alarm on pending unrendered audio."""
+        actor = Controller.objects.create(name="Test Pilot")
+        DialogueEventLog.objects.create(
+            timestamp=100.0,
+            actor=actor,
+            actor_name="Test Pilot",
+            text="Testing audio worker health.",
+        )
+
+        resp = self.client.get(reverse("worker_health_check"))
+
+        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.json()["audio_worker"]["status"], "warning")
 
 
 class TestReadWorkerHeartbeat(TestCase):

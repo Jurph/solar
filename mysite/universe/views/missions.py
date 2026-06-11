@@ -15,16 +15,16 @@ import logging
 import threading
 
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.core.management import call_command
 
 from mysite.universe.models.event import DialogueEventLog
+from mysite.universe.views.dev_guard import state_changing_dev_only
 
 logger = logging.getLogger(__name__)
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def spawn_mission(request):
     """
@@ -242,96 +242,101 @@ def spawn_mission(request):
                 )
 
             else:
-                # Cargo mission (default): ship, pilot, route, dialogue
-                # Create ship and pilot (controllers should already exist from XML import)
-                ship = Ship.create()
-                logger.info(
-                    f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}"
-                )
+                from django.db import transaction
 
-                pilot = Pilot.create(ship=ship)
-                logger.debug(f"spawn_mission: Created pilot {pilot.name}")
-
-                # Pick a random destination (different from origin)
-                # For cargo missions, only valid endpoints (planets, moons, stations with berths)
-                route_service = RouteService()
-                destination = route_service.pick_random_destination(
-                    excluding=ship.current_location, cargo_mission=True
-                )
-                logger.info(f"spawn_mission: Destination {destination.name}")
-
-                # Plan the route
-                route_events = route_service.plan_route(
-                    origin=ship.current_location, destination=destination
-                )
-
-                if not route_events:
-                    logger.error(
-                        f"spawn_mission: Failed to generate route for {ship.name}"
+                with transaction.atomic():
+                    # Cargo mission (default): ship, pilot, route, dialogue
+                    # Create ship and pilot (controllers should already exist from XML import)
+                    ship = Ship.create()
+                    logger.info(
+                        f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}"
                     )
-                    return
 
-                logger.debug(
-                    f"spawn_mission: Planned route with {len(route_events)} navigation events"
-                )
+                    pilot = Pilot.create(ship=ship)
+                    logger.debug(f"spawn_mission: Created pilot {pilot.name}")
 
-                # Initialize LLM with low temperature for consistent dialogue
-                llm = LLMService(quiet_mode=True)
-                llm.temperature = 0.25
-
-                # Create a fresh ScriptService instance for this mission
-                script_service = ScriptService(llm=llm)
-
-                # Generate dialogue events from navigation events
-                # Use physics_delays=True for realistic timing between maneuvers
-                logger.debug(
-                    "spawn_mission: Generating dialogue events with physics delays..."
-                )
-
-                dialogue_events_iter = script_service.iter_navigation_events(
-                    route_events, ship, use_physics_delays=True
-                )
-
-                # Save events directly to DialogueEventLog as they are generated.
-                # Each yielded event.timestamp is mission-relative (0.0, 45.0, 2700.0, etc.)
-                # We add base_sim_time to schedule them in absolute simulation time.
-                events_saved = 0
-                last_relative_timestamp = 0.0
-                for event in dialogue_events_iter:
-                    scheduled_time = base_sim_time + event.timestamp
-
-                    # Store event with actor ForeignKey reference
-                    DialogueEventLog.objects.create(
-                        timestamp=scheduled_time,
-                        actor=event.actor if hasattr(event, "actor") else None,
-                        actor_name=event.actor.name
-                        if hasattr(event, "actor") and event.actor
-                        else "Unknown",
-                        text=event.text,
-                        metadata=dict(event.metadata) if event.metadata else {},
+                    # Pick a random destination (different from origin)
+                    # For cargo missions, only valid endpoints (planets, moons, stations with berths)
+                    route_service = RouteService()
+                    destination = route_service.pick_random_destination(
+                        excluding=ship.current_location, cargo_mission=True
                     )
-                    events_saved += 1
-                    last_relative_timestamp = event.timestamp
+                    logger.info(f"spawn_mission: Destination {destination.name}")
 
-                if events_saved == 0:
-                    logger.error(
-                        f"spawn_mission: No dialogue events generated for {ship.name}"
+                    # Plan the route
+                    route_events = route_service.plan_route(
+                        origin=ship.current_location, destination=destination
                     )
-                    return
 
-                logger.debug(f"spawn_mission: Generated {events_saved} dialogue events")
+                    if not route_events:
+                        logger.error(
+                            f"spawn_mission: Failed to generate route for {ship.name}"
+                        )
+                        return
 
-                # Calculate mission duration for logging (in mission-relative seconds)
-                mission_duration = last_relative_timestamp
-                hours = int(mission_duration // 3600)
-                minutes = int((mission_duration % 3600) // 60)
-                seconds = int(mission_duration % 60)
-                duration_str = f"{hours}h {minutes}m {seconds}s"
+                    logger.debug(
+                        f"spawn_mission: Planned route with {len(route_events)} navigation events"
+                    )
 
-                logger.info(
-                    f"spawn_mission: {ship.name} from {ship.current_location.name} "
-                    f"to {destination.name}, {events_saved} events spanning {duration_str}"
-                )
+                    # Initialize LLM with low temperature for consistent dialogue
+                    llm = LLMService(quiet_mode=True)
+                    llm.temperature = 0.25
+
+                    # Create a fresh ScriptService instance for this mission
+                    script_service = ScriptService(llm=llm)
+
+                    # Generate dialogue events from navigation events
+                    # Use physics_delays=True for realistic timing between maneuvers
+                    logger.debug(
+                        "spawn_mission: Generating dialogue events with physics delays..."
+                    )
+
+                    dialogue_events_iter = script_service.iter_navigation_events(
+                        route_events, ship, use_physics_delays=True
+                    )
+
+                    # Save events directly to DialogueEventLog as they are generated.
+                    # Each yielded event.timestamp is mission-relative (0.0, 45.0, 2700.0, etc.)
+                    # We add base_sim_time to schedule them in absolute simulation time.
+                    events_saved = 0
+                    last_relative_timestamp = 0.0
+                    for event in dialogue_events_iter:
+                        scheduled_time = base_sim_time + event.timestamp
+
+                        # Store event with actor ForeignKey reference
+                        DialogueEventLog.objects.create(
+                            timestamp=scheduled_time,
+                            actor=event.actor if hasattr(event, "actor") else None,
+                            actor_name=event.actor.name
+                            if hasattr(event, "actor") and event.actor
+                            else "Unknown",
+                            text=event.text,
+                            metadata=dict(event.metadata) if event.metadata else {},
+                        )
+                        events_saved += 1
+                        last_relative_timestamp = event.timestamp
+
+                    if events_saved == 0:
+                        logger.error(
+                            f"spawn_mission: No dialogue events generated for {ship.name}"
+                        )
+                        return
+
+                    logger.debug(
+                        f"spawn_mission: Generated {events_saved} dialogue events"
+                    )
+
+                    # Calculate mission duration for logging (in mission-relative seconds)
+                    mission_duration = last_relative_timestamp
+                    hours = int(mission_duration // 3600)
+                    minutes = int((mission_duration % 3600) // 60)
+                    seconds = int(mission_duration % 60)
+                    duration_str = f"{hours}h {minutes}m {seconds}s"
+
+                    logger.info(
+                        f"spawn_mission: {ship.name} from {ship.current_location.name} "
+                        f"to {destination.name}, {events_saved} events spanning {duration_str}"
+                    )
 
         except Exception as e:
             logger.exception(f"spawn_mission: Error - {e}")
@@ -354,7 +359,7 @@ def spawn_mission(request):
         )
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def run_demo(request):
     """

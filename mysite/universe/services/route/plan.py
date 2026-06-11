@@ -83,84 +83,9 @@ def plan_route(
     if len(path) == 2:
         origin_type = origin.get_concrete_instance().get_type_name()
         dest_type = destination.get_concrete_instance().get_type_name()
-        events = []
-
-        if origin_type == TypeName.STATION:
-            events.append(
-                NavigationEvent(
-                    maneuver=ManeuverType.UNDOCK,
-                    origin=origin,
-                    current=origin,
-                    next=destination,
-                    destination=destination,
-                    description=f"UNDOCK from {origin.name} to {destination.name}",
-                    controller=None,
-                )
-            )
-        elif origin_type == TypeName.MOON:
-            events.append(
-                NavigationEvent(
-                    maneuver=ManeuverType.LAUNCH,
-                    origin=origin,
-                    current=origin,
-                    next=destination,
-                    destination=destination,
-                    description=f"LAUNCH from {origin.name} to {destination.name}",
-                    controller=None,
-                )
-            )
-
-        events.append(
-            NavigationEvent(
-                maneuver=ManeuverType.DIRECT_ASCENT,
-                origin=origin,
-                current=origin,
-                next=destination,
-                destination=destination,
-                description=f"DIRECT_ASCENT from {origin.name} to {destination.name}",
-                controller=None,
-            )
+        return _plan_direct_ascent_route(
+            service, origin, destination, origin_type, dest_type
         )
-
-        if dest_type == TypeName.MOON and origin_type != TypeName.MOON:
-            events.append(
-                NavigationEvent(
-                    maneuver=ManeuverType.CIRCULARIZE,
-                    origin=origin,
-                    current=destination,
-                    next=destination,
-                    destination=destination,
-                    description=f"CIRCULARIZE at {destination.name}",
-                    controller=None,
-                )
-            )
-
-        events.append(
-            NavigationEvent(
-                maneuver=ManeuverType.DEORBIT,
-                origin=origin,
-                current=destination,
-                next=destination,
-                destination=destination,
-                description=f"DEORBIT at {destination.name}",
-                controller=None,
-            )
-        )
-        events.append(
-            NavigationEvent(
-                maneuver=ManeuverType.LANDING,
-                origin=origin,
-                current=destination,
-                next=destination,
-                destination=destination,
-                description=f"LANDING at {destination.name}",
-                controller=None,
-            )
-        )
-
-        from .controllers import enhance_with_controllers
-
-        return enhance_with_controllers(service, events)
 
     # Pass 1: Build scale path from the compressed path
     scale_path = build_scale_path(compressed_path)

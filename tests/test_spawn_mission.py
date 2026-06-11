@@ -251,6 +251,69 @@ class SpawnMissionOrchestrationTests(TestCase):
 
         self.assertEqual(DialogueEventLog.objects.count(), 0)
 
+    def test_spawn_mission_rolls_back_partial_cargo_mission_on_generation_error(self):
+        """A mid-stream dialogue crash must not leave a partial mission in the DB."""
+        url = reverse("spawn_mission")
+        origin = self.origin
+        dest = self.destination
+        real_pilot_create = Pilot.create
+
+        class _FakeLLM:
+            def __init__(self, *args, **kwargs):
+                self.temperature = None
+
+        class _FakeRouteService:
+            def pick_random_destination(self, *, excluding, cargo_mission=False):
+                return dest
+
+            def plan_route(self, *, origin, destination):
+                return ["NAV_EVENT"]
+
+        class _FakeScriptService:
+            def __init__(self, llm):
+                self.llm = llm
+
+            def iter_navigation_events(self, nav_events, ship, use_physics_delays=True):
+                yield _FakeDialogueEvent(
+                    timestamp=0.0,
+                    actor=ship.pilot,
+                    text="This should roll back.",
+                )
+                raise RuntimeError("LLM crashed mid-mission")
+
+        def create_ship():
+            return Ship.objects.create(
+                name="ROLLBACK SHIP",
+                current_location=origin,
+            )
+
+        def create_pilot(*, ship):
+            return real_pilot_create(name="Rollback Pilot", ship=ship)
+
+        with (
+            patch("mysite.universe.views.missions.threading.Thread", _ImmediateThread),
+            patch("mysite.universe.models.ship.Ship.create", side_effect=create_ship),
+            patch(
+                "mysite.universe.models.actor.Pilot.create", side_effect=create_pilot
+            ),
+            patch(
+                "mysite.universe.services.route_server.RouteService", _FakeRouteService
+            ),
+            patch(
+                "mysite.universe.services.script_server.ScriptService",
+                _FakeScriptService,
+            ),
+            patch("mysite.universe.services.llm_service.LLMService", _FakeLLM),
+        ):
+            response = self.client.post(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ship.objects.filter(name="ROLLBACK SHIP").exists())
+        self.assertFalse(Pilot.objects.filter(name="Rollback Pilot").exists())
+        self.assertFalse(
+            DialogueEventLog.objects.filter(text="This should roll back.").exists()
+        )
+
 
 class SpawnMissionEdgeCaseTests(TestCase):
     """Cover uncovered branches in spawn_mission (lines 60, 83-85, 241-242, 281-282, 310-311)."""

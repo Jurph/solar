@@ -4,6 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+### Environment
+```powershell
+# Rebuild the local development venv on Windows.
+uv venv --managed-python --python 3.10 venv
+uv pip install --python .\venv\Scripts\python.exe -e ".[dev]"
+.\venv\Scripts\python.exe -m pytest tests -m "not slow" -q
+```
+
+Use uv-managed Python 3.10 for this project unless the `Scale` model is refactored. The current `Scale(models.TextChoices)` definition stores `OrderedScale(int)` values and fails during Django setup on Python 3.12 with `TypeError: 6 is not a string`.
+
 ### Running the Server
 ```bash
 # Windows
@@ -19,7 +29,13 @@ cd mysite && python manage.py runserver
 ### Running Tests
 ```bash
 # Run all fast tests (used in CI)
-pytest tests -m "not slow"
+pytest tests -m "not slow and not external"
+
+# Run external-system checks explicitly
+pytest tests -m "external"                 # live services, local models, GPU, or artifacts
+pytest tests -m "external and llm"         # OpenAI-compatible LLM endpoint checks
+pytest tests -m "external and ollama"      # Ollama-specific structured-output checks
+pytest tests -m "external and tts_performance"
 
 # Run a single test file
 pytest tests/test_route_planning.py
@@ -27,12 +43,16 @@ pytest tests/test_route_planning.py
 # Run a single test function
 pytest tests/test_route_planning.py::test_function_name
 
-# Run slow (LLM) tests
+# Run all slow tests
 pytest -m "slow"
 
 # Run with coverage
 pytest tests -m "not slow" --cov=mysite/universe --cov-report=term
 ```
+
+External-system tests must be marked `external` plus a more specific marker
+(`llm`, `ollama`, or `tts_performance`) and should also be `slow` so the default
+fast suite remains deterministic.
 
 ### Database & Migrations
 ```bash
@@ -86,9 +106,10 @@ Source data (mass_kg, radius_km, orbital parameters) is stored in the DB. Derive
 ## Coding Standards
 
 - Linter/formatter: **ruff** (incorporates black + flake8). Follow Black formatting and PEP 8.
-- All functions require **type hints** and **docstrings**.
+- Type hints and docstrings are required for new or touched public functions, service methods, view helpers, model helpers, and non-obvious private helpers. Existing gaps are accepted legacy debt unless the code is already being changed.
 - Prefer absolute imports. Use local imports only to break circular dependencies.
 - Tests mirror implementation files; use pytest style with descriptive docstrings. No trivial or degenerate tests. Do not test third-party library behavior.
+- See `docs/CODING_STANDARDS.md` for review guidance and the legacy-debt policy.
 
 ## Critical Rule: Never Guess at Method Signatures
 
@@ -108,6 +129,19 @@ When writing a block of code, afterward:
 
 - **Epics** are large, deliberately vague work items (e.g., "NavSat broadcasts," "mission lifecycle"). They are NOT meant to be grabbed off the stack and closed in one shot. Working an epic means: (1) Q&A with all devs to reach consensus on scope and behavior, (2) decompose into concrete feature tickets with clear acceptance criteria, (3) close the feature tickets individually. Never close an epic directly — close it when all its child tickets are done.
 - **Bug** and **enhancement** tickets should be specific enough that a single dev can pick one up, implement it, and know when it's done.
+
+## GitHub Workflow on Osprey
+
+Prefer normal local `git` when `shell_command` works. If local shell commands fail
+before launch with `windows sandbox: spawn setup refresh`, do not try to force
+`git add` / `git commit` / `git push` through fallback child-process paths. In
+that failure mode, Node-launched child processes may be able to read the worktree
+but still fail writes with `Access is denied` / `EPERM`, including
+`.git/index.lock`.
+
+When that happens, use the GitHub MCP/plugin for remote issue, comment, branch,
+commit, push, and PR operations. The GitHub MCP is authorized for `Jurph/solar`
+and is the intended fallback for GitHub-side work in that session.
 
 ## URLs (Development)
 - Universe browser: `http://127.0.0.1:8000/universe/`
