@@ -1,0 +1,53 @@
+# Solar - Dockerignore file
+
+# Git
+.git
+.gitattributes
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$eggs
+.egg-info
+*.egg
+.env
+.venv
+env
+venv
+ENV
+
+# IDE / Editor
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Python virtual environment (project root)
+venv/
+.venv/
+
+# Testing artifacts (not needed in image)
+artifacts/*.jsonl
+artifacts/*.wav
+coverage.json
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Audio files (mounted from host anyway)
+audio/*.wav
+
+# Screenshots / Images
+vibes/*
+docs/screenshots/*
+
+# Documentation
+README.md
+CLAUDE.md
+
+# IDE markers
+.DS_Store
+Thumbs.db

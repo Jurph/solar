@@ -1,0 +1,161 @@
+# Solar - Docker Compose Setup
+# Service architecture: Django web app + TTS service (Chatterbox-TTS)
+# Both services communicate via internal Docker network
+
+services:
+  # =============================================================================
+  # TTS Service (Chatterbox-TTS with FastAPI)
+  # =============================================================================
+  tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.tts
+    container_name: solar-tts
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      # Django configuration (required for cache and settings)
+      - DJANGO_SETTINGS_MODULE=mysite.settings
+      # Numba caching fix for librosa in Docker
+      - NUMBA_CACHE_DIR=/tmp/numba_cache
+      # TTS Configuration
+      - TTS_DEVICE=${TTS_DEVICE:-cuda}
+      - TTS_HOST=0.0.0.0
+      - TTS_PORT=8001
+      # Model caching
+      - CHATTERBOX_LOCAL_PATH=${CHATTERBOX_LOCAL_PATH:-/app/models/chatterbox-turbo}
+    volumes:
+      # Persistent model cache (avoid re-downloading)
+      - tts-models:/app/models
+      # Audio cache for generated files
+      - tts-cache:/app/audio_cache
+      # Voice reference clips
+      - ./mysite/universe/static/universe/voices:/app/voices:ro
+    networks:
+      - solar-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # =============================================================================
+  # Audio Worker (Background TTS pre-generation)
+  # =============================================================================
+  audio-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: solar-audio-worker
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    environment:
+      - DJANGO_SETTINGS_MODULE=mysite.settings
+      - TTS_ENDPOINT=${TTS_ENDPOINT:-http://tts:8001/v1/audio}
+      - LLM_ENDPOINT=${LLM_ENDPOINT:-http://host.docker.internal:11434/v1}
+    volumes:
+      - ./mysite:/app/mysite
+      - ./llm.config:/app/llm.config
+      - audio-data:/app/data
+    networks:
+      - solar-network
+    entrypoint: ""
+    command: python mysite/manage.py audio_worker --skip-warmup --batch-size=5 --sleep-interval=3
+
+  # =============================================================================
+  # Web Application (Django)
+  # =============================================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: solar-web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      tts:
+        condition: service_healthy
+    environment:
+      # Django Configuration
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-True}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-in-production}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DJANGO_DATABASE_PATH=/app/data/db.sqlite3
+      # LLM Configuration (external service)
+      - LLM_ENDPOINT=${LLM_ENDPOINT:-http://host.docker.internal:11434/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:1.5b}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-500}
+      # TTS Configuration (internal Docker network)
+      - TTS_ENDPOINT=${TTS_ENDPOINT:-http://tts:8001/v1/audio}
+      - TTS_API_KEY=${TTS_API_KEY:-}
+      - TTS_PRE_RENDER_ENABLED=${TTS_PRE_RENDER_ENABLED:-False}
+      # Universe Settings
+      - UNIVERSE_XML_PATH=${UNIVERSE_XML_PATH:-xml/milkyway-v005.xml}
+      # Performance
+      - SIMULATION_TIME_SCALE=${SIMULATION_TIME_SCALE:-1}
+      - LLM_SAFE_LATENCY_SECONDS=${LLM_SAFE_LATENCY_SECONDS:-3.0}
+    volumes:
+      # Persistent database storage (mount directory, not file)
+      - solar-db:/app/data
+      # Mount universe XML definition
+      - ./xml:/app/xml:ro
+      # Mount pre-generated audio files (optional)
+      - ./audio:/app/audio:ro
+    networks:
+      - solar-network
+    command: sh -c "python mysite/manage.py migrate && python mysite/manage.py runserver 0.0.0.0:8000"
+
+# =============================================================================
+# Volumes (for persistence and caching)
+# =============================================================================
+
+volumes:
+  solar-db:
+    name: solar-db
+    driver: local
+  tts-models:
+    name: tts-models
+    driver: local
+  tts-cache:
+    name: tts-cache
+    driver: local
+  audio-data:
+    name: audio-data
+    driver: local
+
+# =============================================================================
+# Networks (for inter-service communication)
+# =============================================================================
+
+networks:
+  solar-network:
+    name: solar-network
+    driver: bridge
+
+# =============================================================================
+# Usage Instructions
+# =============================================================================
+#
+# 1. Set up environment variables:
+#    cp .env.example .env
+#    Edit .env with your LLM endpoint and TTS device settings
+#
+# 2. Start all services (web + TTS):
+#    docker-compose up -d
+#
+# 3. Access the application at http://localhost:8000
+#    TTS API available at http://localhost:8001 (internal to web service)
+#
+# 4. View logs:
+#    docker-compose logs -f web
+#    docker-compose logs -f tts
+#
+# =============================================================================

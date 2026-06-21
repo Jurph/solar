@@ -1,0 +1,20 @@
+{
+  "id": "mock-1",
+  "object": "chat.completion",
+  "created": 1234567890,
+  "model": "qwen2.5:1.5b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Understood. I will generate the requested ATC-style dialogue events for the space traffic control simulation."
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 50,
+    "completion_tokens": 120,
+    "total_tokens": 170
+  }
+}

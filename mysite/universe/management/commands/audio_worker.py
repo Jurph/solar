@@ -72,12 +72,18 @@ class Command(BaseCommand):
             default=1.0,
             help="How many hours ahead (in simulation time) to pre-generate audio (default: 1.0)",
         )
+        parser.add_argument(
+            "--skip-warmup",
+            action="store_true",
+            help="Skip warmup test (useful for fallback TTS)",
+        )
 
     def handle(self, *args, **options):
         batch_size = options["batch_size"]
         sleep_interval = options["sleep_interval"]
         lookahead_hours = options["lookahead_hours"]
         lookahead_seconds = lookahead_hours * 3600
+        skip_warmup = options.get("skip_warmup", False)
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -95,59 +101,63 @@ class Command(BaseCommand):
             return
 
         # Run warmup test to verify TTS + file I/O + database
-        try:
-            import datetime
-            import torch
+        if skip_warmup:
+            self.stdout.write(self.style.WARNING("Skipping warmup test (--skip-warmup)"))
+            warmup_success = True
+        else:
+            try:
+                import datetime
+                import torch
 
-            warmup_start = time.time()
-            self.stdout.write(
-                f"Running warmup test... [{datetime.datetime.now().strftime('%H:%M:%S')}]"
-            )
-            self.stdout.write("(If no progress in 30 seconds, test may be hanging)")
-
-            _vram_free_mb_before_warmup: int = 0
-            if torch.cuda.is_available():
-                _free_bytes, _total_bytes = torch.cuda.mem_get_info(0)
-                _vram_free_mb_before_warmup = _free_bytes // (1024 * 1024)
+                warmup_start = time.time()
                 self.stdout.write(
-                    f"VRAM before warmup: {_vram_free_mb_before_warmup} MB free "
-                    f"/ {_total_bytes // (1024 * 1024)} MB total"
+                    f"Running warmup test... [{datetime.datetime.now().strftime('%H:%M:%S')}]"
                 )
+                self.stdout.write("(If no progress in 30 seconds, test may be hanging)")
 
-            warmup_success = self._warmup_test(tts_service)
-            warmup_duration = time.time() - warmup_start
+                _vram_free_mb_before_warmup: int = 0
+                if torch.cuda.is_available():
+                    _free_bytes, _total_bytes = torch.cuda.mem_get_info(0)
+                    _vram_free_mb_before_warmup = _free_bytes // (1024 * 1024)
+                    self.stdout.write(
+                        f"VRAM before warmup: {_vram_free_mb_before_warmup} MB free "
+                        f"/ {_total_bytes // (1024 * 1024)} MB total"
+                    )
 
-            if torch.cuda.is_available() and _vram_free_mb_before_warmup:
-                _free_bytes_after, _ = torch.cuda.mem_get_info(0)
-                _vram_free_mb_after_warmup = _free_bytes_after // (1024 * 1024)
-                _delta_mb = _vram_free_mb_before_warmup - _vram_free_mb_after_warmup
+                warmup_success = self._warmup_test(tts_service)
+                warmup_duration = time.time() - warmup_start
+
+                if torch.cuda.is_available() and _vram_free_mb_before_warmup:
+                    _free_bytes_after, _ = torch.cuda.mem_get_info(0)
+                    _vram_free_mb_after_warmup = _free_bytes_after // (1024 * 1024)
+                    _delta_mb = _vram_free_mb_before_warmup - _vram_free_mb_after_warmup
+                    self.stdout.write(
+                        f"VRAM after warmup: {_vram_free_mb_after_warmup} MB free "
+                        f"({_delta_mb} MB consumed by TTS model load)"
+                    )
+
+                if not warmup_success:
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f"Warmup test failed after {warmup_duration:.1f}s - aborting"
+                        )
+                    )
+                    self.stdout.write(self.style.ERROR("Check logs for details"))
+                    return
+
                 self.stdout.write(
-                    f"VRAM after warmup: {_vram_free_mb_after_warmup} MB free "
-                    f"({_delta_mb} MB consumed by TTS model load)"
-                )
-
-            if not warmup_success:
-                self.stdout.write(
-                    self.style.ERROR(
-                        f"Warmup test failed after {warmup_duration:.1f}s - aborting"
+                    self.style.SUCCESS(
+                        f"[READY] Audio worker ready [{datetime.datetime.now().strftime('%H:%M:%S')}] "
+                        f"(warmup took {warmup_duration:.1f}s)"
                     )
                 )
-                self.stdout.write(self.style.ERROR("Check logs for details"))
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Warmup test crashed: {e}"))
+                import traceback
+
+                self.stdout.write(self.style.ERROR(traceback.format_exc()))
+                logger.error("Warmup test failed", exc_info=True)
                 return
-
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"[READY] Audio worker ready [{datetime.datetime.now().strftime('%H:%M:%S')}] "
-                    f"(warmup took {warmup_duration:.1f}s)"
-                )
-            )
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Warmup test crashed: {e}"))
-            import traceback
-
-            self.stdout.write(self.style.ERROR(traceback.format_exc()))
-            logger.error("Warmup test failed", exc_info=True)
-            return
 
         # Clean up stale locks from previous crashes
         stale_locks = self._cleanup_stale_locks()

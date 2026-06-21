@@ -1,0 +1,34 @@
+# Solar - Space Traffic Control Simulation
+# Python 3.10+ dependencies
+# Generated from pyproject.toml
+
+# Core Framework
+Django>=5.1,<6
+
+# Data & Networking
+networkx>=3.4
+requests>=2.32.0
+
+# API & Data Validation
+openai>=2.8.0
+pydantic>=2.0
+PyYAML>=6.0
+
+# TTS Server (FastAPI)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Testing (optional, but included for CI/CD)
+pytest>=9.0.0
+pytest-cov>=6.0.0
+pytest-django>=4.11.0
+pytest-timeout>=2.4.0
+
+# Python 3.10 compatibility
+tomli>=2.0.0; python_version < '3.11'
+
+# TTS & ML (required for TTS service in Docker)
+chatterbox-tts==0.1.6
+torch>=2.0.0
+torchaudio>=2.0.0
+

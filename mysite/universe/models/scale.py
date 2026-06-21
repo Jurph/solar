@@ -38,14 +38,14 @@ class OrderedScale(int):
 class Scale(models.TextChoices):
     """
     Enhanced Scale choices for Location.
-    
+
     Each member has a two-character value (for XML import and storage) and a plain-English
-    description. The underlying value is of type OrderedScale, so that scale comparisons
-    (>, <, ==, etc.) can be made naturally.
+    description. The underlying value is a string code that can be converted to OrderedScale
+    for comparisons.
     """
-    GALAXY     = OrderedScale('GX'), _('galaxy')
-    STARSYSTEM = OrderedScale('SY'), _('star system')
-    STAR       = OrderedScale('SR'), _('star')
-    PLANET     = OrderedScale('PL'), _('planet')
-    MOON       = OrderedScale('MN'), _('moon')
-    STATION    = OrderedScale('SS'), _('space station')
+    GALAXY     = 'GX', _('galaxy')
+    STARSYSTEM = 'SY', _('star system')
+    STAR       = 'SR', _('star')
+    PLANET     = 'PL', _('planet')
+    MOON       = 'MN', _('moon')
+    STATION    = 'SS', _('space station')
