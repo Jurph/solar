@@ -151,7 +151,7 @@ coverage.xml
 staticfiles/
 
 # Generated audio artifacts
-*.wav
+last-playback.wav
 
 # Qwen2.5 - users should download the repo separately and place it in the models folder
 mysite/universe/models/language/*
