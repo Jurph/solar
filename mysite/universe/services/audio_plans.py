@@ -20,6 +20,8 @@ from mysite.universe.models.event import DialogueEventLog
 
 def build_audio_plan_for_dialogue_event(
     event: DialogueEventLog,
+    *,
+    repair_profiles: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Build an audio plan for a single DialogueEventLog using the Actor's AudioProfile.
@@ -43,10 +45,16 @@ def build_audio_plan_for_dialogue_event(
     - Pilot: Ship size (small/medium/large_engine_noise.wav)
     - Controller: Station ambient (Control_station_noise.wav)
     - Satellite: None (no room tone)
+
+    With ``repair_profiles=True`` (worker/render paths), a missing or incomplete
+    AudioProfile is assigned and persisted on demand. Read-only callers such as
+    ``event_feed`` pass ``repair_profiles=False``: building a plan then never
+    writes to the database, and a missing profile falls back to in-memory
+    defaults.
     """
     # Look up Actor by actor_id (preferred) or name (fallback)
     # DialogueEventLog stores actor_name as string, but metadata may have actor_id
-    from mysite.universe.models.actor import Satellite, Pilot, Controller
+    from mysite.universe.models.actor import Pilot, Controller
 
     actor = event.actor
     is_satellite = False
@@ -71,37 +79,9 @@ def build_audio_plan_for_dialogue_event(
         # This is a Controller
         actor = actor.controller
 
-    # Get or create AudioProfile for this actor
-    # If missing or incomplete, assign it on-demand
-    try:
-        profile = actor.audio_profile
-        # Check if profile is incomplete (no voice_template)
-        vp = profile.get_voice_params() or {}
-        if not vp.get("voice_template"):
-            # Profile exists but incomplete - assign it
-            from mysite.universe.models.actor import Pilot, Controller, Satellite
-
-            if isinstance(actor, Pilot):
-                Pilot.assign_audio_profile(actor)
-            elif isinstance(actor, Controller):
-                Controller.assign_audio_profile(actor)
-            elif isinstance(actor, Satellite):
-                Satellite.assign_audio_profile(actor)
-            profile = actor.audio_profile  # Reload after assignment
-    except AudioProfile.DoesNotExist:
-        # Profile missing - assign it on-demand
-        from mysite.universe.models.actor import Pilot, Controller, Satellite
-
-        if isinstance(actor, Pilot):
-            Pilot.assign_audio_profile(actor)
-        elif isinstance(actor, Controller):
-            Controller.assign_audio_profile(actor)
-        elif isinstance(actor, Satellite):
-            Satellite.assign_audio_profile(actor)
-        else:
-            # Fallback for base Actor - create default profile
-            profile = AudioProfile.create_default_for_actor(actor)
-        profile = actor.audio_profile  # Reload after assignment
+    # Get the AudioProfile for this actor; see _resolve_audio_profile for the
+    # repair-vs-read-only semantics.
+    profile = _resolve_audio_profile(actor, repair_profiles=repair_profiles)
 
     plan: list[dict[str, Any]] = []
 
@@ -235,6 +215,55 @@ def build_audio_plan_for_dialogue_event(
         )
 
     return plan
+
+
+def _resolve_audio_profile(actor, *, repair_profiles: bool) -> AudioProfile:
+    """
+    Fetch the actor's AudioProfile.
+
+    With ``repair_profiles=True``, a missing or incomplete (no voice_template)
+    profile is assigned and persisted on demand — the historical worker-path
+    behavior. With ``repair_profiles=False``, the profile is used as-is and a
+    missing profile yields an *unsaved* default so the caller never writes to
+    the database.
+    """
+    from mysite.universe.models.actor import Pilot, Controller, Satellite
+
+    try:
+        profile = actor.audio_profile
+    except AudioProfile.DoesNotExist:
+        profile = None
+
+    if profile is not None:
+        vp = profile.get_voice_params() or {}
+        if vp.get("voice_template") or not repair_profiles:
+            return profile
+        # Profile exists but is incomplete - assign it (known concrete types only)
+        if isinstance(actor, Pilot):
+            Pilot.assign_audio_profile(actor)
+        elif isinstance(actor, Controller):
+            Controller.assign_audio_profile(actor)
+        elif isinstance(actor, Satellite):
+            Satellite.assign_audio_profile(actor)
+        return AudioProfile.objects.get(actor=actor)
+
+    if not repair_profiles:
+        # Read-only path: in-memory default, never persisted.
+        return AudioProfile(
+            actor=actor, params=AudioProfile.default_params_for_actor(actor)
+        )
+
+    # Profile missing entirely - assign it on-demand
+    if isinstance(actor, Pilot):
+        Pilot.assign_audio_profile(actor)
+    elif isinstance(actor, Controller):
+        Controller.assign_audio_profile(actor)
+    elif isinstance(actor, Satellite):
+        Satellite.assign_audio_profile(actor)
+    else:
+        # Fallback for base Actor - create default profile
+        AudioProfile.create_default_for_actor(actor)
+    return AudioProfile.objects.get(actor=actor)
 
 
 def _sentence_case(text: str) -> str:

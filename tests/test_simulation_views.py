@@ -340,3 +340,41 @@ class TestReadWorkerHeartbeat(TestCase):
 
         with patch("mysite.universe.views.simulation._HEARTBEAT_PATH", _FakePath()):
             self.assertIsNone(_read_worker_heartbeat())
+
+
+class TestMissionSpawnerHealth(TestCase):
+    """
+    health_check must surface background spawn_mission failures — the HTTP
+    response already reported "started" by the time the failure happens.
+    """
+
+    def setUp(self):
+        cache.clear()
+        SimulationState.objects.all().delete()
+        SimulationState.objects.create(
+            pk=1, anchor_sim_time=1000.0, anchor_wall_clock=0.0, time_scale=0.0
+        )
+
+    def test_health_reports_ok_without_recent_failure(self):
+        """No recorded failure → mission_spawner status is 'ok'."""
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            resp = self.client.get(reverse("health_check"))
+
+        self.assertEqual(resp.json()["mission_spawner"]["status"], "ok")
+
+    def test_health_reports_error_after_background_spawn_failure(self):
+        """A recorded spawn failure must appear in the health payload."""
+        from mysite.universe.views.missions import SPAWN_FAILURE_CACHE_KEY
+
+        cache.set(
+            SPAWN_FAILURE_CACHE_KEY,
+            {"mission_type": "cargo", "error": "boom", "wall_clock": 0.0},
+            timeout=60,
+        )
+        with patch("requests.get", side_effect=Exception("skip llm")):
+            resp = self.client.get(reverse("health_check"))
+
+        data = resp.json()["mission_spawner"]
+        self.assertEqual(data["status"], "error")
+        self.assertIn("boom", data["message"])
+        self.assertIn("cargo", data["message"])

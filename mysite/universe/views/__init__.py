@@ -6,7 +6,7 @@ This package is organized by domain:
 - events.py: Event feed, display, and management
 - simulation.py: Simulation time control and status
 - missions.py: Mission spawning and orchestration
-- audio.py: Future audio/TTS rendering (placeholder)
+- audio.py: Audio lab and preset rendering
 - serializers.py: Type-specific object serializers for API responses
 """
 
@@ -34,10 +34,7 @@ from mysite.universe.views.simulation import (
 )
 
 # Mission spawning
-from mysite.universe.views.missions import (
-    spawn_mission,
-    run_demo,
-)
+from mysite.universe.views.missions import spawn_mission
 
 # Audio
 from mysite.universe.views.audio import (
@@ -53,26 +50,25 @@ clear_all_events = clear_events
 
 __all__ = [
     # Universe
-    'universe_view',
-    'object_details',
+    "universe_view",
+    "object_details",
     # Events
-    'event_feed',
-    'event_scroller',
-    'event_scroller_wrapper',
-    'clear_events',
-    'event_audio',
-    'clear_all_events',  # Alias for backwards compatibility
+    "event_feed",
+    "event_scroller",
+    "event_scroller_wrapper",
+    "clear_events",
+    "event_audio",
+    "clear_all_events",  # Alias for backwards compatibility
     # Simulation
-    'set_time_scale',
-    'skip_to_next_event',
-    'get_simulation_status',
-    'health_check',
+    "set_time_scale",
+    "skip_to_next_event",
+    "get_simulation_status",
+    "health_check",
     # Missions
-    'spawn_mission',
-    'run_demo',
+    "spawn_mission",
     # Audio
-    'audio_preset',
-    'audio_lab',
-    'audio_lab_render',
-    'logs_view',
+    "audio_preset",
+    "audio_lab",
+    "audio_lab_render",
+    "logs_view",
 ]

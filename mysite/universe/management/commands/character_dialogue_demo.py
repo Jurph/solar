@@ -12,27 +12,77 @@ Usage:
     python manage.py character_dialogue_demo [--temperature TEMP] [--use-json]
 """
 
+import heapq
+import itertools
 import os
 import time
+from typing import Dict, Optional
+
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.conf import settings
-from typing import Optional, Dict
 
-from mysite.universe.models.actor import Pilot, Controller, Satellite
-from mysite.universe.models.ship import Ship
+from mysite.universe.import_xml import UniverseImporter
+from mysite.universe.models.actor import Controller, Pilot, Satellite
 from mysite.universe.models.base import Location
 from mysite.universe.models.event import DialogueEvent
 from mysite.universe.models.navigation import NavigationEvent, UniverseGraph
+from mysite.universe.models.ship import Ship
+from mysite.universe.services.llm_service import LLMService
 from mysite.universe.services.route_server import RouteService
 from mysite.universe.services.script_server import ScriptService
-from mysite.universe.services.llm_service import LLMService
-from mysite.universe.import_xml import UniverseImporter
-from mysite.universe.management.commands.start_simulation_loop import (
-    DemoQueue,
-    DIALOGUE_EVENTS_RECEIVED,
-    DIALOGUE_EVENTS_RECEIVED_LOCK,
-)
+
+
+class DemoQueue:
+    """Small demo-only event queue.
+
+    Fossil simulation loop and signal pipeline are gone; this queue just
+    replays already-generated events in timestamp order and hands them to a
+    callback for terminal display.
+    """
+
+    def __init__(self, delay_seconds: float = 5.0):
+        self.delay_seconds = delay_seconds
+        self._queue = []
+        self._counter = itertools.count()
+
+    def add_event(self, event) -> None:
+        heapq.heappush(self._queue, (event.timestamp, next(self._counter), event))
+
+    def peek_next_event(self):
+        if not self._queue:
+            return None
+        return self._queue[0][2]
+
+    def get_next_event(self):
+        if not self._queue:
+            return None
+        return heapq.heappop(self._queue)[2]
+
+    def process_all_events(self, callback=None) -> int:
+        events_processed = 0
+
+        while self._queue:
+            event = self.get_next_event()
+
+            try:
+                if callback:
+                    callback(event)
+                events_processed += 1
+                if self._queue and self.delay_seconds > 0:
+                    time.sleep(self.delay_seconds)
+            except Exception:
+                continue
+
+        return events_processed
+
+    def process_all_events_instant(self, callback=None) -> int:
+        original_delay = self.delay_seconds
+        self.delay_seconds = 0
+        try:
+            return self.process_all_events(callback=callback)
+        finally:
+            self.delay_seconds = original_delay
 
 
 class Command(BaseCommand):
@@ -203,10 +253,6 @@ class Command(BaseCommand):
                 )
             )
 
-            # Clear any existing dialogue events
-            with DIALOGUE_EVENTS_RECEIVED_LOCK:
-                DIALOGUE_EVENTS_RECEIVED.clear()
-
             # Create a demo queue with configurable delay
             delay_seconds = options["delay"]
             demo_queue = DemoQueue(delay_seconds=delay_seconds)
@@ -226,7 +272,7 @@ class Command(BaseCommand):
                         "NAVIGATION", f"{event.maneuver.name} to {event.target.name}"
                     )
 
-            # Process all events with the demo queue (fast-forward mode)
+            events_processed = 0
             try:
                 events_processed = demo_queue.process_all_events(callback=print_event)
             except KeyboardInterrupt:

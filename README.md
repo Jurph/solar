@@ -130,12 +130,15 @@ ollama serve
 python manage.py runserver
 ```
 
-4. Optionally start the audio worker if you want pre-generated TTS audio.
+4. The audio worker starts automatically with Django: a watchdog thread in the
+web server spawns and supervises `manage.py audio_worker` (restarting it with
+backoff if it crashes). Run it manually only if you want a standalone worker,
+e.g. for debugging:
 ```bash
 python manage.py audio_worker
 ```
 
-You do **not** need to start everything at once just to poke around. If you only want to browse the universe or inspect the UI, Django by itself is enough. The audio worker is only needed for the fully rendered comms experience.
+You do **not** need to start everything at once just to poke around. If you only want to browse the universe or inspect the UI, Django by itself is enough. Note that without the optional ML dependencies the auto-started worker exits early and the watchdog retries with backoff — harmless, but visible in the logs.
 
 ---
 
@@ -188,7 +191,7 @@ A smaller model like `qwen2.5:0.5b` works but produces noticeably weaker dialogu
 
 1. **XML + procedural generation** populates the universe with stars, planets, stations, actors
 2. **`spawn_mission`** creates a ship, plans a physics-based route, generates dialogue events
-3. **`audio_worker`** (background process) pre-renders TTS audio one hour ahead
+3. **`audio_worker`** (background process, auto-started and supervised by a watchdog in the web server) pre-renders TTS audio one hour ahead
 4. **`event_feed`** API returns events as simulation time reaches their timestamps
 5. **`/events/`** UI polls the feed, queues audio, and plays each event when audio is ready
 6. The web server never generates audio on demand - it only serves what the worker has rendered

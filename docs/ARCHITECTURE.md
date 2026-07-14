@@ -72,11 +72,13 @@ solar/
             ├── views/           # Django views (decomposed by domain concern)
             │   ├── __init__.py  # Re-exports view callables for backward-compatible imports
             │   ├── events.py    # event_feed, event_scroller(+wrapper), clear_events
-            │   ├── missions.py  # spawn_mission, run_demo (deprecated)
+            │   ├── missions.py  # spawn_mission only
             │   ├── simulation.py # set_time_scale, skip_to_next_event, get_simulation_status
             │   ├── universe.py  # universe_view, object_details (delegates to serializers)
             │   ├── serializers.py # "baseball card" data shaping (presentation-oriented)
-            │   └── audio.py     # placeholder for future audio/TTS endpoints
+            │   ├── audio.py     # audio_preset, audio_lab UI, audio_lab_render (dev-gated)
+            │   ├── logs.py      # /api/logs/ diagnostics tail (dev-gated)
+            │   └── dev_guard.py # state_changing_dev_only guard for dev endpoints
             │
             ├── templates/        # HTML templates
             │   └── universe/
@@ -112,9 +114,8 @@ solar/
                 └── commands/
                     ├── import_universe.py       # Import from XML
                     ├── export_universe.py       # Export to XML
-                    ├── start_simulation_loop.py # Start simulation loop
+                    ├── character_dialogue_demo.py  # Terminal-only dialogue demo
                     ├── audio_worker.py          # Background TTS pre-generation worker
-                    ├── character_dialogue_demo.py  # Dialogue demo
                     └── [other utilities]
 ```
 
@@ -189,7 +190,6 @@ The views are split into multiple modules under `mysite/universe/views/` for cla
   - **set_time_scale, skip_to_next_event, get_simulation_status**
 - **views/missions.py:** mission spawning
   - **spawn_mission:** spawns ship, generates route, creates dialogue chain, schedules events
-  - **run_demo:** deprecated demo endpoint
 - **views/audio.py:** Audio endpoints
   - **audio_preset:** Generates procedural audio (quindars, modem noise)
   - **audio_lab:** Dev tool for testing audio synthesis
@@ -215,15 +215,14 @@ The views are split into multiple modules under `mysite/universe/views/` for cla
   - Star, planet, moon generation functions
   - Atmosphere generation
   - Composition and physical property generation
-- **signals.py & receivers.py:** Django signal handlers (dialogue_event_processed signal → DialogueEventLog)
+- **receivers.py:** Django post_save receivers that ensure actor audio profiles exist
 - **schemas/dialogue_schema.py:** JSON schemas for dialogue validation
 - **wordlists/:** Text files with word lists for procedural generation
 - **management/commands:** Django management commands
   - `import_universe`: Import from XML
   - `export_universe`: Export to XML
-  - `start_simulation_loop`: Simulation time loop (emits navigation/dialogue events)
+  - `character_dialogue_demo`: Terminal-only demo that replays generated events locally
   - `audio_worker`: Background TTS pre-generation worker
-  - `character_dialogue_demo`: Demo dialogue generation
   - And more...
 - **admin.py & migrations:** Django admin interface and schema migrations
 

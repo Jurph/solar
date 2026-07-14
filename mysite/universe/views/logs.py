@@ -3,13 +3,18 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 
 from mysite.universe.services.log_buffer import get_log_handler
+from mysite.universe.views.dev_guard import state_changing_dev_only
 
 
+@state_changing_dev_only
 @require_GET
 def logs_view(request):
     """
     Return recent logs (tail) and allow filtering by level via ?min_level=INFO|DEBUG|WARN|ERROR.
     Also allows setting root logger level via ?level=INFO|DEBUG|WARN|ERROR.
+
+    Dev-only: gated by ALLOW_STATE_CHANGING_DEV_ENDPOINTS because ?level= can
+    mutate the root logger and the buffer may contain sensitive LLM content.
     """
     # Set root logger level if requested
     level = request.GET.get("level")

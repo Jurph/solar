@@ -14,7 +14,6 @@ class DevEndpointGuardTests(TestCase):
     def test_state_changing_endpoints_are_rejected_when_disabled(self) -> None:
         """Every destructive endpoint should fail closed outside local development."""
         endpoints = [
-            reverse("run_demo"),
             reverse("spawn_mission"),
             reverse("clear_events"),
             reverse("set_time_scale"),
@@ -31,6 +30,15 @@ class DevEndpointGuardTests(TestCase):
                 data = response.json()
                 self.assertEqual(data["status"], "error")
                 self.assertIn("disabled outside local development", data["message"])
+
+    def test_logs_endpoint_is_rejected_when_disabled(self) -> None:
+        """/api/logs/ can mutate the root logger level and may expose LLM
+        content, so it is dev-gated like the state-changing endpoints."""
+        with override_settings(ALLOW_STATE_CHANGING_DEV_ENDPOINTS=False):
+            response = self.client.get(reverse("logs_view"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["status"], "error")
 
     def test_state_changing_endpoint_still_works_when_enabled(self) -> None:
         """The explicit flag should allow the normal dev workflow when enabled."""

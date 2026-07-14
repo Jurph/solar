@@ -12,7 +12,7 @@ from mysite.universe.views.events import (
     event_scroller_wrapper,
 )
 from mysite.universe.views.logs import logs_view
-from mysite.universe.views.missions import run_demo, spawn_mission
+from mysite.universe.views.missions import spawn_mission
 from mysite.universe.views.simulation import (
     get_simulation_status,
     health_check,
@@ -42,8 +42,6 @@ urlpatterns = (
         path("events/scroller/", event_scroller, name="event_scroller"),
         # The JSON API endpoint for polling events:
         path("api/events/", event_feed, name="event_feed"),
-        # Dev-only endpoint to run the dialogue demo (guarded by ALLOW_STATE_CHANGING_DEV_ENDPOINTS):
-        path("api/run-demo/", run_demo, name="run_demo"),
         # Dev-only endpoint to spawn a complete mission (guarded by ALLOW_STATE_CHANGING_DEV_ENDPOINTS):
         path("api/spawn-mission/", spawn_mission, name="spawn_mission"),
         # Dev-only endpoint to clear display events (guarded by ALLOW_STATE_CHANGING_DEV_ENDPOINTS):

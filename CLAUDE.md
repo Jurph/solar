@@ -12,7 +12,7 @@ uv pip install --python .\venv\Scripts\python.exe -e ".[dev]"
 .\venv\Scripts\python.exe -m pytest tests -m "not slow" -q
 ```
 
-Use uv-managed Python 3.10 for this project unless the `Scale` model is refactored. The current `Scale(models.TextChoices)` definition stores `OrderedScale(int)` values and fails during Django setup on Python 3.12 with `TypeError: 6 is not a string`.
+Python 3.10+ is supported. (`Scale` stores plain string `TextChoices` values, so Django setup also works on Python 3.12+; ordering lives in `OrderedScale`.) The launch scripts and CI currently use Python 3.10.
 
 ### Running the Server
 ```bash
@@ -35,7 +35,8 @@ pytest tests -m "not slow and not external"
 pytest tests -m "external"                 # live services, local models, GPU, or artifacts
 pytest tests -m "external and llm"         # OpenAI-compatible LLM endpoint checks
 pytest tests -m "external and ollama"      # Ollama-specific structured-output checks
-pytest tests -m "external and tts_performance"
+pytest tests -m "external and tts"         # Chatterbox / local TTS checks
+pytest tests -m "external and performance" # benchmark / timing checks
 
 # Run a single test file
 pytest tests/test_route_planning.py
@@ -51,8 +52,9 @@ pytest tests -m "not slow" --cov=mysite/universe --cov-report=term
 ```
 
 External-system tests must be marked `external` plus a more specific marker
-(`llm`, `ollama`, or `tts_performance`) and should also be `slow` so the default
-fast suite remains deterministic.
+(`llm`, `ollama`, `tts`, or `performance`) and should also be `slow` so the
+default fast suite remains deterministic. Note that CI deselects only `slow`
+(`pytest -m "not slow"`), so the `slow` marker is the load-bearing CI gate.
 
 ### Database & Migrations
 ```bash
@@ -61,7 +63,7 @@ python manage.py makemigrations universe
 python manage.py migrate
 python manage.py import_universe   # Load XML universe definition
 python manage.py export_universe   # Export to XML
-python manage.py start_simulation_loop   # Start the simulation clock
+python manage.py character_dialogue_demo  # Terminal-only dialogue demo
 python manage.py audio_worker      # Start background TTS pre-generation
 ```
 
@@ -79,8 +81,8 @@ The core application is `mysite/universe/` with three main layers:
 **Views** (`universe/views/`) — Decomposed by domain concern. `views/__init__.py` re-exports all view callables for backward-compatible URL routing.
 
 ### Data Flow for a Mission
-1. `spawn_mission` (views/missions.py) creates a `Ship`, calls `RouteService` to plan a route, calls `ScriptService` to convert `NavigationEvent`s into `DialogueEvent` chains, schedules them in `DialogueEventLog`.
-2. `start_simulation_loop` advances simulation time via `SimulationState` singleton.
+1. `spawn_mission` (views/missions.py) creates a `Ship`, calls `RouteService` to plan a route, calls `ScriptService` to convert `NavigationEvent`s into `DialogueEvent` chains, and schedules them in `DialogueEventLog`.
+2. `SimulationState` derives simulation time from its wall-clock anchor and `time_scale`; no standalone tick-loop command advances dialogue in production.
 3. `audio_worker` (management command) pre-generates TTS audio ~1 hour ahead of playback; the web server never generates audio on-demand.
 4. Frontend polls `event_feed` API, which time-gates events via `SimulationState`; checks `audio_ready` flag before playing.
 

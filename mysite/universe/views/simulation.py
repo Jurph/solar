@@ -21,6 +21,7 @@ from django.views.decorators.http import require_http_methods
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.simulation import SimulationState, get_simulation_time
 from mysite.universe.views.dev_guard import state_changing_dev_only
+from mysite.universe.views.missions import SPAWN_FAILURE_CACHE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -437,6 +438,23 @@ def health_check(request):
         health["vram"] = {
             "status": "unknown",
             "message": "No worker heartbeat file (VRAM data unavailable)",
+        }
+
+    # Mission spawner: spawn_mission returns 200 before its background thread
+    # runs, so surface the most recent background failure here for pollers.
+    spawn_failure = cache.get(SPAWN_FAILURE_CACHE_KEY)
+    if spawn_failure:
+        health["mission_spawner"] = {
+            "status": "error",
+            "message": (
+                f"Last {spawn_failure.get('mission_type', 'unknown')} mission "
+                f"failed: {spawn_failure.get('error', 'unknown error')}"
+            ),
+        }
+    else:
+        health["mission_spawner"] = {
+            "status": "ok",
+            "message": "No recent mission spawn failures",
         }
 
     return JsonResponse(health)
