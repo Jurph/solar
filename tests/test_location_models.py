@@ -10,6 +10,8 @@ return statements.
 """
 
 from unittest.mock import patch
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
 
 from django.test import TestCase
 
@@ -89,6 +91,14 @@ class TestLocationUtilityMethods(TestCase):
         # get_concrete_instance() should discover it's a Planet
         concrete = loc_row.get_concrete_instance()
         self.assertEqual(concrete.get_type_name(), "Planet")
+
+    def test_raw_location_with_matching_planet_resolves_in_one_query(self):
+        """Scale-guided dispatch should resolve a matching concrete row in one DB query."""
+        loc_row = Location.objects.get(pk=self.planet.pk)
+        with CaptureQueriesContext(connection) as queries:
+            concrete = loc_row.get_concrete_instance()
+        self.assertIsInstance(concrete, Planet)
+        self.assertEqual(len(queries), 1)
 
     def test_get_type_name_on_untyped_location_falls_back(self):
         """

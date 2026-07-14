@@ -1,42 +1,49 @@
 import logging
 import threading
-from enum import Enum
-from dataclasses import dataclass
-from typing import Optional, List, Any
-import networkx as nx
-from .base import Location
-from .station import Station
-from .constants import TypeName, CONTROL_STATION_KEYWORDS
 from collections import deque
-from .scale import OrderedScale
-from ..models.scale import Scale
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, List, Optional
+
+import networkx as nx
+
+from .base import Location
+from .celestial import Galaxy, Moon, Planet, Star, StarSystem
+from .constants import CONTROL_STATION_KEYWORDS, TypeName
+from .scale import OrderedScale, Scale
+from .station import Station
 
 logger = logging.getLogger(__name__)
 
+
 class ManeuverType(Enum):
     """Types of spacecraft maneuvers in our universe"""
+
     CIRCULARIZE = "circularize"
     DEORBIT = "deorbit"
     DIRECT_ASCENT = "direct ascent"
     DOCK = "dock"
     HYPERSPACE = "hyperspace"
-    INSERTION = "insertion"         # always followed by circularization
+    INSERTION = "insertion"  # always followed by circularization
     LANDING = "landing"
-    LAUNCH = "launch"               # always followed by orbital insertion
+    LAUNCH = "launch"  # always followed by orbital insertion
     PLANE_CHANGE = "plane change"
     SUBLIGHT = "sublight"
     TRANSFER = "transfer"
-    UNDOCK = "undock"               # always followed by orbital insertion
+    UNDOCK = "undock"  # always followed by orbital insertion
     # TODO: add AEROBRAKING as a subset of INSERTION
     # TODO: consider REENTRY as a future option, where we evaluate whether or not the target
     # has an atmosphere
 
+
 @dataclass
 class NavigationStep:
     """A single step in a navigation plan"""
+
     contact_station: Station
     maneuver: ManeuverType
     target: Location
+
 
 @dataclass
 class NavigationEvent:
@@ -49,9 +56,10 @@ class NavigationEvent:
         destination: The final destination of the route plan.
         maneuver: The type of maneuver (e.g., LAUNCH, INSERTION, SUBLIGHT, etc.).
         controller: The controlling Station for this maneuver (if applicable).
-        duration: Estimated duration of the maneuver; defaults to a static value per type. 
+        duration: Estimated duration of the maneuver; defaults to a static value per type.
         description: Additional narrative or descriptive information about the maneuver.
     """
+
     origin: Location
     current: Location
     next: Location
@@ -67,7 +75,7 @@ class NavigationEvent:
 #
 # The following function builds a sequence of events using our world‑building rules:
 #
-#  · Departing from a Station requires a LAUNCH event. 
+#  · Departing from a Station requires a LAUNCH event.
 #  · After LAUNCH, we generally execute a CIRCULARIZE maneuver (to get into the proper orbit).
 #  · For transfers between two Planets, we do a PLANE_CHANGE followed by a TRANSFER.
 #  · Upon entering a Planet's or Moon's sphere of influence we circularize.
@@ -78,13 +86,13 @@ class NavigationEvent:
 def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
     """
     Build a sequence of NavigationEvent objects from a path of Locations.
-    
+
     Uses world-building rules (see World Building Rules.md):
     - If the starting location is a Station, begin with a LAUNCH event and then a CIRCULARIZE.
     - Traveling between two Planets requires a PLANE_CHANGE followed by a TRANSFER.
     - Approaching a Planet or Moon calls for a circularization.
     - The final maneuver is DOCK if the destination is a Station or LAND if it is not.
-    
+
     This builder can be extended to include other events (e.g. HYPERSPACE) as needed.
     """
     events: List[NavigationEvent] = []
@@ -94,100 +102,117 @@ def build_navigation_events(path: List[Location]) -> List[NavigationEvent]:
     # Helper: get the concrete type name from a location.
     def type_of(loc: Location) -> str:
         return loc.get_concrete_instance().get_type_name()
-    
+
     # Determine the departure type of the first node.
     departure = path[0]
     depart_type = type_of(departure)
     if depart_type == TypeName.STATION:
-        events.append(NavigationEvent(
-            origin=None,
-            current=departure,
-            next=departure,
-            destination=departure,
-            maneuver=ManeuverType.UNDOCK,
-            description=f"Undocking from {departure.name} and preparing for departure."
-        ))
+        events.append(
+            NavigationEvent(
+                origin=None,
+                current=departure,
+                next=departure,
+                destination=departure,
+                maneuver=ManeuverType.UNDOCK,
+                description=f"Undocking from {departure.name} and preparing for departure.",
+            )
+        )
         # Following a launch, we generally circularize.
-        events.append(NavigationEvent(
-            origin=departure,
-            current=departure,
-            next=departure,
-            destination=departure,
-            maneuver=ManeuverType.CIRCULARIZE,
-            description="Initial orbital circularization after launch."
-        ))
-    
+        events.append(
+            NavigationEvent(
+                origin=departure,
+                current=departure,
+                next=departure,
+                destination=departure,
+                maneuver=ManeuverType.CIRCULARIZE,
+                description="Initial orbital circularization after launch.",
+            )
+        )
+
     # Process each segment of the path.
     for i in range(len(path) - 1):
         current = path[i]
         nxt = path[i + 1]
         current_type = type_of(current)
         next_type = type_of(nxt)
-        
+
         # Rule: If traveling between two Planets, perform a PLANE_CHANGE and then a TRANSFER.
         if current_type == TypeName.PLANET and next_type == TypeName.PLANET:
-            events.append(NavigationEvent(
-                origin=current,
-                current=current,
-                next=nxt,
-                destination=nxt,
-                maneuver=ManeuverType.PLANE_CHANGE,
-                description=f"Plane change maneuver from {current.name} to align for transfer orbit."
-            ))
-            events.append(NavigationEvent(
-                origin=current,
-                current=current,
-                next=nxt,
-                destination=nxt,
-                maneuver=ManeuverType.TRANSFER,
-                description=f"Transfer burn from {current.name} towards {nxt.name}."
-            ))
+            events.append(
+                NavigationEvent(
+                    origin=current,
+                    current=current,
+                    next=nxt,
+                    destination=nxt,
+                    maneuver=ManeuverType.PLANE_CHANGE,
+                    description=f"Plane change maneuver from {current.name} to align for transfer orbit.",
+                )
+            )
+            events.append(
+                NavigationEvent(
+                    origin=current,
+                    current=current,
+                    next=nxt,
+                    destination=nxt,
+                    maneuver=ManeuverType.TRANSFER,
+                    description=f"Transfer burn from {current.name} towards {nxt.name}.",
+                )
+            )
         else:
             # Otherwise, a standard transfer burn between current and next.
-            events.append(NavigationEvent(
-                origin=current,
-                current=current,
-                next=nxt,
-                destination=nxt,
-                maneuver=ManeuverType.TRANSFER,
-                description=f"Transfer burn from {current.name} towards {nxt.name}."
-            ))
-        
+            events.append(
+                NavigationEvent(
+                    origin=current,
+                    current=current,
+                    next=nxt,
+                    destination=nxt,
+                    maneuver=ManeuverType.TRANSFER,
+                    description=f"Transfer burn from {current.name} towards {nxt.name}.",
+                )
+            )
+
         # If the upcoming node is a Planet or Moon (i.e. a major body), perform circularization
         # to enter its sphere of influence.
         if next_type in TypeName.PLANETARY_BODIES:
-            events.append(NavigationEvent(
-                origin=current,
-                current=current,
-                next=nxt,
-                destination=nxt,
-                maneuver=ManeuverType.CIRCULARIZE,
-                description=f"Circularization maneuver upon entering {nxt.name}'s sphere of influence."
-            ))
-        
+            events.append(
+                NavigationEvent(
+                    origin=current,
+                    current=current,
+                    next=nxt,
+                    destination=nxt,
+                    maneuver=ManeuverType.CIRCULARIZE,
+                    description=f"Circularization maneuver upon entering {nxt.name}'s sphere of influence.",
+                )
+            )
+
         # For the final leg, do a landing or docking maneuver.
         if i == len(path) - 2:
             if next_type == TypeName.STATION:
-                events.append(NavigationEvent(
-                    origin=current,
-                    current=current,
-                    next=nxt,
-                    destination=nxt,
-                    maneuver=ManeuverType.DOCK,
-                    description=f"Dock at station {nxt.name}."
-                ))
+                events.append(
+                    NavigationEvent(
+                        origin=current,
+                        current=current,
+                        next=nxt,
+                        destination=nxt,
+                        maneuver=ManeuverType.DOCK,
+                        description=f"Dock at station {nxt.name}.",
+                    )
+                )
             elif next_type in TypeName.PLANETARY_BODIES:
-                events.append(NavigationEvent(
-                    origin=current,
-                    current=current,
-                    next=nxt,
-                    destination=nxt,
-                    maneuver=ManeuverType.LANDING,
-                    description=f"Landing maneuver on {nxt.name}."
-                ))
+                events.append(
+                    NavigationEvent(
+                        origin=current,
+                        current=current,
+                        next=nxt,
+                        destination=nxt,
+                        maneuver=ManeuverType.LANDING,
+                        description=f"Landing maneuver on {nxt.name}.",
+                    )
+                )
             # Additional final actions could be inserted here if needed.
 
     return events
+
 
 """
 Encapsulates graph-based navigational logic for the universe.
@@ -201,7 +226,6 @@ It provides helper methods to:
 
 These functions will be used by the RouteServer for advanced route planning and maneuver determination.
 """
-
 
 
 class UniverseGraph:
@@ -229,25 +253,36 @@ class UniverseGraph:
 
     def rebuild_graph(self):
         """
-        Rebuilds the universe graph using orbital relationships.
-        Each edge represents an orbital relationship between two bodies.
-        Because Location uses multi‑table inheritance, we must use each object's
-        concrete instance (via get_concrete_instance()) so that the 'orbits' attribute is
-        available.
-        
-        The graph is undirected so that an edge from A to B is traversable both ways.
-        """
-        # Rebuilds must be atomic w.r.t. readers (thread-safe).
-        with UniverseGraph._instance_lock:
-            self._graph = nx.Graph()
-            for loc in Location.objects.all():
-                concrete = loc.get_concrete_instance()
-                self._graph.add_node(concrete.id, location=concrete)
+        Rebuild the universe graph using orbital relationships.
 
-                if hasattr(concrete, "orbits") and concrete.orbits is not None:
-                    # Ensure the parent is also concrete.
-                    parent = concrete.orbits.get_concrete_instance()
-                    self._graph.add_edge(concrete.id, parent.id)
+        Batch-load each concrete model once instead of walking every base
+        Location row and re-probing subclasses for each node.
+        """
+        with UniverseGraph._instance_lock:
+            graph = nx.Graph()
+            concrete_ids = set()
+
+            def add_nodes_and_edges(instances):
+                for instance in instances:
+                    concrete_ids.add(instance.id)
+                    graph.add_node(instance.id, location=instance)
+                    parent_id = getattr(instance, "orbits_id", None)
+                    if parent_id is not None:
+                        graph.add_edge(instance.id, parent_id)
+
+            add_nodes_and_edges(Galaxy.objects.all())
+            add_nodes_and_edges(StarSystem.objects.select_related("orbits"))
+            add_nodes_and_edges(Star.objects.select_related("orbits"))
+            add_nodes_and_edges(Planet.objects.select_related("orbits"))
+            add_nodes_and_edges(Moon.objects.select_related("orbits"))
+            add_nodes_and_edges(Station.objects.select_related("orbits"))
+
+            # Preserve historical behavior for bare Location rows created in
+            # tests/debugging that are not represented by any concrete subclass.
+            for loc in Location.objects.exclude(pk__in=concrete_ids):
+                graph.add_node(loc.id, location=loc)
+
+            self._graph = graph
 
     def get_neighbors(self, location: Location) -> List[Location]:
         """
@@ -271,7 +306,7 @@ class UniverseGraph:
 
         This method finds the shortest path from the origin Location to the destination Location
         using the universe graph. It returns a list of Location objects representing the path.
-        
+
         Parameters:
         - origin (Location): The starting point of the path.
         - destination (Location): The endpoint of the path.
@@ -292,12 +327,15 @@ class UniverseGraph:
                 # Rebuild once to synchronize with the current DB state.
                 self.rebuild_graph()
             path_ids = nx.shortest_path(self._graph, origin_id, dest_id)
-            return [Location.objects.get(id=nid).get_concrete_instance() for nid in path_ids]
+            return [self._graph.nodes[nid]["location"] for nid in path_ids]
         except nx.NetworkXNoPath:
-            raise ValueError(f"No valid route exists between {origin.name} and {destination.name}")
-        
-        
-    def get_local_graph(self, relative_location: Location, max_scale: Optional[OrderedScale] = None) -> List[Location]:
+            raise ValueError(
+                f"No valid route exists between {origin.name} and {destination.name}"
+            )
+
+    def get_local_graph(
+        self, relative_location: Location, max_scale: Optional[OrderedScale] = None
+    ) -> List[Location]:
         """
         Returns all Location objects reachable from 'relative_location' whose scale is less than or equal to 'max_scale'.
         If 'max_scale' is None, it defaults to the scale of 'relative_location'.
@@ -320,7 +358,11 @@ class UniverseGraph:
             visited.add(current.id)
 
             # Ensure we're doing the scale comparison correctly
-            current_scale = OrderedScale(current.scale) if not isinstance(current.scale, OrderedScale) else current.scale
+            current_scale = (
+                OrderedScale(current.scale)
+                if not isinstance(current.scale, OrderedScale)
+                else current.scale
+            )
             if current_scale <= max_scale:
                 local_nodes.append(current)
                 for neighbor in self.get_neighbors(current):
@@ -342,7 +384,9 @@ class UniverseGraph:
             current = queue.popleft()
             if max_scale is not None:
                 current_scale = (
-                    current.scale if isinstance(current.scale, OrderedScale) else OrderedScale(current.scale)
+                    current.scale
+                    if isinstance(current.scale, OrderedScale)
+                    else OrderedScale(current.scale)
                 )
                 if current_scale > max_scale:
                     continue
@@ -354,6 +398,7 @@ class UniverseGraph:
                     queue.append(neighbor)
         return None
 
+
 """
 Helper functions for graph-based navigation queries.
 
@@ -363,6 +408,7 @@ These functions help answer common queries such as:
     
 They are designed to be small, atomic, and easily composable with other route and scheduling functions.
 """
+
 
 def get_concrete_type(node):
     """
@@ -376,6 +422,7 @@ def get_concrete_type(node):
     """
     return node.__class__.__name__
 
+
 def is_planetary(location: Location) -> bool:
     """
     Return True if the location is a Planet or Moon and directly orbits a Star.
@@ -388,13 +435,14 @@ def is_planetary(location: Location) -> bool:
         return False
 
     # Require a valid orbital parent
-    if not hasattr(concrete, 'orbits') or concrete.orbits is None:
+    if not hasattr(concrete, "orbits") or concrete.orbits is None:
         return False
 
     parent_concrete = concrete.orbits.get_concrete_instance()
     return parent_concrete.scale == Scale.STAR
 
-def requires_plane_change(event: 'NavigationEvent') -> bool:
+
+def requires_plane_change(event: "NavigationEvent") -> bool:
     """
     Determine if a PLANE_CHANGE maneuver is required based on the orbital alignment.
 
@@ -410,9 +458,12 @@ def requires_plane_change(event: 'NavigationEvent') -> bool:
 
     # Ensure all three locations have an orbital parent (we use `orbits`, not `parent`)
     if (
-        hasattr(current_concrete, 'orbits') and current_concrete.orbits is not None
-        and hasattr(next_concrete, 'orbits') and next_concrete.orbits is not None
-        and hasattr(destination_concrete, 'orbits') and destination_concrete.orbits is not None
+        hasattr(current_concrete, "orbits")
+        and current_concrete.orbits is not None
+        and hasattr(next_concrete, "orbits")
+        and next_concrete.orbits is not None
+        and hasattr(destination_concrete, "orbits")
+        and destination_concrete.orbits is not None
     ):
         current_parent = current_concrete.orbits.get_concrete_instance()
         next_parent = next_concrete.orbits.get_concrete_instance()
@@ -424,12 +475,13 @@ def requires_plane_change(event: 'NavigationEvent') -> bool:
 
     return False
 
+
 def find_nearest_node(start_node, target_check, get_neighbors):
     """
     Find the nearest node from a starting node that satisfies a given condition.
 
     This function performs a breadth-first search (BFS) starting from `start_node`
-    across the graph defined by neighbors. It returns the first node for which 
+    across the graph defined by neighbors. It returns the first node for which
     `target_check(node)` returns True.
 
     Args:
@@ -454,6 +506,7 @@ def find_nearest_node(start_node, target_check, get_neighbors):
                 visited.add(neighbor)
     return None
 
+
 def _normalize(item: Any) -> Any:
     """
     Normalize a related item to a model instance.
@@ -474,65 +527,68 @@ def _is_control_station(station_name: str) -> bool:
 def find_controlling_station(location: Location) -> Optional[Station]:
     """
     Find the station that controls traffic for a given location.
-    
+
     This encodes the world-building rules for traffic control jurisdiction:
-    
+
     1. Find the nearest Station whose name contains a control keyword
        (e.g., "Control", "Dispatch") within the local area (PLANET scale).
     2. If no control station exists, find the nearest any-Station.
     3. If no stations exist, find the nearest Planet or Moon.
     4. If nothing found, return None (remote/uncontrolled space).
-    
+
     "Nearest" is defined by graph path distance within the local area.
-    
+
     Args:
         location: The Location to find a controller for.
-        
+
     Returns:
         The controlling Station, or nearest celestial body, or None if in
         remote uncontrolled space.
     """
     from .scale import OrderedScale
-    
+
     universe = UniverseGraph.get_instance()
     concrete_location = location.get_concrete_instance()
-    local_nodes = universe.get_local_graph(concrete_location, OrderedScale(Scale.PLANET))
-    
+    local_nodes = universe.get_local_graph(
+        concrete_location, OrderedScale(Scale.PLANET)
+    )
+
     # Helper function to compute path distance
     def distance(node: Location) -> int:
         path = universe.get_path(concrete_location, node)
-        return len(path) if path else float('inf')
-        
+        return len(path) if path else float("inf")
+
     # Helper to get actual type name (Station, Planet, etc.)
     def get_type_name(node: Location) -> str:
         try:
             return node.get_concrete_instance().__class__.__name__
         except Exception:
             return ""
-    
+
     # 1. Find nearest Station with a control keyword in name
     control_stations = [
-        node for node in local_nodes
+        node
+        for node in local_nodes
         if get_type_name(node) == TypeName.STATION and _is_control_station(node.name)
     ]
     if control_stations:
         return min(control_stations, key=distance)
-        
+
     # 2. Find nearest any-Station
     stations = [node for node in local_nodes if get_type_name(node) == TypeName.STATION]
     if stations:
         return min(stations, key=distance)
-        
+
     # 3. Find nearest Planet or Moon
     celestials = [
-        node for node in local_nodes
-        if get_type_name(node) in TypeName.PLANETARY_BODIES
+        node for node in local_nodes if get_type_name(node) in TypeName.PLANETARY_BODIES
     ]
     if celestials:
         return min(celestials, key=distance)
-        
+
     # 4. Remote/uncontrolled space
     return None
+
 
 def print_tree(universe_graph, root_id, level=0, visited=None):
     if visited is None:
@@ -546,7 +602,7 @@ def print_tree(universe_graph, root_id, level=0, visited=None):
 
     # Print the current node with indentation based on its level
     node_data = graph.nodes[root_id]
-    location = node_data.get('location')
+    location = node_data.get("location")
     if location:
         print("  " * level + f"Node {root_id}: {location.name}")
     else:
@@ -556,4 +612,3 @@ def print_tree(universe_graph, root_id, level=0, visited=None):
     for neighbor in graph.neighbors(root_id):
         if neighbor not in visited:
             print_tree(universe_graph, neighbor, level + 1, visited)
-
