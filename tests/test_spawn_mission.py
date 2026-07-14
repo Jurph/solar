@@ -21,6 +21,10 @@ from mysite.universe.models.ship import Ship
 from mysite.universe.models.simulation import SimulationState
 from mysite.universe.models.scale import Scale
 
+# Import before route-service monkeypatches below so script_server keeps a real
+# RouteService binding for later tests in the same process.
+import mysite.universe.services.script_server  # noqa: F401
+
 
 @dataclass(frozen=True)
 class _FakeDialogueEvent:
@@ -74,24 +78,6 @@ class SpawnMissionOrchestrationTests(TestCase):
             anchor_wall_clock=0.0,
             time_scale=0.0,
         )
-
-    def test_spawn_mission_starts_thread_and_returns_started(self):
-        """
-        If this fails: endpoint is miswired (wrong URL/method), or it stopped
-        starting a background worker at all.
-        """
-        url = reverse("spawn_mission")
-
-        with patch("mysite.universe.views.missions.threading.Thread") as thread_cls:
-            thread = thread_cls.return_value
-            response = self.client.post(url)
-
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["status"], "started")
-
-            thread_cls.assert_called_once()
-            self.assertTrue(thread_cls.call_args.kwargs.get("daemon"))
-            thread.start.assert_called_once()
 
     def test_spawn_mission_persists_events_at_sim_time_offsets(self):
         """
@@ -157,9 +143,11 @@ class SpawnMissionOrchestrationTests(TestCase):
 
     def test_spawn_mission_aborts_when_route_is_empty(self):
         """
-        If this fails: spawn_mission might be persisting partial/garbage missions.
+        If this fails: spawn_mission might be persisting a mission whose route
+        service could not construct any executable navigation events.
         """
         url = reverse("spawn_mission")
+        dest = self.destination
 
         class _FakeLLM:
             def __init__(self, *args, **kwargs):
@@ -169,7 +157,7 @@ class SpawnMissionOrchestrationTests(TestCase):
             def pick_random_destination(
                 self, *, excluding, cargo_mission: bool = False
             ):
-                return self.destination
+                return dest
 
             def plan_route(self, *, origin, destination):
                 return []
@@ -316,7 +304,7 @@ class SpawnMissionOrchestrationTests(TestCase):
 
 
 class SpawnMissionEdgeCaseTests(TestCase):
-    """Cover uncovered branches in spawn_mission (lines 60, 83-85, 241-242, 281-282, 310-311)."""
+    """Edge behavior that protects the HTTP-to-background orchestration boundary."""
 
     def setUp(self):
         self.client = Client()
@@ -337,10 +325,17 @@ class SpawnMissionEdgeCaseTests(TestCase):
             time_scale=0.0,
         )
 
-    def test_empty_mission_type_defaults_to_cargo_path(self):
-        """POST with mission_type='' falls through else branch (line 60) → cargo path."""
+    def test_empty_mission_type_defaults_to_persisted_cargo_mission(self):
+        """Blank mission_type is normalized to the cargo mission behavior."""
         url = reverse("spawn_mission")
         dest = self.destination
+        fake_events = [
+            _FakeDialogueEvent(
+                timestamp=2.5,
+                actor=self.pilot,
+                text="Default cargo path persisted this event.",
+            )
+        ]
 
         class _FakeLLM:
             def __init__(self, *args, **kwargs):
@@ -353,14 +348,12 @@ class SpawnMissionEdgeCaseTests(TestCase):
             def plan_route(self, *, origin, destination):
                 return ["NAV_EVENT"]
 
-        cargo_path_called = []
-
         class _FakeScriptService:
             def __init__(self, llm):
-                cargo_path_called.append(True)
+                self.llm = llm
 
             def iter_navigation_events(self, nav_events, ship, use_physics_delays=True):
-                return []
+                return fake_events
 
         with (
             patch("mysite.universe.views.missions.threading.Thread", _ImmediateThread),
@@ -378,55 +371,20 @@ class SpawnMissionEdgeCaseTests(TestCase):
             response = self.client.post(url, {"mission_type": ""})
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            cargo_path_called, "cargo ScriptService should have been instantiated"
-        )
+        saved = DialogueEventLog.objects.get()
+        self.assertEqual(saved.actor, self.pilot)
+        self.assertEqual(saved.text, "Default cargo path persisted this event.")
 
-    def test_empty_route_aborts_without_saving_events(self):
-        """plan_route returns [] → lines 241-242 log error and return; no events saved."""
+    def test_zero_dialogue_events_rolls_back_and_records_failure(self):
+        """A non-empty route that produces no dialogue is a failed mission."""
+        from django.core.cache import cache
+
+        from mysite.universe.views.missions import SPAWN_FAILURE_CACHE_KEY
+
         url = reverse("spawn_mission")
+        origin = self.origin
         dest = self.destination
-
-        class _FakeLLM:
-            def __init__(self, *args, **kwargs):
-                self.temperature = None
-
-        class _FakeRouteService:
-            def pick_random_destination(self, *, excluding, cargo_mission=False):
-                return dest
-
-            def plan_route(self, *, origin, destination):
-                return []
-
-        class _FakeScriptService:
-            def __init__(self, llm):
-                pass
-
-            def iter_navigation_events(self, nav_events, ship, use_physics_delays=True):
-                raise AssertionError("Should not be called when route is empty")
-
-        with (
-            patch("mysite.universe.views.missions.threading.Thread", _ImmediateThread),
-            patch("mysite.universe.models.ship.Ship.create", return_value=self.ship),
-            patch("mysite.universe.models.actor.Pilot.create", return_value=self.pilot),
-            patch(
-                "mysite.universe.services.route_server.RouteService", _FakeRouteService
-            ),
-            patch(
-                "mysite.universe.services.script_server.ScriptService",
-                _FakeScriptService,
-            ),
-            patch("mysite.universe.services.llm_service.LLMService", _FakeLLM),
-        ):
-            response = self.client.post(url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(DialogueEventLog.objects.count(), 0)
-
-    def test_zero_dialogue_events_aborts_without_saving(self):
-        """iter_navigation_events yields nothing → lines 281-282 log error; no events saved."""
-        url = reverse("spawn_mission")
-        dest = self.destination
+        real_pilot_create = Pilot.create
 
         class _FakeLLM:
             def __init__(self, *args, **kwargs):
@@ -441,15 +399,23 @@ class SpawnMissionEdgeCaseTests(TestCase):
 
         class _FakeScriptService:
             def __init__(self, llm):
-                pass
+                self.llm = llm
 
             def iter_navigation_events(self, nav_events, ship, use_physics_delays=True):
-                return iter([])  # yields nothing
+                return iter([])
+
+        def create_ship():
+            return Ship.objects.create(name="ZERO EVENT SHIP", current_location=origin)
+
+        def create_pilot(*, ship):
+            return real_pilot_create(name="Zero Event Pilot", ship=ship)
 
         with (
             patch("mysite.universe.views.missions.threading.Thread", _ImmediateThread),
-            patch("mysite.universe.models.ship.Ship.create", return_value=self.ship),
-            patch("mysite.universe.models.actor.Pilot.create", return_value=self.pilot),
+            patch("mysite.universe.models.ship.Ship.create", side_effect=create_ship),
+            patch(
+                "mysite.universe.models.actor.Pilot.create", side_effect=create_pilot
+            ),
             patch(
                 "mysite.universe.services.route_server.RouteService", _FakeRouteService
             ),
@@ -462,10 +428,16 @@ class SpawnMissionEdgeCaseTests(TestCase):
             response = self.client.post(url)
 
         self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ship.objects.filter(name="ZERO EVENT SHIP").exists())
+        self.assertFalse(Pilot.objects.filter(name="Zero Event Pilot").exists())
         self.assertEqual(DialogueEventLog.objects.count(), 0)
+        failure = cache.get(SPAWN_FAILURE_CACHE_KEY)
+        self.assertIsNotNone(failure, "zero-dialogue mission failure must be recorded")
+        self.assertEqual(failure["mission_type"], "cargo")
+        self.assertIn("no dialogue events generated", failure["error"])
 
     def test_spawn_mission_returns_500_when_thread_start_raises(self):
-        """threading.Thread.start() raises → lines 310-311: 500 response with error status."""
+        """Thread startup failures are reported synchronously to the caller."""
         url = reverse("spawn_mission")
 
         with patch("mysite.universe.views.missions.threading.Thread") as thread_cls:
@@ -479,7 +451,7 @@ class SpawnMissionEdgeCaseTests(TestCase):
         self.assertIn("Failed to spawn mission", response.json()["message"])
 
     def test_nav_broadcast_unknown_satellite_name_logs_error_and_exits(self):
-        """satellite_name given but not found → lines 83-85: thread exits, no events saved."""
+        """Unknown explicit NavSat names do not create partial broadcast events."""
         url = reverse("spawn_mission")
 
         with patch("mysite.universe.views.missions.threading.Thread", _ImmediateThread):

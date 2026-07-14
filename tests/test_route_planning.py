@@ -928,153 +928,10 @@ class TestRouteDurations(TestCase):
             )
 
 
-class TestRouteServerFacadeMethods(TestCase):
-    """
-    Call the internal RouteService facade methods directly to cover the
-    delegation stubs in route_server.py that are never exercised when
-    tests only call plan_route().
-
-    Uses the same test_universe.xml static scenario as the other test
-    classes in this file so no additional fixture setup is needed.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        xml_file = os.path.join(settings.BASE_DIR, "xml", "test_universe.xml")
-        UniverseImporter(xml_file).import_universe()
-
-    def setUp(self):
-        self.svc = RouteService()
-        self.earth = Location.objects.get(name="Earth")
-        self.moon = Location.objects.get(name="Moon")
-        self.luna = Location.objects.get(name="Luna")
-        self.mars = Location.objects.get(name="Mars")
-        self.earth_control = Location.objects.get(name="Earth Orbital Control")
-        self.beta_major = Location.objects.get(name="Beta Major")
-
-    def _plan_earth_moon(self):
-        return self.svc.plan_route(self.earth, self.moon)
-
-    # ------------------------------------------------------------------
-    # Internal delegation stubs
-    # ------------------------------------------------------------------
-
-    def test_build_scale_path_via_facade(self):
-        """_build_scale_path returns a list of integer-comparable scale values."""
-        path = [self.earth, self.moon]
-        scale_path = self.svc._build_scale_path(path)
-        self.assertEqual(len(scale_path), 2)
-
-    def test_determine_transfer_plan_via_facade(self):
-        """_determine_transfer_plan returns a non-empty list for a 2-node path."""
-        from mysite.universe.models.scale import OrderedScale, Scale
-
-        scale_path = [OrderedScale(Scale.PLANET), OrderedScale(Scale.MOON)]
-        plan = self.svc._determine_transfer_plan(scale_path)
-        self.assertGreater(len(plan), 0)
-
-    def test_compress_location_path_via_facade(self):
-        """_compress_location_path retains endpoints and surface-type nodes."""
-        path = [self.earth, self.moon, self.luna]
-        compressed = self.svc._compress_location_path(path)
-        # First and last are always kept
-        self.assertEqual(compressed[0].name, self.earth.name)
-        self.assertEqual(compressed[-1].name, self.luna.name)
-
-    def test_compress_location_path_empty_returns_empty(self):
-        """_compress_location_path([]) returns []."""
-        result = self.svc._compress_location_path([])
-        self.assertEqual(result, [])
-
-    def test_pretty_print_events_via_facade(self):
-        """pretty_print_events returns a non-empty string for a valid route."""
-        events = self._plan_earth_moon()
-        text = self.svc.pretty_print_events(events)
-        self.assertIsInstance(text, str)
-        self.assertGreater(len(text), 0)
-
-    def test_get_local_locations_via_facade(self):
-        """get_local_locations returns a list of Location objects."""
-        locations = self.svc.get_local_locations(self.earth, Scale.PLANET)
-        self.assertIsInstance(locations, list)
-
-    def test_get_relevant_body_for_maneuver_via_facade(self):
-        """_get_relevant_body_for_maneuver returns a body or None (no crash)."""
-        events = self._plan_earth_moon()
-        for event in events:
-            body = self.svc._get_relevant_body_for_maneuver(event)
-            # May be None for maneuvers with no relevant body; just don't crash
-            self.assertTrue(body is None or hasattr(body, "name"))
-
-    def test_extract_body_params_via_facade(self):
-        """_extract_body_params returns a dict from a body object."""
-        events = self._plan_earth_moon()
-        for event in events:
-            body = self.svc._get_relevant_body_for_maneuver(event)
-            if body is not None:
-                params = self.svc._extract_body_params(body)
-                self.assertIsInstance(params, dict)
-                break
-
-    def test_build_physics_nav_context_via_facade(self):
-        """_build_physics_nav_context returns a dict for events that have a body."""
-        events = self._plan_earth_moon()
-        for event in events:
-            body = self.svc._get_relevant_body_for_maneuver(event)
-            if body is not None:
-                ctx = self.svc._build_physics_nav_context(event, body)
-                self.assertIsInstance(ctx, dict)
-                break
-
-    def test_determine_maneuvers_via_facade(self):
-        """_determine_maneuvers() facade (line 63) delegates to route_plan and returns events."""
-        universe = UniverseGraph.get_instance()
-        path = universe.get_path(self.earth, self.luna)
-        scale_path = self.svc._build_scale_path(path)
-        transfer_plan = self.svc._determine_transfer_plan(scale_path)
-        compressed = self.svc._compress_location_path(path)
-        events = self.svc._determine_maneuvers(
-            transfer_plan, compressed, max(scale_path)
-        )
-        self.assertIsInstance(events, list)
-        self.assertGreater(len(events), 0)
-
-    def test_enhance_with_controllers_via_facade(self):
-        """_enhance_with_controllers() facade (line 66) delegates to route_controllers."""
-        universe = UniverseGraph.get_instance()
-        path = universe.get_path(self.earth, self.luna)
-        scale_path = self.svc._build_scale_path(path)
-        transfer_plan = self.svc._determine_transfer_plan(scale_path)
-        compressed = self.svc._compress_location_path(path)
-        raw_events = self.svc._determine_maneuvers(
-            transfer_plan, compressed, max(scale_path)
-        )
-        enhanced = self.svc._enhance_with_controllers(raw_events)
-        self.assertIsInstance(enhanced, list)
-        self.assertEqual(len(enhanced), len(raw_events))
-
-    def test_pick_random_destination_via_facade(self):
-        """pick_random_destination() facade (line 77) returns a Location different from excluding."""
-        result = self.svc.pick_random_destination(excluding=self.earth)
-        self.assertIsInstance(result, Location)
-        self.assertNotEqual(result.id, self.earth.id)
-
-    def test_random_journey_via_facade(self):
-        """random_journey() facade (line 85) returns a non-empty NavigationEvent list."""
-        from mysite.universe.models.ship import Ship
-        from mysite.universe.models.navigation import NavigationEvent
-
-        ship = Ship.objects.create(name="FACADE TEST SHIP", current_location=self.earth)
-        events = self.svc.random_journey(ship)
-        self.assertIsInstance(events, list)
-        self.assertGreater(len(events), 0)
-        self.assertIsInstance(events[0], NavigationEvent)
-
-
 class TestRoutePlanEdgeCases(TestCase):
     """
-    Exercise the edge-case branches inside services/route/plan.py that are
-    not reachable through the standard plan_route() paths already tested.
+    Guard route-planning edge behavior with assertions on observable route
+    shape, not implementation line coverage.
     """
 
     @classmethod
@@ -1137,33 +994,32 @@ class TestRoutePlanEdgeCases(TestCase):
         result = determine_transfer_plan(single)
         self.assertEqual(result, single)
 
-    def test_station_to_planet_direct_includes_undock(self):
-        """
-        Station → Planet two-node route exercises the UNDOCK branch of the
-        two-node special-case in plan_route.
-        """
+    def test_station_to_planet_direct_route_has_full_departure_and_arrival_sequence(
+        self,
+    ):
+        """Station → Planet direct routes undock, travel, deorbit, then land."""
         events = self.svc.plan_route(self.earth_control, self.earth)
         maneuvers = [e.maneuver.name for e in events]
-        self.assertIn("UNDOCK", maneuvers)
+        self.assertEqual(
+            maneuvers,
+            ["UNDOCK", "DIRECT_ASCENT", "DEORBIT", "LANDING"],
+        )
 
-    def test_moon_departure_includes_launch(self):
-        """
-        Moon → Planet two-node route exercises the LAUNCH branch of the
-        two-node special-case in plan_route.
-        """
+    def test_moon_departure_direct_route_launches_before_ascent(self):
+        """Moon → Planet direct routes launch before direct ascent and landing."""
         events = self.svc.plan_route(self.moon, self.earth)
         maneuvers = [e.maneuver.name for e in events]
-        self.assertIn("LAUNCH", maneuvers)
+        self.assertEqual(
+            maneuvers,
+            ["LAUNCH", "DIRECT_ASCENT", "DEORBIT", "LANDING"],
+        )
 
 
 class TestDetermineManeuversBranches(TestCase):
     """
-    Cover the branches in determine_maneuvers() that are unreachable via
-    the normal plan_route() flow:
-    - DIRECT_ASCENT block (lines 203-245): triggered only when a crafted
-      transfer_plan containing ManeuverType.DIRECT_ASCENT is passed directly.
-    - Multi-leg Station departure (lines 283-285, 331-332).
-    - 3-element INSERTION plan with STATION destination (line 294).
+    Characterize maneuver policies that are not exposed cleanly through
+    `plan_route()` yet. Each assertion checks the full maneuver sequence so a
+    failure points at a changed route contract, not just branch coverage.
     """
 
     @classmethod
@@ -1190,85 +1046,50 @@ class TestDetermineManeuversBranches(TestCase):
     def _maneuver_names(self, events):
         return [e.maneuver.name for e in events]
 
-    # ------------------------------------------------------------------
-    # DIRECT_ASCENT block (lines 203-245)
-    # ------------------------------------------------------------------
-
     def test_direct_ascent_station_origin_planet_dest(self):
-        """
-        DIRECT_ASCENT with Station origin → UNDOCK prepended (line 225-226),
-        DIRECT_ASCENT in the middle (229), DEORBIT+LANDING at arrival (240-241).
-        """
+        """Station-origin direct ascent undocks before travel and planet arrival."""
         tp = [self.S_STATION, ManeuverType.DIRECT_ASCENT, self.S_PLANET]
         events = self.svc._determine_maneuvers(
             tp, [self.earth_control, self.earth], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        self.assertIn("UNDOCK", names)
-        self.assertIn("DIRECT_ASCENT", names)
-        self.assertIn("DEORBIT", names)
-        self.assertIn("LANDING", names)
-        self.assertNotIn("DOCK", names)
-        self.assertNotIn("CIRCULARIZE", names)
+        self.assertEqual(
+            names,
+            ["UNDOCK", "DIRECT_ASCENT", "DEORBIT", "LANDING"],
+        )
 
     def test_direct_ascent_moon_origin_moon_dest(self):
-        """
-        DIRECT_ASCENT with Moon origin → LAUNCH prepended (227-228),
-        CIRCULARIZE+DEORBIT+LANDING at Moon arrival (232-239).
-        """
+        """Moon-to-moon direct ascent launches, circularizes, deorbits, then lands."""
         tp = [self.S_MOON, ManeuverType.DIRECT_ASCENT, self.S_MOON]
         events = self.svc._determine_maneuvers(
             tp, [self.luna, self.moon], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        self.assertIn("LAUNCH", names)
-        self.assertIn("DIRECT_ASCENT", names)
-        self.assertIn("CIRCULARIZE", names)
-        self.assertIn("DEORBIT", names)
-        self.assertIn("LANDING", names)
+        self.assertEqual(
+            names,
+            ["LAUNCH", "DIRECT_ASCENT", "CIRCULARIZE", "DEORBIT", "LANDING"],
+        )
 
     def test_direct_ascent_planet_origin_station_dest(self):
-        """
-        DIRECT_ASCENT with Station destination → DOCK appended (230-231),
-        no LAUNCH or UNDOCK on the origin side.
-        """
+        """Direct ascent to a station docks without planetary arrival maneuvers."""
         tp = [self.S_PLANET, ManeuverType.DIRECT_ASCENT, self.S_STATION]
         events = self.svc._determine_maneuvers(
             tp, [self.earth, self.earth_control], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        self.assertIn("DIRECT_ASCENT", names)
-        self.assertIn("DOCK", names)
-        self.assertNotIn("UNDOCK", names)
-        self.assertNotIn("CIRCULARIZE", names)
+        self.assertEqual(names, ["DIRECT_ASCENT", "DOCK"])
 
     def test_direct_ascent_planet_origin_planet_dest(self):
-        """
-        DIRECT_ASCENT with Planet destination (else branch, line 240-241):
-        DEORBIT+LANDING but no DOCK or CIRCULARIZE.
-        """
+        """Planet-to-planet direct ascent ends with deorbit and landing."""
         tp = [self.S_PLANET, ManeuverType.DIRECT_ASCENT, self.S_PLANET]
         events = self.svc._determine_maneuvers(
             tp, [self.earth, self.mars], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        self.assertIn("DIRECT_ASCENT", names)
-        self.assertIn("DEORBIT", names)
-        self.assertIn("LANDING", names)
-        self.assertNotIn("DOCK", names)
-        self.assertNotIn("CIRCULARIZE", names)
+        self.assertEqual(names, ["DIRECT_ASCENT", "DEORBIT", "LANDING"])
 
-    # ------------------------------------------------------------------
-    # Multi-leg Station departure (lines 283-285) and non-planetary
-    # origin transfer phase (lines 331-332)
-    # ------------------------------------------------------------------
-
-    def test_multileg_station_departure_covers_undock_and_sublight(self):
-        """
-        Multi-leg route from a Station origin (len(transfer_plan) > 3):
-        - Departure phase: UNDOCK, INSERTION, CIRCULARIZE (lines 283-285).
-        - Transfer phase: non-planetary origin → SUBLIGHT, CIRCULARIZE (331-332).
-        """
+    def test_multileg_station_departure_covers_full_station_to_planet_sequence(self):
+        """Multi-leg Station → Planet routes keep departure, transfer, arrival order."""
         tp = [
             self.S_STATION,
             ManeuverType.INSERTION,
@@ -1280,40 +1101,33 @@ class TestDetermineManeuversBranches(TestCase):
             tp, [self.earth_control, self.earth, self.mars], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        self.assertIn("UNDOCK", names)
-        self.assertIn("INSERTION", names)
-        self.assertIn("SUBLIGHT", names)
-        self.assertIn("DEORBIT", names)
-        self.assertIn("LANDING", names)
-
-    # ------------------------------------------------------------------
-    # 3-element INSERTION plan with STATION destination (line 294)
-    # ------------------------------------------------------------------
+        self.assertEqual(
+            names,
+            [
+                "UNDOCK",
+                "INSERTION",
+                "CIRCULARIZE",
+                "SUBLIGHT",
+                "CIRCULARIZE",
+                "DEORBIT",
+                "LANDING",
+            ],
+        )
 
     def test_insertion_plan_to_station_dest_adds_plane_change(self):
-        """
-        3-element transfer plan (INSERTION, not DIRECT_ASCENT) with Station
-        destination: transfer phase emits PLANE_CHANGE (line 294).
-        """
+        """Planet → Station insertion routes include plane change before docking."""
         tp = [self.S_PLANET, ManeuverType.INSERTION, self.S_STATION]
         events = self.svc._determine_maneuvers(
             tp, [self.earth, self.earth_control], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        self.assertIn("PLANE_CHANGE", names)
-        self.assertIn("DOCK", names)
+        self.assertEqual(
+            names,
+            ["LAUNCH", "INSERTION", "CIRCULARIZE", "PLANE_CHANGE", "DOCK"],
+        )
 
     def test_hyperspace_route_to_station_adds_plane_change(self):
-        """
-        Multi-leg transfer plan with a HYPERSPACE segment and Station destination
-        appends a PLANE_CHANGE arrival event (plan.py line 329).
-
-        Requires:
-          - len(transfer_plan) > 3  (multi-leg)
-          - origin scale is planetary  (is_origin_planetary = True)
-          - plan contains ManeuverType.HYPERSPACE
-          - dest_type == TypeName.STATION
-        """
+        """Hyperspace routes to stations finish with a plane change and docking."""
         tp = [
             self.S_PLANET,
             ManeuverType.HYPERSPACE,
@@ -1325,8 +1139,17 @@ class TestDetermineManeuversBranches(TestCase):
             tp, [self.earth, self.earth_control], self.S_STARSYSTEM
         )
         names = self._maneuver_names(events)
-        # The hyperspace loop adds SUBLIGHT + HYPERSPACE + SUBLIGHT + CIRCULARIZE,
-        # then the station check appends PLANE_CHANGE.
-        self.assertIn("HYPERSPACE", names)
-        self.assertIn("PLANE_CHANGE", names)
-        self.assertIn("DOCK", names)
+        self.assertEqual(
+            names,
+            [
+                "LAUNCH",
+                "INSERTION",
+                "CIRCULARIZE",
+                "SUBLIGHT",
+                "HYPERSPACE",
+                "SUBLIGHT",
+                "CIRCULARIZE",
+                "PLANE_CHANGE",
+                "DOCK",
+            ],
+        )
