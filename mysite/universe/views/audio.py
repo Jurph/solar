@@ -39,7 +39,6 @@ from pathlib import Path
 
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
@@ -54,6 +53,7 @@ from mysite.universe.services.audio_synth import (
     WhiteNoise,
     render_wav_bytes,
 )
+from mysite.universe.views.dev_guard import state_changing_dev_only
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,7 @@ def audio_lab(request):
     return render(request, "universe/audio_lab.html", {"voices": voices})
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def audio_lab_render(request):
     """

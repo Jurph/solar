@@ -3,12 +3,15 @@ import io
 import requests
 import yaml
 from contextlib import redirect_stdout, redirect_stderr
-from mysite.universe.services.llm_service import LLMService
+
+pytestmark = [pytest.mark.slow, pytest.mark.external, pytest.mark.llm]
 
 
 @pytest.fixture
 def llm():
     """Fixture that returns an initialized LLM service."""
+    from mysite.universe.services.llm_service import LLMService
+
     return LLMService(quiet_mode=True)  # We can disable quiet mode for debugging
 
 
@@ -218,6 +221,8 @@ def test_battery_of_questions(llm, yes_no_prompt):
 # Keep the main function for manual testing outside of pytest
 def main():
     """Run the tests manually outside of pytest."""
+    from mysite.universe.services.llm_service import LLMService
+
     # Note: LLMService.__init__ takes config_path, not model_name directly
     # For now, using default config_path - this may need adjustment after refactoring
     llm_instance = LLMService(quiet_mode=True)

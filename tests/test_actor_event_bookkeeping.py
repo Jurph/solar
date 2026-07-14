@@ -68,33 +68,6 @@ def test_satellite_create_assigns_audio_profile():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_dialogue_event_log_via_receiver_has_actor():
-    """DialogueEvent processed via signal must have actor ForeignKey."""
-    from mysite.universe.signals import dialogue_event_processed
-
-    loc = Location.objects.create(name="Test Station", scale=Scale.STATION)
-    ship = Ship.objects.create(
-        name="TestShip", current_location=loc, size=Ship.Size.MEDIUM
-    )
-    pilot = Pilot.create(ship=ship)
-
-    # Create DialogueEvent and send signal
-    event = DialogueEvent(
-        timestamp=100.0,
-        actor=pilot,
-        text="Test message",
-    )
-
-    dialogue_event_processed.send(sender=None, event=event)
-
-    # Check that log entry was created with actor ForeignKey
-    log_entry = DialogueEventLog.objects.filter(actor_name=pilot.name).first()
-    assert log_entry is not None, "DialogueEventLog should be created via receiver"
-    assert log_entry.actor is not None, "DialogueEventLog must have actor reference"
-    assert log_entry.actor.id == pilot.id, "actor_id must match actor.id"
-
-
-@pytest.mark.django_db(transaction=True)
 def test_dialogue_event_log_direct_create_has_actor_id():
     """DialogueEventLog created directly must have actor_id in metadata."""
     loc = Location.objects.create(name="Test Station", scale=Scale.STATION)

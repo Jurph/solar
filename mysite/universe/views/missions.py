@@ -3,7 +3,6 @@ Views for mission spawning and orchestration.
 
 Contains:
 - spawn_mission: Create a complete mission (ship, pilot, cargo, route, dialogue)
-- run_demo: Deprecated demo endpoint (use spawn_mission instead)
 
 Future additions:
 - spawn_anomaly: Inject anomaly events
@@ -13,18 +12,24 @@ Future additions:
 
 import logging
 import threading
+import time
 
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.core.management import call_command
+from django.core.cache import cache
+from django.db import transaction
 
 from mysite.universe.models.event import DialogueEventLog
+from mysite.universe.views.dev_guard import state_changing_dev_only
 
 logger = logging.getLogger(__name__)
 
+# spawn_mission returns 200 before its background thread runs, so background
+# failures are recorded here for health_check to surface to pollers.
+SPAWN_FAILURE_CACHE_KEY = "spawn_mission:last_error"
 
-@csrf_exempt
+
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def spawn_mission(request):
     """
@@ -76,10 +81,14 @@ def spawn_mission(request):
                 # Nav broadcast mission: generate broadcast from satellite(s)
                 script_service = ScriptService.get_instance()
 
-                import math
                 import random
                 from mysite.universe.services.location_service import (
                     find_star_system_for_location,
+                )
+                from mysite.universe.services.nav_slots import (
+                    next_hour_boundary,
+                    release_nav_broadcast_slots,
+                    reserve_nav_broadcast_slots,
                 )
 
                 # Get satellite to broadcast from
@@ -149,92 +158,106 @@ def spawn_mission(request):
                             )
                         satellites = [satellite]
 
-                # 3) Pick an on-the-hour time slot that isn't already used by another NavSat broadcast.
-                #    Broadcast cadence: 14 updates, 12 hours apart.
+                # 3) Reserve on-the-hour time slots not already used by another
+                #    NavSat broadcast. Broadcast cadence: 14 updates, 12 hours apart.
+                #    Reserving slots as rows under a uniqueness constraint before
+                #    generating dialogue closes the check-to-use race with
+                #    concurrent nav broadcast missions (issue #39).
                 hours = 3600.0
                 cadence = 12.0 * hours
                 count = 14
 
-                def next_hour_boundary(t: float) -> float:
-                    return float(int(math.ceil(t / hours) * hours))
-
-                first_candidate = next_hour_boundary(base_sim_time)
-
-                # Consider "used" timestamps to be any existing nav_broadcast events.
-                occupied = set(
-                    DialogueEventLog.objects.filter(
-                        metadata__type="nav_broadcast"
-                    ).values_list("timestamp", flat=True)
+                reserved_slots = reserve_nav_broadcast_slots(
+                    base_sim_time,
+                    count=count,
+                    cadence_s=cadence,
+                    satellite_name=satellites[0].name,
                 )
-
-                start_time = None
-                for slot_offset_hours in range(0, 24):
-                    candidate = first_candidate + (slot_offset_hours * hours)
-                    scheduled = [candidate + (i * cadence) for i in range(count)]
-                    if all(ts not in occupied for ts in scheduled):
-                        start_time = candidate
-                        break
-
-                if start_time is None:
-                    # If the next 24 hourly slots are all blocked, fall back to the earliest
-                    # hour boundary and accept collisions (should be extremely rare).
-                    start_time = first_candidate
-
-                # 4) Generate and persist all scheduled broadcasts (and optional gratitude replies).
-                events_saved = 0
-                for i in range(count):
-                    broadcast_timestamp = start_time + (i * cadence)
-                    broadcast_chain = script_service.generate_nav_broadcast_chain(
-                        satellite=satellites[0],
-                        base_timestamp=broadcast_timestamp,
+                if reserved_slots is not None:
+                    start_time = reserved_slots[0]
+                else:
+                    # If the next 24 hourly slots are all blocked, fall back to the
+                    # earliest hour boundary and accept collisions (extremely rare).
+                    start_time = next_hour_boundary(base_sim_time)
+                    logger.warning(
+                        "spawn_mission: all hourly nav broadcast slots occupied; "
+                        f"accepting collisions from {start_time}"
                     )
-                    for event in broadcast_chain:
-                        # Long-term: allow the last scheduled NavSat broadcast to carry a "next cycle"
-                        # marker so a future scheduler can re-enqueue another NavSat mission on the same
-                        # per-hour cadence without having to re-derive the schedule.
-                        if (
-                            i == count - 1
-                            and event.metadata
-                            and event.metadata.get("type") == "nav_broadcast"
-                        ):
-                            event.metadata["navsat_next_cycle_anchor_ts"] = (
-                                start_time + (count * cadence)
-                            )
-                            event.metadata["navsat_cycle_count"] = count
-                            event.metadata["navsat_cycle_cadence_hours"] = (
-                                cadence / hours
-                            )
-                            event.metadata["navsat_cycle_anchor_ts"] = start_time
-                            if target_system is not None:
-                                event.metadata["navsat_star_system_name"] = (
-                                    target_system.name
-                                )
-                                event.metadata["navsat_star_system_id"] = (
-                                    target_system.id
-                                )
-                        # CRITICAL: Store actor_id in metadata - never use name lookups
-                        metadata = dict(event.metadata) if event.metadata else {}
-                        if hasattr(event, "actor") and event.actor is not None:
-                            if hasattr(event.actor, "id"):
-                                metadata["actor_id"] = event.actor.id
-                            else:
-                                logger.error(
-                                    "Nav broadcast event actor has no 'id' attribute: %s",
-                                    type(event.actor),
-                                )
-                        else:
-                            logger.error(
-                                "Nav broadcast event has no actor or actor is None"
-                            )
 
-                        DialogueEventLog.objects.create(
-                            timestamp=event.timestamp,
-                            actor=event.actor,
-                            actor_name=event.actor.name,
-                            text=event.text,
-                            metadata=metadata,
+                # 4) Generate and persist all scheduled broadcasts (and optional
+                #    gratitude replies). If anything fails, release the reserved
+                #    slots so an abandoned reservation cannot block the schedule.
+                events_saved = 0
+                try:
+                    with transaction.atomic():
+                        for i in range(count):
+                            broadcast_timestamp = start_time + (i * cadence)
+                            broadcast_chain = (
+                                script_service.generate_nav_broadcast_chain(
+                                    satellite=satellites[0],
+                                    base_timestamp=broadcast_timestamp,
+                                )
+                            )
+                            for event in broadcast_chain:
+                                # Long-term: allow the last scheduled NavSat broadcast to
+                                # carry a "next cycle" marker so a future scheduler can
+                                # re-enqueue another NavSat mission on the same per-hour
+                                # cadence without having to re-derive the schedule.
+                                if (
+                                    i == count - 1
+                                    and event.metadata
+                                    and event.metadata.get("type") == "nav_broadcast"
+                                ):
+                                    event.metadata["navsat_next_cycle_anchor_ts"] = (
+                                        start_time + (count * cadence)
+                                    )
+                                    event.metadata["navsat_cycle_count"] = count
+                                    event.metadata["navsat_cycle_cadence_hours"] = (
+                                        cadence / hours
+                                    )
+                                    event.metadata["navsat_cycle_anchor_ts"] = (
+                                        start_time
+                                    )
+                                    if target_system is not None:
+                                        event.metadata["navsat_star_system_name"] = (
+                                            target_system.name
+                                        )
+                                        event.metadata["navsat_star_system_id"] = (
+                                            target_system.id
+                                        )
+                                # CRITICAL: every dialogue event must carry a persisted
+                                # actor. A missing actor is a script-service bug; abort
+                                # the mission so the transaction rolls back instead of
+                                # persisting a partial broadcast schedule.
+                                actor = getattr(event, "actor", None)
+                                if actor is None or not hasattr(actor, "id"):
+                                    raise ValueError(
+                                        f"Nav broadcast event at t={event.timestamp} has "
+                                        f"no persisted actor (got {type(actor).__name__});"
+                                        " aborting mission."
+                                    )
+                                # Store actor_id in metadata - never use name lookups
+                                metadata = (
+                                    dict(event.metadata) if event.metadata else {}
+                                )
+                                metadata["actor_id"] = actor.id
+
+                                DialogueEventLog.objects.create(
+                                    timestamp=event.timestamp,
+                                    actor=actor,
+                                    actor_name=actor.name,
+                                    text=event.text,
+                                    metadata=metadata,
+                                )
+                                events_saved += 1
+                except Exception:
+                    if reserved_slots:
+                        released = release_nav_broadcast_slots(reserved_slots)
+                        logger.info(
+                            f"spawn_mission: released {released} reserved nav "
+                            "broadcast slot(s) after mission failure"
                         )
-                        events_saved += 1
+                    raise
 
                 logger.info(
                     f"spawn_mission: Generated {events_saved} nav broadcast event(s) "
@@ -242,99 +265,124 @@ def spawn_mission(request):
                 )
 
             else:
-                # Cargo mission (default): ship, pilot, route, dialogue
-                # Create ship and pilot (controllers should already exist from XML import)
-                ship = Ship.create()
-                logger.info(
-                    f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}"
-                )
-
-                pilot = Pilot.create(ship=ship)
-                logger.debug(f"spawn_mission: Created pilot {pilot.name}")
-
-                # Pick a random destination (different from origin)
-                # For cargo missions, only valid endpoints (planets, moons, stations with berths)
-                route_service = RouteService()
-                destination = route_service.pick_random_destination(
-                    excluding=ship.current_location, cargo_mission=True
-                )
-                logger.info(f"spawn_mission: Destination {destination.name}")
-
-                # Plan the route
-                route_events = route_service.plan_route(
-                    origin=ship.current_location, destination=destination
-                )
-
-                if not route_events:
-                    logger.error(
-                        f"spawn_mission: Failed to generate route for {ship.name}"
+                with transaction.atomic():
+                    # Cargo mission (default): ship, pilot, route, dialogue
+                    # Create ship and pilot (controllers should already exist from XML import)
+                    ship = Ship.create()
+                    logger.info(
+                        f"spawn_mission: Created ship {ship.name} at {ship.current_location.name}"
                     )
-                    return
 
-                logger.debug(
-                    f"spawn_mission: Planned route with {len(route_events)} navigation events"
-                )
+                    pilot = Pilot.create(ship=ship)
+                    logger.debug(f"spawn_mission: Created pilot {pilot.name}")
 
-                # Initialize LLM with low temperature for consistent dialogue
-                llm = LLMService(quiet_mode=True)
-                llm.temperature = 0.25
-
-                # Create a fresh ScriptService instance for this mission
-                script_service = ScriptService(llm=llm)
-
-                # Generate dialogue events from navigation events
-                # Use physics_delays=True for realistic timing between maneuvers
-                logger.debug(
-                    "spawn_mission: Generating dialogue events with physics delays..."
-                )
-
-                dialogue_events_iter = script_service.iter_navigation_events(
-                    route_events, ship, use_physics_delays=True
-                )
-
-                # Save events directly to DialogueEventLog as they are generated.
-                # Each yielded event.timestamp is mission-relative (0.0, 45.0, 2700.0, etc.)
-                # We add base_sim_time to schedule them in absolute simulation time.
-                events_saved = 0
-                last_relative_timestamp = 0.0
-                for event in dialogue_events_iter:
-                    scheduled_time = base_sim_time + event.timestamp
-
-                    # Store event with actor ForeignKey reference
-                    DialogueEventLog.objects.create(
-                        timestamp=scheduled_time,
-                        actor=event.actor if hasattr(event, "actor") else None,
-                        actor_name=event.actor.name
-                        if hasattr(event, "actor") and event.actor
-                        else "Unknown",
-                        text=event.text,
-                        metadata=dict(event.metadata) if event.metadata else {},
+                    # Pick a random destination (different from origin)
+                    # For cargo missions, only valid endpoints (planets, moons, stations with berths)
+                    route_service = RouteService()
+                    destination = route_service.pick_random_destination(
+                        excluding=ship.current_location, cargo_mission=True
                     )
-                    events_saved += 1
-                    last_relative_timestamp = event.timestamp
+                    logger.info(f"spawn_mission: Destination {destination.name}")
 
-                if events_saved == 0:
-                    logger.error(
-                        f"spawn_mission: No dialogue events generated for {ship.name}"
+                    # Plan the route
+                    route_events = route_service.plan_route(
+                        origin=ship.current_location, destination=destination
                     )
-                    return
 
-                logger.debug(f"spawn_mission: Generated {events_saved} dialogue events")
+                    if not route_events:
+                        raise ValueError(
+                            f"spawn_mission: route planning returned no events for "
+                            f"{ship.name} -> {destination.name}; rolling back mission."
+                        )
 
-                # Calculate mission duration for logging (in mission-relative seconds)
-                mission_duration = last_relative_timestamp
-                hours = int(mission_duration // 3600)
-                minutes = int((mission_duration % 3600) // 60)
-                seconds = int(mission_duration % 60)
-                duration_str = f"{hours}h {minutes}m {seconds}s"
+                    logger.debug(
+                        f"spawn_mission: Planned route with {len(route_events)} navigation events"
+                    )
 
-                logger.info(
-                    f"spawn_mission: {ship.name} from {ship.current_location.name} "
-                    f"to {destination.name}, {events_saved} events spanning {duration_str}"
-                )
+                    # Initialize LLM with low temperature for consistent dialogue
+                    llm = LLMService(quiet_mode=True)
+                    llm.temperature = 0.25
+
+                    # Create a fresh ScriptService instance for this mission
+                    script_service = ScriptService(llm=llm)
+
+                    # Generate dialogue events from navigation events
+                    # Use physics_delays=True for realistic timing between maneuvers
+                    logger.debug(
+                        "spawn_mission: Generating dialogue events with physics delays..."
+                    )
+
+                    dialogue_events_iter = script_service.iter_navigation_events(
+                        route_events, ship, use_physics_delays=True
+                    )
+
+                    # Save events directly to DialogueEventLog as they are generated.
+                    # Each yielded event.timestamp is mission-relative (0.0, 45.0, 2700.0, etc.)
+                    # We add base_sim_time to schedule them in absolute simulation time.
+                    events_saved = 0
+                    last_relative_timestamp = 0.0
+                    for event in dialogue_events_iter:
+                        scheduled_time = base_sim_time + event.timestamp
+
+                        # Every dialogue event must carry an actor; abort (and roll
+                        # back) rather than persist an actor-less event, which the
+                        # model-level guard would reject anyway.
+                        actor = getattr(event, "actor", None)
+                        if actor is None:
+                            raise ValueError(
+                                f"Dialogue event at t={event.timestamp} has no actor;"
+                                " aborting mission."
+                            )
+
+                        # Store event with actor ForeignKey reference
+                        DialogueEventLog.objects.create(
+                            timestamp=scheduled_time,
+                            actor=actor,
+                            actor_name=actor.name,
+                            text=event.text,
+                            metadata=dict(event.metadata) if event.metadata else {},
+                        )
+                        events_saved += 1
+                        last_relative_timestamp = event.timestamp
+
+                    if events_saved == 0:
+                        raise ValueError(
+                            f"spawn_mission: no dialogue events generated for "
+                            f"{ship.name}; rolling back mission."
+                        )
+
+                    logger.debug(
+                        f"spawn_mission: Generated {events_saved} dialogue events"
+                    )
+
+                    # Calculate mission duration for logging (in mission-relative seconds)
+                    mission_duration = last_relative_timestamp
+                    hours = int(mission_duration // 3600)
+                    minutes = int((mission_duration % 3600) // 60)
+                    seconds = int(mission_duration % 60)
+                    duration_str = f"{hours}h {minutes}m {seconds}s"
+
+                    logger.info(
+                        f"spawn_mission: {ship.name} from {ship.current_location.name} "
+                        f"to {destination.name}, {events_saved} events spanning {duration_str}"
+                    )
+
+            # Mission completed; clear any stale failure marker.
+            cache.delete(SPAWN_FAILURE_CACHE_KEY)
 
         except Exception as e:
             logger.exception(f"spawn_mission: Error - {e}")
+            # The HTTP response already reported "started", so record the
+            # failure where health_check can surface it to pollers.
+            cache.set(
+                SPAWN_FAILURE_CACHE_KEY,
+                {
+                    "mission_type": mission_type,
+                    "error": str(e),
+                    "wall_clock": time.time(),
+                },
+                timeout=600,
+            )
 
     try:
         # Start mission processing in background thread
@@ -352,28 +400,3 @@ def spawn_mission(request):
             {"status": "error", "message": f"Failed to spawn mission: {str(e)}"},
             status=500,
         )
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def run_demo(request):
-    """
-    API endpoint to run the character dialogue demo in the background.
-
-    DEPRECATED: Use spawn_mission instead for variety. This endpoint
-    always runs the same demo ship/route for testing purposes.
-    """
-
-    def run_demo_command():
-        """Run the demo command in a background thread."""
-        try:
-            # Run the management command with low temperature for consistent dialogue
-            call_command("character_dialogue_demo", temperature=0.25, use_json=True)
-        except Exception as e:
-            logger.error(f"Error running demo: {e}")
-
-    # Start the demo in a background thread
-    thread = threading.Thread(target=run_demo_command, daemon=True)
-    thread.start()
-
-    return JsonResponse({"status": "started", "message": "Demo started in background"})

@@ -1,6 +1,29 @@
 from django.db import models
 from .scale import Scale, OrderedScale  # Import the enhanced Scale class
+
+_SCALE_TO_MODEL = None
+
+
+def _scale_to_model():
+    """Lazy map from Location.scale code to its concrete model class."""
+    global _SCALE_TO_MODEL
+    if _SCALE_TO_MODEL is None:
+        from .station import Station
+        from .celestial import Galaxy, Moon, Planet, Star, StarSystem
+
+        _SCALE_TO_MODEL = {
+            Scale.STATION: Station,
+            Scale.MOON: Moon,
+            Scale.PLANET: Planet,
+            Scale.STAR: Star,
+            Scale.STARSYSTEM: StarSystem,
+            Scale.GALAXY: Galaxy,
+        }
+    return _SCALE_TO_MODEL
+
+
 # Contains the base "Location" model that we can use to instantiate other stuff
+
 
 class Location(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -23,22 +46,35 @@ class Location(models.Model):
 
     def get_concrete_instance(self):
         """
-        Returns the concrete (i.e. most specific) instance of this Location.
-        If this instance is already concrete (not just a Location),
-        it simply returns self. Otherwise, it attempts to re-fetch the object using
-        each known subclass. (This incurs extra queries, so you might want to cache the result.)
+        Return the concrete (most specific) instance for this Location.
+
+        Fast path: use `scale` to jump straight to the matching concrete model,
+        so the common case is one query instead of probing every subclass.
+        Fallback: if legacy or inconsistent rows have a mismatched scale, probe
+        the remaining subclasses to preserve historical behavior.
         """
         if self.__class__.__name__ != "Location":
             return self
+
+        model_by_scale = _scale_to_model()
+        preferred_model = model_by_scale.get(self.scale)
+        tried_models = set()
+
+        if preferred_model is not None:
+            tried_models.add(preferred_model)
+            try:
+                return preferred_model.objects.get(pk=self.pk)
+            except preferred_model.DoesNotExist:
+                pass
 
         from .station import Station
         from .celestial import Moon, Planet, Star, StarSystem, Galaxy
 
         for subclass in (Station, Moon, Planet, Star, StarSystem, Galaxy):
+            if subclass in tried_models:
+                continue
             try:
-                instance = subclass.objects.get(pk=self.pk)
-                if instance.__class__.__name__ != "Location":
-                    return instance
+                return subclass.objects.get(pk=self.pk)
             except subclass.DoesNotExist:
                 continue
         return self

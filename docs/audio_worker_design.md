@@ -144,11 +144,16 @@ Implementation status:
 - Worker-side handling exists
 - Web behavior is still only partially enforced
 
-### Rule 2: Audio Files Are Ephemeral
-- Generated ahead of time
-- Played once
-- Cleaned up after playback
-- Not intended as a long-term archive
+### Rule 2: Audio Asset Policy
+- Source audio is intentionally versioned when it is an input to the product:
+  canonical voice prompts and room-tone/noise fixtures under
+  `mysite/universe/static/universe/` and `audio/`.
+- Generated event audio is ephemeral: it is rendered ahead of time, played once,
+  cleaned up after playback, and never treated as a long-term archive.
+- Runtime output belongs under `media/rendered_audio/`, which is ignored by Git.
+- Ad-hoc local voice experiments belong under `audio/voices/`, which is also
+  ignored. Promote a clip out of that scratch area before committing it as a
+  canonical source asset.
 
 ### Rule 3: Worker Throughput Assumption
 Current architecture assumes generation stays ahead of playback most of the time.

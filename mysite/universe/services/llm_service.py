@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Dict, Optional
 from openai import OpenAI
 import yaml
@@ -146,11 +147,20 @@ The JSON must match this exact schema:
             prompt += user_msg
 
         try:
-            # Quiet STDOUT by default; log to shared in-memory/buffer handler.
-            logger.debug("=== PROMPT SENT TO LLM API ===")
-            logger.debug(f"SYSTEM MESSAGE:\n{system_msg}")
-            logger.debug(f"USER MESSAGE:\n{user_msg}")
-            logger.debug("=== END PROMPT ===\n")
+            # Log prompt sizes only by default; full prompt/response content is
+            # opt-in via SOLAR_LLM_LOG_PROMPTS=1 (it bloats the log buffer and
+            # can leak dialogue content into persisted log files).
+            logger.debug(
+                "LLM request: system=%d chars, user=%d chars, json_mode=%s",
+                len(system_msg) if system_msg else 0,
+                len(user_msg) if user_msg else 0,
+                bool(is_json_mode),
+            )
+            if os.getenv("SOLAR_LLM_LOG_PROMPTS") == "1":
+                logger.debug("=== PROMPT SENT TO LLM API ===")
+                logger.debug(f"SYSTEM MESSAGE:\n{system_msg}")
+                logger.debug(f"USER MESSAGE:\n{user_msg}")
+                logger.debug("=== END PROMPT ===\n")
 
             # Use structured outputs if format schema is provided
             if use_structured_output and format is not None:
@@ -215,12 +225,14 @@ The JSON must match this exact schema:
                     )
                 response = completion.choices[0].text.strip()
 
-            # Log to a file for later analysis; no STDOUT
-            logger.debug("=== LLM CALL ===")
-            logger.debug(f"SYSTEM: {system_msg}")
-            logger.debug(f"USER: {user_msg}")
-            logger.debug(f"RESPONSE: {response}")
-            logger.debug("=== END CALL ===\n")
+            # Response size only by default; full content is opt-in (see above).
+            logger.debug("LLM response: %d chars", len(response))
+            if os.getenv("SOLAR_LLM_LOG_PROMPTS") == "1":
+                logger.debug("=== LLM CALL ===")
+                logger.debug(f"SYSTEM: {system_msg}")
+                logger.debug(f"USER: {user_msg}")
+                logger.debug(f"RESPONSE: {response}")
+                logger.debug("=== END CALL ===\n")
 
             # If JSON mode, extract and validate JSON
             if is_json_mode:

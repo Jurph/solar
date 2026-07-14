@@ -27,6 +27,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import List, Dict
 
+from django.core.cache import cache
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.db import transaction
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 # Grace period for events slightly in the past (60 seconds)
 # This allows the worker to catch events that just passed current sim time
 GRACE_PERIOD = 60.0
+AUDIO_WORKER_WAKE_KEY = "audio_worker_wake"
 
 
 class Command(BaseCommand):
@@ -173,9 +175,15 @@ class Command(BaseCommand):
                 # Clean up old files first
                 cleaned = self._cleanup_old_files()
 
+                sim_state = SimulationState.objects.first()
+                time_scale = sim_state.time_scale if sim_state else 1.0
+                effective_lookahead_seconds = self._effective_lookahead_seconds(
+                    lookahead_seconds, sleep_interval, time_scale
+                )
+
                 # Process new events
                 processed = self._process_batch(
-                    tts_service, batch_size, lookahead_seconds
+                    tts_service, batch_size, effective_lookahead_seconds
                 )
 
                 if processed > 0 or cleaned > 0:
@@ -194,7 +202,27 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Error in batch: {e}"))
                 logger.error("Audio worker batch error", exc_info=True)
 
-            time.sleep(sleep_interval)
+            self._sleep_until_next_batch(sleep_interval)
+
+    def _effective_lookahead_seconds(
+        self,
+        base_lookahead_seconds: float,
+        sleep_interval: float,
+        time_scale: float,
+    ) -> float:
+        """Return a lookahead window large enough to cover the next sleep."""
+        return max(base_lookahead_seconds, sleep_interval * time_scale)
+
+    def _sleep_until_next_batch(self, sleep_interval: float) -> None:
+        """Sleep in short chunks so dev skip controls can wake the worker."""
+        remaining = max(0.0, float(sleep_interval))
+        while remaining > 0:
+            if cache.get(AUDIO_WORKER_WAKE_KEY):
+                cache.delete(AUDIO_WORKER_WAKE_KEY)
+                return
+            chunk = min(1.0, remaining)
+            time.sleep(chunk)
+            remaining -= chunk
 
     def _warmup_test(self, tts_service: ChatterboxTTSService) -> bool:
         """
@@ -325,13 +353,13 @@ class Command(BaseCommand):
             cleaned_count = 0
             for event in old_events:
                 try:
+                    event_id = event.id
                     event.audio_file.delete(save=False)
-                    logger.info(f"Cleaned up audio file for event {event.id}")
+                    event.delete()
+                    logger.info(f"Cleaned up audio file and event {event_id}")
                     cleaned_count += 1
                 except Exception as e:
                     logger.error(f"Failed to delete audio for event {event.id}: {e}")
-                event.audio_rendered_at = None
-                event.save(update_fields=["audio_file", "audio_rendered_at"])
 
             return cleaned_count
 

@@ -835,7 +835,7 @@ class TestParseInstructedValues(DialogueParticleTest):
 
 
 # ---------------------------------------------------------------------------
-# Coverage-gap tests appended below
+# Behavioral guardrails for particles with specialized prompt/data contracts.
 # ---------------------------------------------------------------------------
 
 
@@ -934,7 +934,7 @@ class TestCounterexampleMethods(DialogueParticleTest):
 
 
 class TestHoldingParticleDetails(DialogueParticleTest):
-    """Tests for Holding particle methods not covered by other suites."""
+    """Holding acknowledgments must preserve callsigns and hold semantics."""
 
     def _make_holding(self):
         ctx = self.nav_context.copy()
@@ -951,15 +951,16 @@ class TestHoldingParticleDetails(DialogueParticleTest):
         self.assertIn("MARS CONTROL", result)
         self.assertIn("TEST SHIP", result)
 
-    def test_examples_include_hold_or_maneuver_language(self):
+    def test_examples_are_actionable_hold_acknowledgments(self):
         examples = self._make_holding().get_examples()
-        self.assertTrue(len(examples) > 0)
+        self.assertGreaterEqual(len(examples), 1)
+        self.assertTrue(all(example.strip() for example in examples))
         combined = " ".join(examples).lower()
-        self.assertTrue("hold" in combined or "launch" in combined)
+        self.assertRegex(combined, r"\b(hold|launch|standby|clearance)\b")
 
 
 class TestCommsCheckParticleDetails(DialogueParticleTest):
-    """Tests for CommsCheckRequest methods not previously covered."""
+    """Comms checks must route to the satellite-response branch."""
 
     def _make(self):
         return CommsCheckRequest(
@@ -985,7 +986,7 @@ class TestCommsCheckParticleDetails(DialogueParticleTest):
 
 
 class TestSatelliteParticleDetails(DialogueParticleTest):
-    """Tests for SatelliteResponse methods not previously covered."""
+    """Satellite responses stay pre-programmed and bypass LLM prompting."""
 
     @classmethod
     def setUpTestData(cls):
@@ -1022,7 +1023,7 @@ class TestSatelliteParticleDetails(DialogueParticleTest):
 
 
 class TestRadioResponseExtraBranches(DialogueParticleTest):
-    """RadioResponse.get_examples() branches for plane_change, deorbit, landing, after_hold."""
+    """RadioResponse examples must identify the maneuver being cleared."""
 
     def _make(self, maneuver, extra=None):
         ctx = self.nav_context.copy()
@@ -1034,20 +1035,35 @@ class TestRadioResponseExtraBranches(DialogueParticleTest):
             actor=self.controller, recipient="TEST SHIP", nav_context=ctx
         )
 
-    def test_plane_change_returns_examples(self):
+    def test_plane_change_examples_name_the_maneuver_or_target_inclination(self):
         examples = self._make("plane_change").get_examples()
-        self.assertIsInstance(examples, list)
-        self.assertTrue(len(examples) > 0)
+        self.assertGreaterEqual(len(examples), 3)
+        self.assertTrue(
+            all(
+                "plane change" in example.lower() or "inclination" in example.lower()
+                for example in examples
+            )
+        )
 
-    def test_deorbit_returns_examples(self):
+    def test_deorbit_examples_name_deorbit_or_entry_guidance(self):
         examples = self._make("deorbit").get_examples()
-        self.assertIsInstance(examples, list)
-        self.assertTrue(len(examples) > 0)
+        self.assertGreaterEqual(len(examples), 2)
+        self.assertTrue(
+            all(
+                "deorbit" in example.lower() or "entry" in example.lower()
+                for example in examples
+            )
+        )
 
-    def test_landing_returns_examples(self):
+    def test_landing_examples_name_landing_or_approach_guidance(self):
         examples = self._make("landing").get_examples()
-        self.assertIsInstance(examples, list)
-        self.assertTrue(len(examples) > 0)
+        self.assertGreaterEqual(len(examples), 3)
+        self.assertTrue(
+            all(
+                "landing" in example.lower() or "approach" in example.lower()
+                for example in examples
+            )
+        )
 
     def test_after_hold_adds_adjusted_clearance(self):
         examples = self._make("launch", extra={"after_hold": True})
@@ -1073,7 +1089,7 @@ class TestHoldResponseDurationMethods(DialogueParticleTest):
 
 
 class TestNavBroadcastExtraMethods(DialogueParticleTest):
-    """NavBroadcast methods not previously exercised."""
+    """Nav broadcasts must provide prompt data and examples without LLM setup."""
 
     @classmethod
     def setUpTestData(cls):
@@ -1088,18 +1104,26 @@ class TestNavBroadcastExtraMethods(DialogueParticleTest):
     def test_situation_description_includes_satellite_name(self):
         self.assertIn("SOL NAVSAT", self._make().get_situation_description())
 
-    def test_build_user_prompt_data_returns_user_prompt_data(self):
+    def test_build_user_prompt_data_preserves_previous_broadcast_context(self):
         from mysite.universe.services.dialogue.base import UserPromptData
 
         result = self._make().build_user_prompt_data(previous_dialogue="prior text")
         self.assertIsInstance(result, UserPromptData)
+        self.assertEqual(result.last_dialogue_line, "prior text")
 
-    def test_get_examples_returns_list(self):
-        self.assertIsInstance(self._make().get_examples(), list)
+    def test_modem_data_reuses_broadcast_identity(self):
+        particle = self._make()
+
+        announcement = particle.generate_nav_broadcast_text()
+        modem_data = particle.get_modem_encoded_data()
+
+        self.assertIn("SOL NAVSAT", announcement)
+        self.assertTrue(modem_data.startswith("SOL NAVSAT NAV UPDATE //"))
+        self.assertIn("IF THIS WERE A REAL NAV UPDATE", modem_data)
 
 
 class TestGratitudeParticleDetails(DialogueParticleTest):
-    """GratitudeParticle methods not previously covered."""
+    """Gratitude particles are terminal acknowledgments to NavSat broadcasts."""
 
     def _make(self):
         return GratitudeParticle(
@@ -1116,15 +1140,13 @@ class TestGratitudeParticleDetails(DialogueParticleTest):
             previous_dialogue="Prior broadcast."
         )
         self.assertIsInstance(result, UserPromptData)
+        self.assertEqual(result.last_dialogue_line, "Prior broadcast.")
 
 
 class TestDialogueParticleBaseBranches(DialogueParticleTest):
     """
-    Cover uncovered branches in DialogueParticle base class methods.
-
-    - format_user_prompt: optional altitude/inclination/speed fields (lines 384-388)
-    - format_user_prompt: add_example() early-return on empty text (line 404)
-    - get_role(): default PILOT return for unknown actor type (line 297)
+    Guard base prompt formatting behavior for optional maneuver parameters,
+    empty examples, and default role selection.
     """
 
     def _make_particle(self):
@@ -1134,8 +1156,8 @@ class TestDialogueParticleBaseBranches(DialogueParticleTest):
 
     def test_format_user_prompt_includes_optional_altitude_inclination_speed(self):
         """
-        format_user_prompt adds altitude, inclination, and speed lines when they
-        are provided in UserPromptData (base.py lines 384, 386, 388).
+        format_user_prompt includes optional altitude, inclination, and speed
+        lines when those fields are present in UserPromptData.
         """
         from mysite.universe.services.dialogue.base import UserPromptData
 
@@ -1158,8 +1180,8 @@ class TestDialogueParticleBaseBranches(DialogueParticleTest):
 
     def test_format_user_prompt_add_example_skips_empty_text(self):
         """
-        When last_dialogue_line is set and an example is empty, add_example()
-        returns early without adding that example (base.py line 404).
+        When last_dialogue_line is set and an example is empty, prompt
+        formatting skips that blank example instead of emitting empty text.
         """
         from mysite.universe.services.dialogue.base import UserPromptData
 
@@ -1182,8 +1204,8 @@ class TestDialogueParticleBaseBranches(DialogueParticleTest):
 
     def test_get_role_returns_pilot_for_unknown_actor_type(self):
         """
-        get_role() falls back to Role.PILOT when actor is a plain Actor
-        (not Pilot, Controller, or Satellite) — base.py line 297.
+        get_role() falls back to Role.PILOT when actor is a plain Actor rather
+        than a Pilot, Controller, or Satellite.
         """
         from mysite.universe.models.actor import Actor
         from mysite.universe.schemas.dialogue_schema import Role

@@ -4,6 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+### Environment
+```powershell
+# Rebuild the local development venv on Windows.
+uv venv --managed-python --python 3.10 venv
+uv pip install --python .\venv\Scripts\python.exe -e ".[dev]"
+.\venv\Scripts\python.exe -m pytest tests -m "not slow" -q
+```
+
+Python 3.10+ is supported. (`Scale` stores plain string `TextChoices` values, so Django setup also works on Python 3.12+; ordering lives in `OrderedScale`.) The launch scripts and CI currently use Python 3.10.
+
 ### Running the Server
 ```bash
 # Windows
@@ -19,7 +29,14 @@ cd mysite && python manage.py runserver
 ### Running Tests
 ```bash
 # Run all fast tests (used in CI)
-pytest tests -m "not slow"
+pytest tests -m "not slow and not external"
+
+# Run external-system checks explicitly
+pytest tests -m "external"                 # live services, local models, GPU, or artifacts
+pytest tests -m "external and llm"         # OpenAI-compatible LLM endpoint checks
+pytest tests -m "external and ollama"      # Ollama-specific structured-output checks
+pytest tests -m "external and tts"         # Chatterbox / local TTS checks
+pytest tests -m "external and performance" # benchmark / timing checks
 
 # Run a single test file
 pytest tests/test_route_planning.py
@@ -27,12 +44,17 @@ pytest tests/test_route_planning.py
 # Run a single test function
 pytest tests/test_route_planning.py::test_function_name
 
-# Run slow (LLM) tests
+# Run all slow tests
 pytest -m "slow"
 
 # Run with coverage
 pytest tests -m "not slow" --cov=mysite/universe --cov-report=term
 ```
+
+External-system tests must be marked `external` plus a more specific marker
+(`llm`, `ollama`, `tts`, or `performance`) and should also be `slow` so the
+default fast suite remains deterministic. Note that CI deselects only `slow`
+(`pytest -m "not slow"`), so the `slow` marker is the load-bearing CI gate.
 
 ### Database & Migrations
 ```bash
@@ -41,7 +63,7 @@ python manage.py makemigrations universe
 python manage.py migrate
 python manage.py import_universe   # Load XML universe definition
 python manage.py export_universe   # Export to XML
-python manage.py start_simulation_loop   # Start the simulation clock
+python manage.py character_dialogue_demo  # Terminal-only dialogue demo
 python manage.py audio_worker      # Start background TTS pre-generation
 ```
 
@@ -59,8 +81,8 @@ The core application is `mysite/universe/` with three main layers:
 **Views** (`universe/views/`) — Decomposed by domain concern. `views/__init__.py` re-exports all view callables for backward-compatible URL routing.
 
 ### Data Flow for a Mission
-1. `spawn_mission` (views/missions.py) creates a `Ship`, calls `RouteService` to plan a route, calls `ScriptService` to convert `NavigationEvent`s into `DialogueEvent` chains, schedules them in `DialogueEventLog`.
-2. `start_simulation_loop` advances simulation time via `SimulationState` singleton.
+1. `spawn_mission` (views/missions.py) creates a `Ship`, calls `RouteService` to plan a route, calls `ScriptService` to convert `NavigationEvent`s into `DialogueEvent` chains, and schedules them in `DialogueEventLog`.
+2. `SimulationState` derives simulation time from its wall-clock anchor and `time_scale`; no standalone tick-loop command advances dialogue in production.
 3. `audio_worker` (management command) pre-generates TTS audio ~1 hour ahead of playback; the web server never generates audio on-demand.
 4. Frontend polls `event_feed` API, which time-gates events via `SimulationState`; checks `audio_ready` flag before playing.
 
@@ -86,9 +108,10 @@ Source data (mass_kg, radius_km, orbital parameters) is stored in the DB. Derive
 ## Coding Standards
 
 - Linter/formatter: **ruff** (incorporates black + flake8). Follow Black formatting and PEP 8.
-- All functions require **type hints** and **docstrings**.
+- Type hints and docstrings are required for new or touched public functions, service methods, view helpers, model helpers, and non-obvious private helpers. Existing gaps are accepted legacy debt unless the code is already being changed.
 - Prefer absolute imports. Use local imports only to break circular dependencies.
 - Tests mirror implementation files; use pytest style with descriptive docstrings. No trivial or degenerate tests. Do not test third-party library behavior.
+- See `docs/CODING_STANDARDS.md` for review guidance and the legacy-debt policy.
 
 ## Critical Rule: Never Guess at Method Signatures
 
@@ -108,6 +131,19 @@ When writing a block of code, afterward:
 
 - **Epics** are large, deliberately vague work items (e.g., "NavSat broadcasts," "mission lifecycle"). They are NOT meant to be grabbed off the stack and closed in one shot. Working an epic means: (1) Q&A with all devs to reach consensus on scope and behavior, (2) decompose into concrete feature tickets with clear acceptance criteria, (3) close the feature tickets individually. Never close an epic directly — close it when all its child tickets are done.
 - **Bug** and **enhancement** tickets should be specific enough that a single dev can pick one up, implement it, and know when it's done.
+
+## GitHub Workflow on Osprey
+
+Prefer normal local `git` when `shell_command` works. If local shell commands fail
+before launch with `windows sandbox: spawn setup refresh`, do not try to force
+`git add` / `git commit` / `git push` through fallback child-process paths. In
+that failure mode, Node-launched child processes may be able to read the worktree
+but still fail writes with `Access is denied` / `EPERM`, including
+`.git/index.lock`.
+
+When that happens, use the GitHub MCP/plugin for remote issue, comment, branch,
+commit, push, and PR operations. The GitHub MCP is authorized for `Jurph/solar`
+and is the intended fallback for GitHub-side work in that session.
 
 ## URLs (Development)
 - Universe browser: `http://127.0.0.1:8000/universe/`

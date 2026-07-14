@@ -114,8 +114,8 @@ env.bak/
 venv.bak/
 # Local audio assets (non-redistributable)
 audio/voices/
-# Local model weights/artifacts
-models/
+# Local model weights/artifacts (repo root only — NOT Django models packages)
+/models/
 
 # Spyder project settings
 .spyderproject
@@ -151,9 +151,13 @@ coverage.xml
 staticfiles/
 
 # Generated audio artifacts
-*.wav
+last-playback.wav
 
 # Qwen2.5 - users should download the repo separately and place it in the models folder
 mysite/universe/models/language/*
 mysite/universe/models/language/Qwen-2_5/*
 mysite/universe/models/language/Qwen-2_5 
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

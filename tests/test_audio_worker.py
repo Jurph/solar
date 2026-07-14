@@ -9,17 +9,17 @@ These tests verify:
 """
 
 import io
+import json
+import logging
 import os
+import sys
 import time
 import wave
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
-
-# audio_worker imports ChatterboxTTSService → tts_service → torch at module
-# level. Skip this file gracefully in CI where torch is not installed.
-pytest.importorskip("torch")
 
 from mysite.universe.models.event import DialogueEventLog  # noqa: E402
 from mysite.universe.models.simulation import SimulationState
@@ -54,6 +54,172 @@ def create_minimal_wav() -> bytes:
             # Write 0.1 seconds of silence
             wf.writeframes(b"\x00" * (22050 // 10 * 2))
         return buf.getvalue()
+
+
+class TestAudioWorkerStartupHelpers:
+    """Test startup-only helpers without hitting DB."""
+
+    def test_warmup_succeeds_and_cleans_up_storage_probe(self):
+        """_warmup_test() should round-trip storage and delete probe file."""
+        command = Command()
+        tts_bytes = create_minimal_wav()
+        tts_service = MagicMock()
+        tts_service.generate.return_value = tts_bytes
+
+        storage = MagicMock()
+        storage.save.return_value = "rendered_audio/warmup_probe.wav"
+        storage.open.return_value.__enter__.return_value.read.return_value = tts_bytes
+
+        with patch("django.core.files.storage.default_storage", storage):
+            result = command._warmup_test(tts_service)
+
+        assert result is True
+        tts_service.generate.assert_called_once_with("check", "pilot_default")
+        storage.save.assert_called_once()
+        storage.open.assert_called_once_with("rendered_audio/warmup_probe.wav", "rb")
+        storage.delete.assert_called_once_with("rendered_audio/warmup_probe.wav")
+
+    def test_warmup_returns_false_when_tts_raises(self, caplog):
+        """_warmup_test() should fail fast when TTS generation crashes."""
+        command = Command()
+        tts_service = MagicMock()
+        tts_service.generate.side_effect = RuntimeError("boom")
+        storage = MagicMock()
+
+        with (
+            patch("django.core.files.storage.default_storage", storage),
+            caplog.at_level(logging.ERROR),
+        ):
+            result = command._warmup_test(tts_service)
+
+        assert result is False
+        assert "Warmup test failed" in caplog.text
+        storage.save.assert_not_called()
+        storage.delete.assert_not_called()
+
+    def test_cleanup_stale_locks_clears_claimed_events(self):
+        """_cleanup_stale_locks() should release crash leftovers."""
+        command = Command()
+        stale_queryset = MagicMock()
+        stale_queryset.count.return_value = 2
+
+        with patch.object(
+            DialogueEventLog.objects, "filter", return_value=stale_queryset
+        ) as filter_mock:
+            cleared = command._cleanup_stale_locks()
+
+        assert cleared == 2
+        filter_mock.assert_called_once()
+        stale_queryset.update.assert_called_once_with(audio_generating=False)
+
+    def test_delete_past_due_events_deletes_outdated_rows(self):
+        """_delete_past_due_events() should prune events older than cutoff."""
+        command = Command()
+        sim_state = MagicMock()
+        sim_state.get_simulation_time.return_value = 1000.0
+        old_events = MagicMock()
+        old_events.count.return_value = 3
+
+        with (
+            patch.object(SimulationState.objects, "first", return_value=sim_state),
+            patch.object(
+                DialogueEventLog.objects, "filter", return_value=old_events
+            ) as filter_mock,
+        ):
+            deleted = command._delete_past_due_events()
+
+        assert deleted == 3
+        filter_mock.assert_called_once_with(timestamp__lt=940.0)
+        old_events.delete.assert_called_once()
+
+    def test_write_heartbeat_persists_pid_tts_and_vram(self):
+        """_write_heartbeat() should emit JSON snapshot with VRAM data."""
+        command = Command()
+        fake_cuda = SimpleNamespace(
+            is_available=MagicMock(return_value=True),
+            get_device_properties=MagicMock(
+                return_value=SimpleNamespace(name="Fake GPU")
+            ),
+            mem_get_info=MagicMock(return_value=(2 * 1024 * 1024, 4 * 1024 * 1024)),
+            memory_allocated=MagicMock(return_value=1 * 1024 * 1024),
+            memory_reserved=MagicMock(return_value=3 * 1024 * 1024),
+        )
+        fake_torch = SimpleNamespace(cuda=fake_cuda)
+
+        with (
+            patch(
+                "mysite.universe.services.tts_service.get_tts_health",
+                return_value={"ok": True},
+            ),
+            patch(
+                "mysite.universe.management.commands.audio_worker.os.getpid",
+                return_value=1234,
+            ),
+            patch(
+                "mysite.universe.management.commands.audio_worker.time.time",
+                return_value=456.0,
+            ),
+            patch("mysite.universe.management.commands.audio_worker.Path.mkdir"),
+            patch(
+                "mysite.universe.management.commands.audio_worker.Path.write_text"
+            ) as write_text,
+            patch(
+                "mysite.universe.management.commands.audio_worker.Path.replace"
+            ) as replace,
+            patch.dict(sys.modules, {"torch": fake_torch}),
+        ):
+            command._write_heartbeat()
+
+        payload = json.loads(write_text.call_args.args[0])
+        assert payload["pid"] == 1234
+        assert payload["wall_clock"] == 456.0
+        assert payload["tts"] == {"ok": True}
+        assert payload["vram"] == {
+            "device": "Fake GPU",
+            "total_mb": 4,
+            "free_mb": 2,
+            "allocated_mb": 1,
+            "reserved_mb": 3,
+        }
+        replace.assert_called_once()
+
+    def test_effective_lookahead_covers_next_sleep_at_high_time_scale(self):
+        """Lookahead should include sim time that passes during worker sleep."""
+        command = Command()
+
+        effective = command._effective_lookahead_seconds(
+            base_lookahead_seconds=3600.0,
+            sleep_interval=5.0,
+            time_scale=3600.0,
+        )
+
+        assert effective >= 18000.0
+
+    def test_sleep_until_next_batch_wakes_on_skip_signal(self):
+        """Worker sleep should break early when skip-to-next-event wakes it."""
+        command = Command()
+        checks = [False, True]
+
+        def fake_get(key):
+            assert key == "audio_worker_wake"
+            return checks.pop(0)
+
+        with (
+            patch(
+                "mysite.universe.management.commands.audio_worker.cache.get",
+                side_effect=fake_get,
+            ),
+            patch(
+                "mysite.universe.management.commands.audio_worker.cache.delete"
+            ) as delete,
+            patch(
+                "mysite.universe.management.commands.audio_worker.time.sleep"
+            ) as sleep,
+        ):
+            command._sleep_until_next_batch(5.0)
+
+        sleep.assert_called_once_with(1.0)
+        delete.assert_called_once_with("audio_worker_wake")
 
 
 @pytest.mark.django_db
@@ -274,6 +440,236 @@ class TestAudioWorkerLocking:
 
 
 @pytest.mark.django_db
+class TestAudioWorkerRenderAndMixing:
+    """High-signal tests for render and audio-mix internals."""
+
+    def test_render_event_success_writes_audio_and_clears_lock(self, tmp_path):
+        """_render_event() should write audio, set timestamps, and release the lock."""
+        create_sim_state_at_time(1000.0)
+        pilot = Pilot.objects.create(name="Test Pilot")
+        event = DialogueEventLog.objects.create(
+            timestamp=1100.0,
+            actor=pilot,
+            actor_name=pilot.name,
+            text="Houston, this is Test Pilot. Do you copy?",
+        )
+
+        tts_wav_path = tmp_path / "tts.wav"
+        tts_wav_path.write_bytes(create_minimal_wav())
+        mixed_wav = b"mixed-audio-bytes"
+
+        command = Command()
+
+        class SuccessfulTTS:
+            def generate(self, text, voice_id):
+                return tts_wav_path.read_bytes()
+
+        with (
+            patch(
+                "mysite.universe.views.events._resolve_voice_for_event",
+                return_value="pilot_default",
+            ) as resolve_voice,
+            patch(
+                "mysite.universe.management.commands.audio_worker.build_audio_plan_for_dialogue_event",
+                return_value=[{"trigger": "event_start", "preset": "quindar_start"}],
+            ) as build_plan,
+            patch.object(command, "_mix_audio", return_value=mixed_wav) as mix_audio,
+        ):
+            result = command._render_event(event, SuccessfulTTS())
+
+        assert result is True
+        resolve_voice.assert_called_once_with(event)
+        build_plan.assert_called_once_with(event)
+        mix_audio.assert_called_once()
+
+        mixed_args = mix_audio.call_args.args
+        assert mixed_args[0] == event.id
+        assert mixed_args[1].endswith(".wav")
+        assert mixed_args[2] == [{"trigger": "event_start", "preset": "quindar_start"}]
+
+        event.refresh_from_db()
+        assert event.audio_file, "Rendered event should have an audio file"
+        assert event.audio_rendered_at is not None
+        assert event.audio_generating is False
+        assert os.path.exists(event.audio_file.path)
+        with event.audio_file.open("rb") as fh:
+            assert fh.read() == mixed_wav
+
+        # The temp TTS file should have been cleaned up by the finally block.
+        assert not os.path.exists(mixed_args[1])
+
+        if event.audio_file and os.path.exists(event.audio_file.path):
+            os.unlink(event.audio_file.path)
+
+    def test_render_event_tts_failure_logs_and_releases_lock(self, caplog):
+        """_render_event() should log TTS failures and clear the generation lock."""
+        create_sim_state_at_time(1000.0)
+        pilot = Pilot.objects.create(name="Test Pilot")
+        event = DialogueEventLog.objects.create(
+            timestamp=1100.0,
+            actor=pilot,
+            actor_name=pilot.name,
+            text="This line will not render.",
+        )
+
+        command = Command()
+
+        class FailingTTS:
+            def generate(self, text, voice_id):
+                raise RuntimeError("TTS exploded")
+
+        with (
+            patch(
+                "mysite.universe.views.events._resolve_voice_for_event",
+                return_value="pilot_default",
+            ),
+            patch(
+                "mysite.universe.management.commands.audio_worker.build_audio_plan_for_dialogue_event"
+            ) as build_plan,
+            caplog.at_level(logging.ERROR),
+        ):
+            result = command._render_event(event, FailingTTS())
+
+        assert result is False
+        build_plan.assert_not_called()
+        assert f"Event {event.id}: TTS generation failed" in caplog.text
+
+        event.refresh_from_db()
+        assert event.audio_generating is False
+        assert not event.audio_file
+
+    def test_mix_audio_combines_room_tone_voice_and_modem_layers(self, tmp_path):
+        """_mix_audio() should assemble quindar, room tone, voice, and modem layers."""
+        tts_wav_path = tmp_path / "tts.wav"
+        tts_wav_path.write_bytes(create_minimal_wav())
+
+        room_tone_path = tmp_path / "roomtone.wav"
+        room_tone_path.write_bytes(create_minimal_wav())
+
+        audio_plan = [
+            {
+                "trigger": "event_start",
+                "preset": "quindar_start",
+                "params": {"frequency_hz": 2525.0, "gain": 0.9},
+            },
+            {
+                "preset": "room_tone",
+                "params": {
+                    "wav_url": "/static/universe/audio/roomtone/roomtone.wav",
+                    "gain": 0.15,
+                },
+            },
+            {
+                "trigger": "event_end",
+                "preset": "quindar_end",
+                "params": {"frequency_hz": 2475.0, "gain": 0.9},
+            },
+            {
+                "trigger": "event_end",
+                "preset": "modem_noise",
+                "params": {"text": "DATA", "gain": 0.8, "carrier_gain": 0.2},
+            },
+        ]
+
+        command = Command()
+
+        with (
+            patch(
+                "django.contrib.staticfiles.finders.find",
+                return_value=str(room_tone_path),
+            ) as find_room_tone,
+            patch(
+                "mysite.universe.management.commands.audio_worker.render_wav_bytes",
+                return_value=b"mixed-bytes",
+            ) as render_mock,
+        ):
+            mixed = command._mix_audio(
+                event_id=42, tts_wav_path=str(tts_wav_path), audio_plan=audio_plan
+            )
+
+        assert mixed == b"mixed-bytes"
+        find_room_tone.assert_called_once_with("universe/audio/roomtone/roomtone.wav")
+        render_mock.assert_called_once()
+
+        components = render_mock.call_args.args[0]
+        sample_rate = render_mock.call_args.kwargs["sample_rate_hz"]
+
+        assert sample_rate == 22050
+        assert len(components) == 5
+
+        assert components[0].__class__.__name__ == "SineBeep"
+        assert components[0].start_seconds == 0.0
+        assert components[0].frequency_hz == 2525.0
+        assert components[0].gain == pytest.approx(0.18)
+
+        assert components[1].__class__.__name__ == "LoopedAudioFragment"
+        assert components[1].path == str(room_tone_path)
+        assert components[1].start_seconds == 0.0
+        assert components[1].loop_duration_seconds > 0
+
+        assert components[2].__class__.__name__ == "WavFileClip"
+        assert components[2].path == str(tts_wav_path)
+        assert components[2].start_seconds == pytest.approx(0.3)
+        assert components[2].gain == 2.0
+
+        assert components[3].__class__.__name__ == "SineBeep"
+        assert components[3].frequency_hz == 2475.0
+        assert components[3].gain == pytest.approx(0.18)
+        assert components[3].start_seconds > components[2].start_seconds
+
+        assert components[4].__class__.__name__ == "ModemNoise"
+        assert components[4].text == "DATA"
+        assert components[4].gain == 0.8
+        assert components[4].carrier_gain == 0.2
+
+    def test_mix_audio_warns_when_room_tone_missing(self, caplog, tmp_path):
+        """_mix_audio() should warn and continue when the room tone file is absent."""
+        tts_wav_path = tmp_path / "tts.wav"
+        tts_wav_path.write_bytes(create_minimal_wav())
+
+        audio_plan = [
+            {
+                "trigger": "event_start",
+                "preset": "quindar_start",
+                "params": {"frequency_hz": 2525.0, "gain": 0.9},
+            },
+            {
+                "preset": "room_tone",
+                "params": {
+                    "wav_url": "/static/universe/audio/roomtone/missing.wav",
+                    "gain": 0.15,
+                },
+            },
+        ]
+
+        command = Command()
+
+        with (
+            patch(
+                "django.contrib.staticfiles.finders.find", return_value=None
+            ) as find_room_tone,
+            patch(
+                "mysite.universe.management.commands.audio_worker.render_wav_bytes",
+                return_value=b"mixed-bytes",
+            ) as render_mock,
+            caplog.at_level(logging.WARNING),
+        ):
+            mixed = command._mix_audio(
+                event_id=7, tts_wav_path=str(tts_wav_path), audio_plan=audio_plan
+            )
+
+        assert mixed == b"mixed-bytes"
+        find_room_tone.assert_called_once_with("universe/audio/roomtone/missing.wav")
+        assert "Room tone file not found" in caplog.text
+
+        components = render_mock.call_args.args[0]
+        assert [component.__class__.__name__ for component in components] == [
+            "SineBeep",
+            "WavFileClip",
+        ]
+
+
+@pytest.mark.django_db
 class TestAudioWorkerCleanup:
     """Test the worker's file cleanup logic."""
 
@@ -326,11 +722,9 @@ class TestAudioWorkerCleanup:
 
         assert cleaned == 1
 
-        # Old file should be deleted
+        # Old file and row should be deleted
         assert not os.path.exists(old_file_path)
-        old_event.refresh_from_db()
-        assert not old_event.audio_file
-        assert old_event.audio_rendered_at is None
+        assert not DialogueEventLog.objects.filter(id=old_event.id).exists()
 
         # Recent file should remain
         assert os.path.exists(recent_file_path)
@@ -363,10 +757,8 @@ class TestAudioWorkerCleanup:
         command = Command()
         command._cleanup_old_files()
 
-        # Should still clear the database field
-        old_event.refresh_from_db()
-        assert not old_event.audio_file
-        assert old_event.audio_rendered_at is None
+        # Missing file should still allow stale row cleanup.
+        assert not DialogueEventLog.objects.filter(id=old_event.id).exists()
 
     def test_cleanup_skips_already_cleaned_events(self):
         """Already-cleaned events (audio_file='') produce zero DB writes.

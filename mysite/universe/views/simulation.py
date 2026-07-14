@@ -14,12 +14,14 @@ import time as time_module
 from pathlib import Path
 from typing import Optional
 
+from django.core.cache import cache
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.models.simulation import SimulationState, get_simulation_time
+from mysite.universe.views.dev_guard import state_changing_dev_only
+from mysite.universe.views.missions import SPAWN_FAILURE_CACHE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 _HEARTBEAT_PATH = (
     Path(__file__).resolve().parents[3] / "artifacts" / "audio_worker_heartbeat.json"
 )
+AUDIO_WORKER_WAKE_KEY = "audio_worker_wake"
 
 
 def _read_worker_heartbeat() -> Optional[dict]:
@@ -43,7 +46,7 @@ def _read_worker_heartbeat() -> Optional[dict]:
     return None
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def set_time_scale(request):
     """
@@ -93,7 +96,7 @@ def set_time_scale(request):
         )
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def skip_to_next_event(request):
     """
@@ -146,6 +149,7 @@ def skip_to_next_event(request):
     logger.debug(
         f"skip_to_next: Next event {next_event.actor_name} at {next_event.timestamp:.1f}"
     )
+    cache.set(AUDIO_WORKER_WAKE_KEY, True, timeout=30)
 
     return JsonResponse(
         {
@@ -157,7 +161,6 @@ def skip_to_next_event(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET"])
 def get_simulation_status(request):
     """
@@ -178,7 +181,117 @@ def get_simulation_status(request):
     )
 
 
-@csrf_exempt
+def _build_audio_worker_health() -> dict:
+    """Build audio-worker health details for combined and dedicated endpoints."""
+    from datetime import timedelta
+
+    from django.db.models import Q
+    from django.utils import timezone
+
+    recent_audio = DialogueEventLog.objects.filter(
+        audio_rendered_at__gte=timezone.now() - timedelta(minutes=2)
+    ).count()
+    sim_time = get_simulation_time()
+    pending_audio = DialogueEventLog.objects.filter(
+        Q(audio_file="") | Q(audio_file__isnull=True),
+        audio_generating=False,
+        timestamp__lte=sim_time + 3600,
+    ).count()
+    total_events = DialogueEventLog.objects.count()
+    events_with_audio = (
+        DialogueEventLog.objects.exclude(audio_file="")
+        .exclude(audio_file__isnull=True)
+        .count()
+    )
+    pipeline_delta = total_events - events_with_audio
+    stale_lock_count = DialogueEventLog.objects.filter(
+        Q(audio_file="") | Q(audio_file__isnull=True),
+        audio_generating=True,
+    ).count()
+    oldest_pending = (
+        DialogueEventLog.objects.filter(
+            Q(audio_file="") | Q(audio_file__isnull=True),
+            audio_generating=False,
+            timestamp__lte=sim_time,
+        )
+        .order_by("timestamp")
+        .values_list("timestamp", flat=True)
+        .first()
+    )
+    oldest_pending_age = (
+        (sim_time - oldest_pending) if oldest_pending is not None else None
+    )
+
+    if recent_audio > 0:
+        worker_status = "ok"
+        worker_message = f"Generated {recent_audio} clips in last 2 minutes"
+    elif pending_audio == 0:
+        worker_status = "idle"
+        worker_message = "No events pending audio generation"
+    else:
+        worker_status = "warning"
+        worker_message = f"{pending_audio} events need audio but no recent generation"
+
+    health = {
+        "audio_worker": {
+            "status": worker_status,
+            "message": worker_message,
+            "pipeline_delta": pipeline_delta,
+            "stale_lock_count": stale_lock_count,
+            "oldest_pending_age_seconds": oldest_pending_age,
+        }
+    }
+
+    heartbeat = _read_worker_heartbeat()
+    if heartbeat is not None:
+        heartbeat_age = time_module.time() - heartbeat.get("wall_clock", 0)
+        stale = heartbeat_age > 30
+        tts_data = heartbeat.get("tts", {})
+        if stale:
+            tts_data["status"] = "warning"
+            tts_data["message"] = (
+                f"Heartbeat stale ({heartbeat_age:.0f}s old); "
+                + tts_data.get("message", "unknown")
+            )
+        health["tts"] = tts_data
+
+        vram_data = heartbeat.get("vram")
+        if vram_data:
+            free_mb = vram_data.get("free_mb", 0)
+            total_mb = vram_data.get("total_mb", 0)
+            device = vram_data.get("device", "unknown")
+            vram_data["status"] = "ok" if free_mb > 512 else "warning"
+            vram_data["message"] = f"{free_mb} MB free of {total_mb} MB on {device}"
+            if stale:
+                vram_data["message"] += f" (stale: {heartbeat_age:.0f}s ago)"
+            health["vram"] = vram_data
+        else:
+            health["vram"] = {
+                "status": "warning",
+                "message": "Worker heartbeat has no VRAM data",
+            }
+        health["audio_worker"]["worker_pid"] = heartbeat.get("pid")
+    else:
+        health["tts"] = {
+            "status": "unknown",
+            "message": "No worker heartbeat file (worker may not be running)",
+        }
+        health["vram"] = {
+            "status": "unknown",
+            "message": "No worker heartbeat file (VRAM data unavailable)",
+        }
+
+    return health
+
+
+@require_http_methods(["GET"])
+def worker_health_check(request):
+    """Dedicated audio-worker health endpoint with alarm status codes."""
+    health = _build_audio_worker_health()
+    status = 503 if health["audio_worker"]["status"] == "warning" else 200
+    return JsonResponse(health, status=status)
+
+
 @require_http_methods(["GET"])
 def health_check(request):
     """
@@ -325,6 +438,23 @@ def health_check(request):
         health["vram"] = {
             "status": "unknown",
             "message": "No worker heartbeat file (VRAM data unavailable)",
+        }
+
+    # Mission spawner: spawn_mission returns 200 before its background thread
+    # runs, so surface the most recent background failure here for pollers.
+    spawn_failure = cache.get(SPAWN_FAILURE_CACHE_KEY)
+    if spawn_failure:
+        health["mission_spawner"] = {
+            "status": "error",
+            "message": (
+                f"Last {spawn_failure.get('mission_type', 'unknown')} mission "
+                f"failed: {spawn_failure.get('error', 'unknown error')}"
+            ),
+        }
+    else:
+        health["mission_spawner"] = {
+            "status": "ok",
+            "message": "No recent mission spawn failures",
         }
 
     return JsonResponse(health)

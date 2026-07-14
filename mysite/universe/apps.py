@@ -6,6 +6,7 @@ import threading
 import time
 
 from django.apps import AppConfig
+from django.db import DatabaseError, OperationalError
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,13 @@ class UniverseConfig(AppConfig):
         if _watchdog_started or is_autoreload_parent:
             return
         _watchdog_started = True
+
+        try:
+            from mysite.universe.models.simulation import SimulationState
+
+            SimulationState.get_instance().reanchor_wall_clock()
+        except (DatabaseError, OperationalError) as exc:
+            logger.debug("Skipped simulation clock reanchor during startup: %s", exc)
 
         # Optional TTS warmup (loads model into GPU on startup)
         if os.getenv("AUDIO_WARMUP", "0") == "1":

@@ -27,6 +27,31 @@ _CURRENT_TEST_NODEID: ContextVar[Optional[str]] = ContextVar(
     "_CURRENT_TEST_NODEID", default=None
 )
 
+_EXTERNAL_SYSTEM_TEST_FILES = {
+    "test_LLM.py",
+    "test_ollama_structured_outputs.py",
+    "test_chatterbox_performance.py",
+}
+
+
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool:
+    """Avoid importing known external-system tests in fast-suite runs."""
+    if collection_path.name not in _EXTERNAL_SYSTEM_TEST_FILES:
+        return False
+
+    marker_expr = (config.getoption("-m") or "").lower()
+    if not marker_expr:
+        return False
+
+    excludes_external = "not external" in marker_expr or "not slow" in marker_expr
+    explicitly_requests_external = (
+        "external" in marker_expr and "not external" not in marker_expr
+    )
+    explicitly_requests_slow = "slow" in marker_expr and "not slow" not in marker_expr
+    return excludes_external and not (
+        explicitly_requests_external or explicitly_requests_slow
+    )
+
 
 def _get_benchmark_path() -> Optional[Path]:
     # Allow disabling entirely.

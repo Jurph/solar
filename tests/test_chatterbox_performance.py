@@ -14,12 +14,19 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 import pytest
 from django.conf import settings
 
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.external,
+    pytest.mark.tts,
+    pytest.mark.performance,
+]
+
 # Skip this entire file gracefully when torch is not installed (CI uses
 # the base + dev dependency sets only; torch lives in the optional ML extra).
 pytest.importorskip("torch")
 
 from mysite.universe.services.tts_service import get_tts_service  # noqa: E402
-import google.protobuf as _pb
+import google.protobuf as _pb  # noqa: E402
 
 # Suppress known diffusers LoRA warning (using peft backend is already installed)
 warnings.filterwarnings(

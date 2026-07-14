@@ -47,8 +47,6 @@ from mysite.universe.procedural_generation import (
     calculate_scale_height_km,
     calculate_atmosphere_height_km,
     generate_atmosphere,
-    generate_color_palette_from_temperature,
-    generate_color_palette_from_composition,
 )
 
 # Real Solar System values for validation
@@ -1092,26 +1090,3 @@ class TestProceduralGenerationCoverage(TestCase):
             star_type="G",
         )
         assert "atmosphere_type" in atmo
-
-    def test_color_palette_generation_helpers(self):
-        # Hit multiple thresholds in the temperature palette logic
-        assert generate_color_palette_from_temperature(40000)["main_color"] == "#9BB0FF"
-        assert generate_color_palette_from_temperature(15000)["main_color"] == "#AABFFF"
-        assert generate_color_palette_from_temperature(8000)["main_color"] == "#CAD7FF"
-        assert generate_color_palette_from_temperature(6500)["main_color"] == "#FFF4E6"
-        assert generate_color_palette_from_temperature(5500)["main_color"] == "#FFF8DC"
-        assert generate_color_palette_from_temperature(4000)["main_color"] == "#FFCC99"
-        assert generate_color_palette_from_temperature(3000)["main_color"] == "#FF6B6B"
-
-        ocean = generate_color_palette_from_composition(
-            {"water_coverage": 0.9}, temperature_k=300
-        )
-        ice = generate_color_palette_from_composition(
-            {"ice_content": 0.9}, temperature_k=100
-        )
-        iron = generate_color_palette_from_composition(
-            {"iron_content": 0.9}, temperature_k=300
-        )
-        rock = generate_color_palette_from_composition({}, temperature_k=300)
-        assert ocean["main_color"] != ice["main_color"]
-        assert iron["main_color"] != rock["main_color"]

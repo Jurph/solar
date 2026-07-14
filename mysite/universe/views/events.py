@@ -18,13 +18,13 @@ import logging
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.core.cache import cache
 
 from mysite.universe.models.event import DialogueEventLog
 from mysite.universe.services.audio_plans import build_audio_plan_for_dialogue_event
+from mysite.universe.views.dev_guard import state_changing_dev_only
 
 logger = logging.getLogger(__name__)
 
@@ -112,19 +112,21 @@ def _sentence_case(text: str) -> str:
 
 
 def _event_audio_file_available(event: DialogueEventLog) -> bool:
-    """Return True only when the stored audio file can actually be opened."""
+    """Return True only when the stored audio file actually exists in storage.
+
+    Uses a storage existence check (a stat) instead of opening the file, since
+    this runs for every event on every feed poll.
+    """
     if not event.audio_file:
         return False
 
     try:
-        with event.audio_file.open("rb") as f:
-            f.read(1)
-        return True
-    except FileNotFoundError:
-        logger.warning(
-            "event_feed: stored audio file missing for event %s", event.id
-        )
-        return False
+        if event.audio_file.storage.exists(event.audio_file.name):
+            return True
+    except OSError:
+        pass
+    logger.warning("event_feed: stored audio file missing for event %s", event.id)
+    return False
 
 
 @require_http_methods(["GET"])
@@ -209,7 +211,7 @@ def event_feed(request):
             | (Q(timestamp=after_ts_f) & Q(id__gt=after_id_int))
         )
 
-    queryset = queryset.order_by("timestamp", "id")[:limit]
+    events_page = list(queryset.order_by("timestamp", "id")[:limit])
 
     logger.debug(
         "event_feed: sim_time=%.2f after_ts=%s limit=%s",
@@ -218,18 +220,20 @@ def event_feed(request):
         limit,
     )
 
-    # Check which events have cached mixed audio
-    cached_event_ids = set()
-    for event in queryset:
-        cache_key = f"mixed_audio:{event.id}"
-        if cache.get(cache_key):
-            cached_event_ids.add(event.id)
+    # Check which events have cached mixed audio (one batched cache call)
+    cache_keys = {f"mixed_audio:{event.id}": event.id for event in events_page}
+    cached_event_ids = {cache_keys[key] for key in cache.get_many(cache_keys.keys())}
 
     # Convert to list of dicts with only essential fields
     events = []
-    for event in queryset:
+    for event in events_page:
         try:
-            audio_plan = build_audio_plan_for_dialogue_event(event)
+            # repair_profiles=False keeps this GET endpoint read-only: a missing
+            # AudioProfile falls back to in-memory defaults instead of being
+            # created and persisted on every poll.
+            audio_plan = build_audio_plan_for_dialogue_event(
+                event, repair_profiles=False
+            )
         except ValueError:
             logger.error(
                 "event_feed: actor-less event %s (actor_name=%r) — audio plan skipped",
@@ -262,9 +266,14 @@ def event_feed(request):
         else None
     )
 
-    # Debug: count how many events are pending (future) vs available (past)
-    total_events = DialogueEventLog.objects.count()
-    available_events = DialogueEventLog.objects.filter(timestamp__lte=sim_time).count()
+    # Debug: count how many events are pending (future) vs available (past).
+    # One aggregate query instead of two counts; this runs on every poll.
+    event_counts = DialogueEventLog.objects.aggregate(
+        total=Count("id"),
+        available=Count("id", filter=Q(timestamp__lte=sim_time)),
+    )
+    total_events = event_counts["total"] or 0
+    available_events = event_counts["available"] or 0
     pending_events = total_events - available_events
 
     # Find the next pending event (first event with timestamp > sim_time)
@@ -331,7 +340,7 @@ def event_scroller_wrapper(request):
     return render(request, "universe/event_scroller_wrapper.html")
 
 
-@csrf_exempt
+@state_changing_dev_only
 @require_http_methods(["POST"])
 def clear_events(request):
     """
@@ -440,9 +449,8 @@ def event_audio(request, event_id: int):
         # Check for pre-rendered file first
         if event.audio_file:
             try:
-                # Verify file exists and get size
-                with event.audio_file.open("rb") as f:
-                    file_size = len(f.read())
+                # Stat the file for its size; never read audio bytes on HEAD
+                file_size = event.audio_file.size
                 logger.debug(
                     f"event_audio: HEAD request - pre-rendered file found for event {event_id}"
                 )

@@ -81,29 +81,22 @@ def get_subordinate_bodies(
 
         # If location is a star
         elif isinstance(concrete, Star):
-            # Add all planets orbiting this star
-            subordinate_bodies.extend(Planet.objects.filter(orbits=location))
-            # For each planet, add its moons
-            for planet in Planet.objects.filter(orbits=location):
-                subordinate_bodies.extend(Moon.objects.filter(orbits=planet))
-            # Add stations orbiting planets in this system
-            for planet in Planet.objects.filter(orbits=location):
-                subordinate_bodies.extend(Station.objects.filter(orbits=planet))
+            # Batch: planets around the star, then all their moons and stations
+            # in one query each (avoids per-planet N+1 on large systems).
+            planets = list(Planet.objects.filter(orbits=location))
+            subordinate_bodies.extend(planets)
+            subordinate_bodies.extend(Moon.objects.filter(orbits__in=planets))
+            subordinate_bodies.extend(Station.objects.filter(orbits__in=planets))
 
         # If location is a StarSystem
         elif isinstance(concrete, StarSystem):
-            # Find the star(s) in this system
+            # Find the star(s) in this system, then batch the rest of the tree:
+            # one query per category regardless of star/planet count.
             stars = Star.objects.filter(orbits=location)
-            # For each star, add all planets orbiting it
-            for star in stars:
-                planets = Planet.objects.filter(orbits=star)
-                subordinate_bodies.extend(planets)
-                # For each planet, add its moons
-                for planet in planets:
-                    subordinate_bodies.extend(Moon.objects.filter(orbits=planet))
-                # Add stations orbiting planets in this system
-                for planet in planets:
-                    subordinate_bodies.extend(Station.objects.filter(orbits=planet))
+            planets = list(Planet.objects.filter(orbits__in=stars))
+            subordinate_bodies.extend(planets)
+            subordinate_bodies.extend(Moon.objects.filter(orbits__in=planets))
+            subordinate_bodies.extend(Station.objects.filter(orbits__in=planets))
 
     # No fallback - if no location found, return empty list
     # This prevents satellites from reporting hazards in wrong systems

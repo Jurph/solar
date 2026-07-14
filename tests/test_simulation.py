@@ -75,6 +75,31 @@ class ReanchoringTests(TestCase):
         # New anchor_wall_clock should be approximately now
         self.assertAlmostEqual(state.anchor_wall_clock, time.time(), delta=1.0)
 
+    def test_first_simulation_state_starts_at_zero(self):
+        """Initial state should not seed simulation time from Unix wall time."""
+        with unittest.mock.patch(
+            "mysite.universe.models.simulation.time.time", return_value=100000.0
+        ):
+            state = SimulationState.get_instance()
+
+        self.assertEqual(state.anchor_sim_time, 0.0)
+        self.assertEqual(state.anchor_wall_clock, 100000.0)
+
+    def test_reanchor_wall_clock_preserves_current_simulation_time(self):
+        """Server restart should not fast-forward by wall-clock downtime."""
+        state = SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=500.0,
+            anchor_wall_clock=1000.0,
+            time_scale=60.0,
+        )
+
+        state.reanchor_wall_clock(2000.0)
+
+        self.assertEqual(state.anchor_sim_time, 500.0)
+        self.assertEqual(state.anchor_wall_clock, 2000.0)
+        self.assertEqual(state.time_scale, 60.0)
+
 
 class TimeMonotonicityTests(TestCase):
     """Tests that simulation time never goes backwards."""

@@ -688,6 +688,55 @@ class EventFeedAudioReadyCacheTests(TestCase):
         self.assertEqual(data["debug"]["total_events"], 0)
 
 
+class EventFeedReadOnlyTests(TestCase):
+    """
+    GET /api/events/ must be side-effect free.
+
+    Regression: the feed used to repair missing/incomplete AudioProfiles on
+    every poll, turning a 1 Hz read endpoint into a writer.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        DialogueEventLog.objects.all().delete()
+        SimulationState.objects.all().delete()
+        self.base_sim_time = 10000.0
+        SimulationState.objects.create(
+            pk=1,
+            anchor_sim_time=self.base_sim_time,
+            anchor_wall_clock=time.time(),
+            time_scale=1.0,
+        )
+
+    def test_feed_does_not_create_audio_profiles(self):
+        """A missing AudioProfile yields a default plan without a DB write."""
+        from mysite.universe.models.audio_profile import AudioProfile
+
+        actor = Controller.objects.create(name="ReadOnly Control")
+        event = DialogueEventLog.objects.create(
+            timestamp=self.base_sim_time - 50.0,
+            actor=actor,
+            actor_name=actor.name,
+            text="Read-only check.",
+        )
+        # Remove the profile the post_save signal created; the feed must not
+        # recreate it.
+        AudioProfile.objects.filter(actor=actor).delete()
+
+        response = self.client.get("/api/events/")
+        self.assertEqual(response.status_code, 200)
+
+        event_data = next(e for e in response.json()["events"] if e["id"] == event.id)
+        presets = [a.get("preset", "") for a in event_data["audio_plan"]]
+        self.assertIn(
+            "quindar_start", presets, "plan must still be built from defaults"
+        )
+        self.assertFalse(
+            AudioProfile.objects.filter(actor=actor).exists(),
+            "event_feed must not write AudioProfile rows",
+        )
+
+
 if __name__ == "__main__":
     import unittest
 
