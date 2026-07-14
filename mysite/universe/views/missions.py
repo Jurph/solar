@@ -81,10 +81,14 @@ def spawn_mission(request):
                 # Nav broadcast mission: generate broadcast from satellite(s)
                 script_service = ScriptService.get_instance()
 
-                import math
                 import random
                 from mysite.universe.services.location_service import (
                     find_star_system_for_location,
+                )
+                from mysite.universe.services.nav_slots import (
+                    next_hour_boundary,
+                    release_nav_broadcast_slots,
+                    reserve_nav_broadcast_slots,
                 )
 
                 # Get satellite to broadcast from
@@ -154,94 +158,106 @@ def spawn_mission(request):
                             )
                         satellites = [satellite]
 
-                # 3) Pick an on-the-hour time slot that isn't already used by another NavSat broadcast.
-                #    Broadcast cadence: 14 updates, 12 hours apart.
+                # 3) Reserve on-the-hour time slots not already used by another
+                #    NavSat broadcast. Broadcast cadence: 14 updates, 12 hours apart.
+                #    Reserving slots as rows under a uniqueness constraint before
+                #    generating dialogue closes the check-to-use race with
+                #    concurrent nav broadcast missions (issue #39).
                 hours = 3600.0
                 cadence = 12.0 * hours
                 count = 14
 
-                def next_hour_boundary(t: float) -> float:
-                    return float(int(math.ceil(t / hours) * hours))
-
-                first_candidate = next_hour_boundary(base_sim_time)
-
-                # Consider "used" timestamps to be any existing nav_broadcast events.
-                occupied = set(
-                    DialogueEventLog.objects.filter(
-                        metadata__type="nav_broadcast"
-                    ).values_list("timestamp", flat=True)
+                reserved_slots = reserve_nav_broadcast_slots(
+                    base_sim_time,
+                    count=count,
+                    cadence_s=cadence,
+                    satellite_name=satellites[0].name,
                 )
+                if reserved_slots is not None:
+                    start_time = reserved_slots[0]
+                else:
+                    # If the next 24 hourly slots are all blocked, fall back to the
+                    # earliest hour boundary and accept collisions (extremely rare).
+                    start_time = next_hour_boundary(base_sim_time)
+                    logger.warning(
+                        "spawn_mission: all hourly nav broadcast slots occupied; "
+                        f"accepting collisions from {start_time}"
+                    )
 
-                start_time = None
-                for slot_offset_hours in range(0, 24):
-                    candidate = first_candidate + (slot_offset_hours * hours)
-                    scheduled = [candidate + (i * cadence) for i in range(count)]
-                    if all(ts not in occupied for ts in scheduled):
-                        start_time = candidate
-                        break
-
-                if start_time is None:
-                    # If the next 24 hourly slots are all blocked, fall back to the earliest
-                    # hour boundary and accept collisions (should be extremely rare).
-                    start_time = first_candidate
-
-                # 4) Generate and persist all scheduled broadcasts (and optional gratitude replies).
+                # 4) Generate and persist all scheduled broadcasts (and optional
+                #    gratitude replies). If anything fails, release the reserved
+                #    slots so an abandoned reservation cannot block the schedule.
                 events_saved = 0
-                with transaction.atomic():
-                    for i in range(count):
-                        broadcast_timestamp = start_time + (i * cadence)
-                        broadcast_chain = script_service.generate_nav_broadcast_chain(
-                            satellite=satellites[0],
-                            base_timestamp=broadcast_timestamp,
-                        )
-                        for event in broadcast_chain:
-                            # Long-term: allow the last scheduled NavSat broadcast to
-                            # carry a "next cycle" marker so a future scheduler can
-                            # re-enqueue another NavSat mission on the same per-hour
-                            # cadence without having to re-derive the schedule.
-                            if (
-                                i == count - 1
-                                and event.metadata
-                                and event.metadata.get("type") == "nav_broadcast"
-                            ):
-                                event.metadata["navsat_next_cycle_anchor_ts"] = (
-                                    start_time + (count * cadence)
+                try:
+                    with transaction.atomic():
+                        for i in range(count):
+                            broadcast_timestamp = start_time + (i * cadence)
+                            broadcast_chain = (
+                                script_service.generate_nav_broadcast_chain(
+                                    satellite=satellites[0],
+                                    base_timestamp=broadcast_timestamp,
                                 )
-                                event.metadata["navsat_cycle_count"] = count
-                                event.metadata["navsat_cycle_cadence_hours"] = (
-                                    cadence / hours
-                                )
-                                event.metadata["navsat_cycle_anchor_ts"] = start_time
-                                if target_system is not None:
-                                    event.metadata["navsat_star_system_name"] = (
-                                        target_system.name
-                                    )
-                                    event.metadata["navsat_star_system_id"] = (
-                                        target_system.id
-                                    )
-                            # CRITICAL: every dialogue event must carry a persisted
-                            # actor. A missing actor is a script-service bug; abort
-                            # the mission so the transaction rolls back instead of
-                            # persisting a partial broadcast schedule.
-                            actor = getattr(event, "actor", None)
-                            if actor is None or not hasattr(actor, "id"):
-                                raise ValueError(
-                                    f"Nav broadcast event at t={event.timestamp} has "
-                                    f"no persisted actor (got {type(actor).__name__});"
-                                    " aborting mission."
-                                )
-                            # Store actor_id in metadata - never use name lookups
-                            metadata = dict(event.metadata) if event.metadata else {}
-                            metadata["actor_id"] = actor.id
-
-                            DialogueEventLog.objects.create(
-                                timestamp=event.timestamp,
-                                actor=actor,
-                                actor_name=actor.name,
-                                text=event.text,
-                                metadata=metadata,
                             )
-                            events_saved += 1
+                            for event in broadcast_chain:
+                                # Long-term: allow the last scheduled NavSat broadcast to
+                                # carry a "next cycle" marker so a future scheduler can
+                                # re-enqueue another NavSat mission on the same per-hour
+                                # cadence without having to re-derive the schedule.
+                                if (
+                                    i == count - 1
+                                    and event.metadata
+                                    and event.metadata.get("type") == "nav_broadcast"
+                                ):
+                                    event.metadata["navsat_next_cycle_anchor_ts"] = (
+                                        start_time + (count * cadence)
+                                    )
+                                    event.metadata["navsat_cycle_count"] = count
+                                    event.metadata["navsat_cycle_cadence_hours"] = (
+                                        cadence / hours
+                                    )
+                                    event.metadata["navsat_cycle_anchor_ts"] = (
+                                        start_time
+                                    )
+                                    if target_system is not None:
+                                        event.metadata["navsat_star_system_name"] = (
+                                            target_system.name
+                                        )
+                                        event.metadata["navsat_star_system_id"] = (
+                                            target_system.id
+                                        )
+                                # CRITICAL: every dialogue event must carry a persisted
+                                # actor. A missing actor is a script-service bug; abort
+                                # the mission so the transaction rolls back instead of
+                                # persisting a partial broadcast schedule.
+                                actor = getattr(event, "actor", None)
+                                if actor is None or not hasattr(actor, "id"):
+                                    raise ValueError(
+                                        f"Nav broadcast event at t={event.timestamp} has "
+                                        f"no persisted actor (got {type(actor).__name__});"
+                                        " aborting mission."
+                                    )
+                                # Store actor_id in metadata - never use name lookups
+                                metadata = (
+                                    dict(event.metadata) if event.metadata else {}
+                                )
+                                metadata["actor_id"] = actor.id
+
+                                DialogueEventLog.objects.create(
+                                    timestamp=event.timestamp,
+                                    actor=actor,
+                                    actor_name=actor.name,
+                                    text=event.text,
+                                    metadata=metadata,
+                                )
+                                events_saved += 1
+                except Exception:
+                    if reserved_slots:
+                        released = release_nav_broadcast_slots(reserved_slots)
+                        logger.info(
+                            f"spawn_mission: released {released} reserved nav "
+                            "broadcast slot(s) after mission failure"
+                        )
+                    raise
 
                 logger.info(
                     f"spawn_mission: Generated {events_saved} nav broadcast event(s) "

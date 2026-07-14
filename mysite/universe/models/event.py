@@ -183,3 +183,41 @@ class DialogueEventLog(models.Model):
 
     def __str__(self):
         return f"[{self.timestamp:.2f}] {self.actor_name}: {self.text[:50]}"
+
+
+class NavBroadcastSlot(models.Model):
+    """
+    Durable reservation ledger for nav broadcast timestamps.
+
+    Reserving slots as rows with a database uniqueness constraint closes the
+    TOCTOU race in nav broadcast scheduling (issue #39): two concurrent
+    missions that both scanned the same "occupied" snapshot cannot both
+    commit the same slot — the second INSERT fails and the caller moves to
+    the next hourly offset.
+
+    Rows are created *before* dialogue generation (which can take minutes)
+    so the slots stay held for the whole generation window, and are released
+    if the mission fails before persisting its events.
+    """
+
+    timestamp = models.FloatField(
+        unique=True,
+        help_text="Reserved simulation-time broadcast slot (on-the-hour)",
+    )
+    satellite_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Satellite the slot was reserved for (observability only)",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, help_text="Database insertion time"
+    )
+
+    class Meta:
+        ordering = ["timestamp"]
+        verbose_name = "Nav Broadcast Slot"
+        verbose_name_plural = "Nav Broadcast Slots"
+
+    def __str__(self):
+        return f"[{self.timestamp:.2f}] reserved for {self.satellite_name or 'unknown'}"

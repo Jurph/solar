@@ -114,8 +114,8 @@ env.bak/
 venv.bak/
 # Local audio assets (non-redistributable)
 audio/voices/
-# Local model weights/artifacts
-models/
+# Local model weights/artifacts (repo root only — NOT Django models packages)
+/models/
 
 # Spyder project settings
 .spyderproject
